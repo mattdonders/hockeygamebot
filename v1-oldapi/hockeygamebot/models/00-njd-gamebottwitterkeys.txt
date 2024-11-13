@@ -1,0 +1,22 @@
+DEBUG
+consumer_key = "s7yY1vdSrf4kh1qN5BahgJBik"
+consumer_secret = "A432OaRCpRlv7r0jAOSKWCMioklUNjrGIVDxPeqi8iJbbHl5Sc"
+access_token = "959083884356014081-JcmoxfsMnCkji4MhR5wgqUv2aEUctvN"
+access_token_secret = "vkLpH5zrEPHj1xUJNdJcirhU8E3M752A10JQM9hM1mu21"
+v1_auth = tweepy.OAuth1UserHandler(consumer_key, consumer_secret, access_token, access_token_secret)
+v1_api = tweepy.API(v1_auth)
+v2_client = client = tweepy.Client(
+    consumer_key=consumer_key,
+    consumer_secret=consumer_secret,
+    access_token=access_token,
+    access_token_secret=access_token_secret,
+)
+
+v1_api.update()
+
+
+PROD
+consumer_key = "bSNfwmIyBtv0yzjtirVMVhklk"
+consumer_secret = "KzMr3pk6kRdOXm1xC1n2qenIAu3DQeq5NDbbdcLHGg8BO5fXPd"
+access_token = "948646765770760194-STpO9f9N4NyGJzmfOVwqhflhJyM1lBX"
+access_token_secret = "O6jOGk2rUh6hPkxUV6xa6k5P4rpWwQkY6rHJVksyrVEq2"
