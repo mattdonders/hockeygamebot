@@ -2,8 +2,11 @@ import logging
 import logging.config
 import os
 from datetime import datetime
+
+import pytz
 from paths import LOGS_PATH
 from utils import arguments
+from dateutil import parser
 
 
 def setup_logging(config, args):
@@ -68,6 +71,14 @@ def setup_logging(config, args):
     logging.config.dictConfig(logging_config)
 
 
+def convert_time_to_eastern(utc_time_str):
+    """Converts UTC time string to US/Eastern timezone."""
+    utc_time = parser.isoparse(utc_time_str)
+    eastern = pytz.timezone("US/Eastern")
+    eastern_time = utc_time.astimezone(eastern)
+    return eastern_time  # Return the datetime object
+
+
 def clock_emoji(time):
     """
     Accepts a time in 12-hour or 24-hour format with minutes (:00 or :30)
@@ -103,3 +114,25 @@ def clock_emoji(time):
     hour %= 12  # Convert to 12-hour format if it's in 24-hour format
 
     return clock_emojis.get((hour, minutes), "🕛")  # Default to 🕛 if time is invalid
+
+
+def ymd_date_parser(date):
+    """Converts a string in Y-m-d format to datetime object.
+
+    Args:
+        date: a string in Y-m-d format
+
+    Returns:
+        date_dt: the passed in date as a datetime object
+    """
+
+    if not date:
+        return None
+
+    try:
+        date_dt = datetime.strptime(date, "%Y-%m-%d")
+        return date_dt
+    except ValueError as e:
+        logging.error("Invalid override date - exiting.")
+        logging.error(e)
+        raise e

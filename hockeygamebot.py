@@ -1,163 +1,148 @@
-# hockeygamebot.py
-
-import logging
-import time
+import argparse
 from datetime import datetime, timedelta
-import pytz
 
-from services.nhl_api_service import NHLAPIService
-from services.social_media_service import SocialMediaService
-from configuration import config
-from utils import utils, arguments
+import requests
+
+import core.rosters as rosters
+import core.schedule as schedule
+from core.play_by_play import parse_play_by_play_with_names
+from socials.bluesky import BlueskyClient
+from utils.config import load_config
+from utils.team_abbreviations import TEAM_ABBREVIATIONS
 
 
-class HockeyGameBotApp:
-    def __init__(self):
-        # Load configuration
-        self.config = config
+class GameContext:
+    """
+    Centralized context for game-related data and shared resources.
+    """
 
-        # Parse command-line arguments
-        self.args = arguments.get_arguments()
+    def __init__(self, bluesky_client):
+        self.bluesky_client = bluesky_client
+        self.preferred_team_name = None
+        self.other_team_name = None
+        self.preferred_team_id = None
+        self.preferred_homeaway = None
+        self.combined_roster = None
 
-        # Set up logging
-        utils.setup_logging(self.config, self.args)
 
-        # Initialize services
-        self.nhl_service = NHLAPIService()
-        social_env = "prod" if not self.args.debugsocial else "debug"
-        self.social_media_service = SocialMediaService(
-            self.config, env=social_env, nosocial=self.args.nosocial
-        )
+def handle_is_game_today(game, target_date, team_abbreviation, season_id, context):
+    """
+    Handle logic when there is a game today.
+    """
+    print(f"Game found today ({target_date}):")
+    print(
+        f"  {game['awayTeam']['placeName']['default']} ({game['awayTeam']['abbrev']}) "
+        f"@ {game['homeTeam']['placeName']['default']} ({game['homeTeam']['abbrev']})"
+    )
+    print(f"  Venue: {game['venue']['default']}")
+    print(f"  Start Time (UTC): {game['startTimeUTC']}")
 
-        # Initialize variables
-        self.team_name = None
-        self.team_abbr = None
-        self.team_hashtag = None
-        self.next_game = None
+    # Determine preferred team role
+    context.preferred_team_id = (
+        game["homeTeam"]["id"] if game["homeTeam"]["abbrev"] == team_abbreviation else game["awayTeam"]["id"]
+    )
+    context.preferred_homeaway = "home" if game["homeTeam"]["abbrev"] == team_abbreviation else "away"
 
-    def run(self):
-        # Log initial information
-        self.log_startup_info()
+    # Extract team names
+    context.preferred_team_name = (
+        game["homeTeam"]["placeName"]["default"]
+        if context.preferred_homeaway == "home"
+        else game["awayTeam"]["placeName"]["default"]
+    )
+    context.other_team_name = (
+        game["awayTeam"]["placeName"]["default"]
+        if context.preferred_homeaway == "home"
+        else game["homeTeam"]["placeName"]["default"]
+    )
 
-        # Set up the game
-        self.setup_game()
+    # Load combined roster for both teams
+    context.combined_roster = rosters.load_combined_roster(game, team_abbreviation, season_id)
 
-        # Prepare content
-        content = self.prepare_content()
+    # Parse play-by-play only for today's game if game_state is OFF
+    if game["gameState"] == "OFF":
+        game_id = game["id"]
+        play_by_play_url = f"https://api-web.nhle.com/v1/gamecenter/{game_id}/play-by-play"
+        response = requests.get(play_by_play_url)
+        if response.status_code == 200:
+            play_by_play_data = response.json()
+            parse_play_by_play_with_names(play_by_play_data, context)
 
-        # Post to social media
-        self.post_update(content)
 
-    def log_startup_info(self):
-        logging.info("#" * 80)
-        logging.info("New instance of the Hockey Game Bot started.")
-        if self.args.docker:
-            logging.info("Running in a Docker container - environment variables parsed.")
-        logging.info("TIME: %s", datetime.now())
-        logging.info(
-            "ARGS - nosocial: %s, console: %s, teamoverride: %s",
-            self.args.nosocial,
-            self.args.console,
-            self.args.team,
-        )
-        logging.info(
-            "ARGS - debug: %s, debugsocial: %s, overridelines: %s",
-            self.args.debug,
-            self.args.debugsocial,
-            self.args.overridelines,
-        )
-        logging.info(
-            "ARGS - date: %s, split: %s, localdata: %s", self.args.date, self.args.split, self.args.localdata
-        )
-        logging.info(
-            "SOCIAL - bluesky: %s, threads: %s",
-            self.config["socials"]["bluesky"],
-            self.config["socials"]["threads"],
-        )
-        logging.info("%s\n", "#" * 80)
+def handle_was_game_yesterday(game, yesterday, context):
+    """
+    Handle logic when there was a game yesterday.
+    """
+    print(f"Game found yesterday ({yesterday}):")
+    print(
+        f"  {game['awayTeam']['placeName']['default']} ({game['awayTeam']['abbrev']}) "
+        f"@ {game['homeTeam']['placeName']['default']} ({game['homeTeam']['abbrev']})"
+    )
+    print(f"  Venue: {game['venue']['default']}")
+    print(f"  Start Time (UTC): {game['startTimeUTC']}")
+    # Example of using the Bluesky client in this handler
+    context.bluesky_client.post_message("Game Summary Placeholder Message")
+    # Do not parse play-by-play for yesterday's game
 
-    def setup_game(self):
-        # Determine the team abbreviation and hashtag
-        self.team_name = self.args.team if self.args.team else self.config["default"]["team_name"]
-        self.team_abbr = self.config["default"].get("team_abbr", "NJD")
-        self.team_hashtag = self.config["default"].get("team_hashtag", self.team_abbr)
 
-        # Fetch the next game
-        self.next_game = self.nhl_service.get_next_game(self.team_abbr)
-        if not self.next_game:
-            logging.info("No upcoming games found. Exiting.")
-            exit()
+def main():
+    parser = argparse.ArgumentParser(description="Check NHL games for a specific date.")
+    parser.add_argument(
+        "--config",
+        type=str,
+        default="config.yaml",
+        help="Path to the configuration file (default: config.yaml).",
+    )
+    parser.add_argument(
+        "--date", type=str, help="Date to check for a game (format: YYYY-MM-DD). Defaults to today's date."
+    )
+    args = parser.parse_args()
 
-    def prepare_content(self):
-        # Fetch team full names
-        team_data = self.nhl_service.get_team_full_names()
+    # Load configuration
+    config = load_config(args.config)
+    team_name = config.get("default", {}).get("team_name", "New Jersey Devils")
+    team_abbreviation = TEAM_ABBREVIATIONS.get(team_name)
+    if not team_abbreviation:
+        raise Exception(f"Team abbreviation for '{team_name}' not found in mapping dictionary.")
 
-        # Get the away and home team IDs
-        away_team_id = self.next_game.get("awayTeam", {}).get("id")
-        home_team_id = self.next_game.get("homeTeam", {}).get("id")
+    # Initialize Bluesky Client
+    bluesky_environment = "debug"
+    bluesky_account = config["bluesky"][bluesky_environment]["account"]
+    bluesky_password = config["bluesky"][bluesky_environment]["password"]
+    bluesky_client = BlueskyClient(bluesky_account, bluesky_password)
+    bluesky_client.login()
 
-        # Get the full team names
-        away_team_info = team_data.get(away_team_id, {})
-        away_team_name = away_team_info.get("full_name", "Unknown Team")
-        away_team_abbr = away_team_info.get("abbreviation", "UNK")
+    # Create the GameContext
+    context = GameContext(bluesky_client)
 
-        home_team_info = team_data.get(home_team_id, {})
-        home_team_name = home_team_info.get("full_name", "Unknown Team")
-        home_team_abbr = home_team_info.get("abbreviation", "UNK")
+    # Fetch season ID
+    season_id = schedule.fetch_season_id(team_abbreviation)
 
-        venue = self.next_game.get("venue")
-        if isinstance(venue, dict):
-            venue_name = venue.get("default", "Unknown Venue")
-        else:
-            venue_name = venue
+    # Determine dates to check
+    target_date = args.date if args.date else datetime.now().strftime("%Y-%m-%d")
+    yesterday = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d")
 
-        start_time_utc = self.next_game.get("startTimeUTC")
+    try:
+        # Fetch schedule
+        team_schedule = schedule.fetch_schedule(team_abbreviation)
 
-        # Convert startTimeUTC to US/Eastern time
-        start_time_eastern = self.convert_time_to_eastern(start_time_utc)
-        start_time_formatted = start_time_eastern.strftime("%I:%M %p")
+        # Check for a game on the target date
+        game_today, _ = schedule.is_game_on_date(team_schedule, target_date)
+        if game_today:
+            handle_is_game_today(game_today, target_date, team_abbreviation, season_id, context)
+            return
 
-        # Determine if the game is today, tomorrow, or the day name
-        now_eastern = datetime.now(pytz.timezone("US/Eastern"))
-        days_diff = (start_time_eastern.date() - now_eastern.date()).days
-        if days_diff == 0:
-            day_text = "today"
-        elif days_diff == 1:
-            day_text = "tomorrow"
-        else:
-            day_text = start_time_eastern.strftime("%A")
+        # Check for a game yesterday
+        game_yesterday, _ = schedule.is_game_on_date(team_schedule, yesterday)
+        if game_yesterday:
+            handle_was_game_yesterday(game_yesterday, yesterday, context)
+            return
 
-        # Get the broadcast data
-        us_networks = self.nhl_service.get_us_broadcast_networks(self.next_game)
-        broadcast_channel = ", ".join(us_networks) if us_networks else "Unavailable"
+        # No games found
+        print(f"No games found for {team_name} on {target_date} or {yesterday}.")
 
-        # Prepare the content
-        content = (
-            f"Tune in {day_text} when the {away_team_name} take on the {home_team_name} at {venue_name}.\n\n"
-            f"🕢 {start_time_formatted}\n"
-            f"📺 {broadcast_channel}\n"
-            f"#️⃣ #{self.team_hashtag}"
-        )
-
-        return content
-
-    def convert_time_to_eastern(self, utc_time_str):
-        """Converts UTC time string to US/Eastern timezone."""
-        utc_time = datetime.strptime(utc_time_str, "%Y-%m-%dT%H:%M:%SZ")
-        utc_time = utc_time.replace(tzinfo=pytz.utc)
-        eastern = pytz.timezone("US/Eastern")
-        eastern_time = utc_time.astimezone(eastern)
-        return eastern_time
-
-    def post_update(self, content):
-        # Post the content to social media
-        self.social_media_service.post_update(content)
-
-    def end_game_loop(self):
-        logging.info("Game has ended.")
-        # Perform any necessary cleanup
+    except Exception as e:
+        print(f"Error: {e}")
 
 
 if __name__ == "__main__":
-    app = HockeyGameBotApp()
-    app.run()
+    main()
