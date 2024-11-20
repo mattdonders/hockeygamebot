@@ -166,6 +166,9 @@ def date_parser(date):
         date_dt: the passed in date as a datetime object
     """
 
+    if not date:
+        return None
+
     try:
         date_dt = datetime.strptime(date, "%Y-%m-%d")
         return date_dt
