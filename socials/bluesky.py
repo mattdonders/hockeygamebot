@@ -1,39 +1,57 @@
 # services/bluesky_poster.py
 
-from atproto import Client, client_utils
+import logging
+from atproto import Client, client_utils, models
 import re
 
 
 class BlueskyClient:
-    def __init__(self, account, password):
+    def __init__(self, account, password, nosocial):
         self.client = Client()
         self.account = account
         self.password = password
+        self.nosocial = nosocial
 
     def login(self):
         self.client.login(self.account, self.password)
 
-    def post(self, content):
+    def post(self, message, reply_root=None, reply_post=None):
+        if self.nosocial:
+            logging.info(f"[NOSOCIAL] {message}")
+            return
+
         # Initialize TextBuilder
         text_builder = client_utils.TextBuilder()
 
-        # Find the first hashtag in the content
-        hashtag_match = re.search(r"#(\w+)", content)
-        if hashtag_match:
-            start, end = hashtag_match.span()
-            hashtag = hashtag_match.group(0)  # e.g., #NJDevils
+        # Extract all hashtags
+        hashtags = re.findall(r"#(\w+)", message)
+        remaining_message = message
 
-            # Add text before the hashtag
-            text_builder.text(content[:start])
+        for hashtag in hashtags:
+            # Find the position of the current hashtag in the message
+            match = re.search(rf"#{hashtag}", remaining_message)
+            if match:
+                start, end = match.span()
 
-            # Add the hashtag with tag formatting
-            text_builder.tag(hashtag, hashtag[1:])  # hashtag[1:] removes the '#'
+                # Add text before the hashtag
+                text_builder.text(remaining_message[:start])
 
-            # Add remaining text after the hashtag
-            text_builder.text(content[end:])
+                # Add the hashtag with tag formatting
+                text_builder.tag(f"#{hashtag}", hashtag)  # Strip '#' for tag formatting
+
+                # Update the remaining message to exclude the processed part
+                remaining_message = remaining_message[end:]
+
+        # Add any remaining text after the last hashtag
+        text_builder.text(remaining_message)
+
+        # Send the post with formatted message
+        if reply_root and reply_post:
+            parent = models.create_strong_ref(reply_post)
+            root = models.create_strong_ref(reply_root)
+            reply_model = models.AppBskyFeedPost.ReplyRef(parent=parent, root=root)
+            post_response = self.client.send_post(text_builder, reply_to=reply_model)
         else:
-            # No hashtag found, so just add the entire content as text
-            text_builder.text(content)
+            post_response = self.client.send_post(text_builder)
 
-        # Send the post with formatted content
-        self.client.send_post(text_builder)
+        return post_response
