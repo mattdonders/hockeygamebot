@@ -34,6 +34,23 @@ def fetch_schedule(team_abbreviation: str, season_id: str):
         raise Exception(f"Failed to fetch schedule. Status Code: {response.status_code}")
 
 
+def fetch_playbyplay(game_id: str):
+    """
+    Fetch the play by play for the current game.
+    """
+
+    url = f"https://api-web.nhle.com/v1/gamecenter/{game_id}/play-by-play"
+    logging.info(f"Fetching play-by-play data from {url}")
+
+    # Fetch play-by-play data
+    response = requests.get(url)
+    if response.status_code == 200:
+        play_by_play_data = response.json()
+        return play_by_play_data
+    else:
+        raise Exception(f"Failed to fetch play by play data. Status Code: {response.status_code}")
+
+
 def is_game_on_date(schedule: dict, target_date: str):
     """
     Check if there is a game on the specified date and return the game details and ID.

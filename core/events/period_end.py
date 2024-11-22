@@ -1,10 +1,12 @@
-from .base import Event
+from .base import Cache, Event
 
 
 class PeriodEndEvent(Event):
     """
     Event for when a period ends.
     """
+
+    cache = Cache(__name__)
 
     def parse(self):
         """
@@ -15,10 +17,18 @@ class PeriodEndEvent(Event):
         period_ordinal = f"{period_number}{'th' if 10 <= period_number % 100 <= 20 else {1: 'st', 2: 'nd', 3: 'rd'}.get(period_number % 10, 'th')}"
 
         if period_type == "REG":
-            return f"The {period_ordinal} period has ended."
+            message = f"The {period_ordinal} period has ended."
         elif period_type == "OT":
-            return f"Overtime has ended."
+            message = f"Overtime has ended."
         elif period_type == "SO":
-            return f"The shootout has ended."
+            message = f"The shootout has ended."
         else:
-            return f"The {period_ordinal} period of type '{period_type}' has ended."
+            message = f"The {period_ordinal} period of type '{period_type}' has ended."
+
+        message += (
+            f"\n\n"
+            f"{self.context.preferred_team_name}: {self.context.preferred_score}\n"
+            f"{self.context.other_team_name}: {self.context.other_score}"
+        )
+
+        return message

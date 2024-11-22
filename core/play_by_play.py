@@ -33,13 +33,15 @@ def parse_play_by_play_with_names(events, context):
 
         # Create an event object using the factory
         parsed_event = EventFactory.create_event(event, context)
+
         if parsed_event:
             parsed_events.append(parsed_event)
 
             try:
-                message = parsed_event.parse()
-                if message:
-                    context.bluesky_client.post(message)
+                parsed_event.post_message()
+                # message = parsed_event.parse()
+                # if message:
+                #     context.bluesky_client.post(message)
             except Exception as e:
                 logging.error(f"Error processing event: {e}", exc_info=True)
 

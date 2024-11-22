@@ -1,0 +1,11 @@
+from .base import Cache, Event
+
+
+class GameEndEvent(Event):
+    cache = Cache(__name__)
+
+    def parse(self):
+        """
+        Parse a goal event and return a formatted message.
+        """
+        details = self.details
