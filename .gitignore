@@ -21,7 +21,7 @@ secret.py
 *.log
 *.log.*
 
-# Customized Images
+# Customized Resources
 resources/images/Gameday-*.jpg
 resources/images/GamedayFinal-*.jpg
 resources/images/Gameday-*.png
@@ -34,6 +34,8 @@ resources/images/Final*.png
 resources/PSDs
 resources/images/temp
 hockeygamebot/resources/images/temp/
+resources/*-roster.json
+
 
 # VirtualEnv Files
 bin/

@@ -1,9 +1,15 @@
 import logging
+import traceback
+from core.events.base import Event
+from core.events.game_end import GameEndEvent
 from core.events.goal import GoalEvent
 from core.events.penalty import PenaltyEvent
 from core.events.faceoff import FaceoffEvent
+from core.events.shootout import ShootoutEvent
 from core.events.stoppage import StoppageEvent
 from core.events.period_end import PeriodEndEvent
+from core.events.generic import GenericEvent
+import utils.others as otherutils
 
 
 class EventFactory:
@@ -15,11 +21,11 @@ class EventFactory:
     def create_event(event_data, context):
         # Get & Add Event ID to Master List of Parsed Events
         event_id = event_data.get("eventId")
-        if event_id:
-            context.parsed_event_ids.append(event_id)
 
+        # Pull out necessary fields for other parsing logic
         event_type = event_data.get("typeDescKey", "UnsupportedEvent")
         sort_order = event_data.get("sortOrder", "N/A")
+        period_type = event_data.get("periodDescriptor", {}).get("periodType")
 
         # Mapping of event types to their corresponding classes
         event_mapping = {
@@ -28,16 +34,53 @@ class EventFactory:
             "faceoff": FaceoffEvent,
             "stoppage": StoppageEvent,
             "period-end": PeriodEndEvent,
+            "game-end": GameEndEvent,
         }
 
         # Get the event class based on the type
-        event_class = event_mapping.get(event_type)
+        event_class = event_mapping.get(event_type, GenericEvent)
 
-        if event_class:
-            # Log the creation of the event
-            logging.info(f"Creating event of type: {event_class} / Sort Order: {sort_order}")
-            return event_class(event_data, context)
+        # Re-classify shootout events as such
+        shootout = bool(period_type == "SO" and event_class != GameEndEvent)
+        event_class = ShootoutEvent if shootout else event_class
 
-        # Log unsupported or unknown event types
-        logging.warning(f"Unsupported or unknown event type: {event_type} / Sort Order: {sort_order}")
-        return None
+        # Check whether this event is in our Cache
+        event_object = event_class.cache.get(event_id)
+
+        if not event_object:
+            # Add Name Fields for Each ID Field in Event Details
+            details = event_data.get("details", {})
+            details = otherutils.replace_ids_with_names(details, context.combined_roster)
+            event_data["details"] = details
+
+            try:
+                logging.info(
+                    "Creating %s event (type: %s) for ID: %s / SortOrder: %s.",
+                    event_class.__name__,
+                    event_type,
+                    event_id,
+                    sort_order,
+                )
+
+                event_object = event_class(event_data, context)
+                event_class.cache.add(event_object)
+            except Exception as error:
+                logging.error(
+                    "Error creating %s event (type: %s) for ID: %s / SortOrder: %s.",
+                    event_class.__name__,
+                    event_type,
+                    event_id,
+                    sort_order,
+                )
+                # logging.error(response)
+                logging.error(error)
+                logging.error(traceback.format_exc())
+                return
+
+        if sort_order < 9000:
+            context.last_sort_order = sort_order
+        else:
+            logging.warning("Not setting GameContext sort order to %s - invalid value.", sort_order)
+
+        # Send Message
+        event_object.post_message()

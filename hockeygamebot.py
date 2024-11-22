@@ -1,10 +1,12 @@
 import argparse
 import logging
 from datetime import datetime, timedelta
+import sys
 import time
 
 import requests
 
+from core import final
 import core.rosters as rosters
 import core.schedule as schedule
 import utils.others as otherutils
@@ -15,33 +17,144 @@ from socials.bluesky import BlueskyClient
 from utils.config import load_config
 from utils.team_abbreviations import TEAM_ABBREVIATIONS
 from utils.team_details import TEAM_DETAILS
+from core.game_context import GameContext
 
 
-class GameContext:
-    """
-    Centralized context for game-related data and shared resources.
-    """
+def start_game_loop(context: GameContext):
+    # ------------------------------------------------------------------------------
+    # START THE MAIN LOOP
+    # ------------------------------------------------------------------------------
 
-    def __init__(self, config, bluesky_client, nosocial=False):
-        self.config = config
-        self.bluesky_client = bluesky_client
-        self.nosocial = nosocial
-        self.game_id = None
-        self.preferred_team_name = None
-        self.preferred_team_abbreviation = None
-        self.other_team_name = None
-        self.preferred_team_id = None
-        self.preferred_homeaway = None
-        self.combined_roster = None
-        self.game_hashtag = None
-        self.preferred_team_hashtag = None
-        self.season_id = None
-        self.last_sort_order = 0
-        self.parsed_event_ids = []
-        self.all_goals = []
+    while True:
+        # Every loop, update game state so the logic below works for switching between them
+        updated_game_state = schedule.fetch_game_state(context.game_id)
+        context.game_state = updated_game_state
+
+        # If we enter this function on the day of a game (before the game starts), gameState = "FUT"
+        # We should send preview posts & then sleep until game time.
+        if context.game_state == "FUT":
+            logging.info("Handling future (FUT) game state.")
+
+            # Generate and post the game time preview
+            if not context.preview_socials.core_sent:
+                game_time_post = format_future_game_post(context.game, context)
+                bsky_gametime = context.bluesky_client.post(game_time_post)
+                context.preview_socials.core_sent = True
+                if bsky_gametime:
+                    logging.debug(vars(bsky_gametime))
+                    context.preview_socials.bluesky_root = bsky_gametime
+                    context.preview_socials.bluesky_parent = bsky_gametime
+                logging.info("Posted game time preview.")
+
+            # Fetch the team schedule and calculate the season series
+            team_schedule = schedule.fetch_schedule(context.preferred_team_abbreviation, context.season_id)
+            home_team = context.game["homeTeam"]["abbrev"]
+            away_team = context.game["awayTeam"]["abbrev"]
+            opposing_team = away_team if home_team == context.preferred_team_abbreviation else home_team
+
+            # Generate and post the season series preview
+            if not context.preview_socials.season_series_sent:
+                season_series_post = format_season_series_post(
+                    team_schedule, context.preferred_team_abbreviation, opposing_team, context
+                )
+                bsky_seasonseries = context.bluesky_client.post(
+                    season_series_post, reply_root=bsky_gametime, reply_post=bsky_gametime
+                )
+                context.preview_socials.season_series_sent = True
+                if bsky_seasonseries:
+                    logging.debug(vars(bsky_seasonseries))
+                    context.preview_socials.bluesky_parent = bsky_seasonseries
+                logging.info("Posted season series preview.")
+
+            # Sleep until the game starts
+            start_time = context.game["startTimeUTC"]
+            sleep_until_game_start(start_time)
+
+        elif context.game_state == "LIVE":
+            logging.debug("Game Context: %s", vars(context))
+            logging.info("Handling live (LIVE) game state.")
+
+            if not context.gametime_rosters_set:
+                # Get Game-Time Rosters and Combine w/ Pre-Game Rosters
+                logging.info("Getting game-time rosters and adding them to existing combined rosters.")
+                game_time_rosters = rosters.load_game_rosters(context)
+                final_combined_rosters = {**context.combined_roster, **game_time_rosters}
+                context.combined_roster = final_combined_rosters
+                context.gametime_rosters_set = True
+
+            # Parse Live Game Data
+            parse_live_game(context)
+
+            live_sleep_time = context.config["script"]["live_sleep_time"]
+            logging.info("Sleeping for configured live game time (%ss).", live_sleep_time)
+
+            # Now increment the counter sleep for the calculated time above
+            time.sleep(live_sleep_time)
+
+        elif context.game_state in ["OFF", "FINAL"]:
+            logging.info(
+                "Game is now over and / or 'Official' - run end of game functions with increased sleep time."
+            )
+
+            # If (for some reason) the bot was started after the end of the game
+            # We need to re-run the live loop once to parse all of the events
+            if not context.events:
+                logging.info("Bot started after game ended, pass livefeed into event factory to fill events.")
+
+                if not context.gametime_rosters_set:
+                    # Get Game-Time Rosters and Combine w/ Pre-Game Rosters
+                    logging.info("Getting game-time rosters and adding them to existing combined rosters.")
+                    game_time_rosters = rosters.load_game_rosters(context)
+                    final_combined_rosters = {**context.combined_roster, **game_time_rosters}
+                    context.combined_roster = final_combined_rosters
+                    context.gametime_rosters_set = True
+
+                # Extract game ID and build the play-by-play URL
+                game_id = context.game_id
+                # play_by_play_data = schedule.fetch_playbyplay(game_id)
+                # events = play_by_play_data.get("plays", [])
+
+                # Parse Live Game Data
+                parse_live_game(context)
+
+            if not context.final_socials.final_score_sent:
+                final_score_post = final.final_score(context)
+                bsky_finalscore = context.bluesky_client.post(final_score_post)
+                context.final_socials.final_score_sent = True
+                if bsky_finalscore:
+                    logging.debug(vars(bsky_finalscore))
+                    context.final_socials.bluesky_root = bsky_finalscore
+                    context.final_socials.bluesky_parent = bsky_finalscore
+
+            if not context.final_socials.three_stars_sent:
+                # final.three_stars(livefeed=livefeed_resp, game=game)
+                pass
+
+            end_game_loop(context)
+        else:
+            print(context.game_state)
+            sys.exit()
 
 
-def handle_is_game_today(game, target_date, team_abbreviation, season_id, context):
+def end_game_loop(context: GameContext):
+    """A function that is run once the game is finally over. Nothing fancy - just denotes a logical place
+    to end the game, log one last section & end the script."""
+
+    logging.info("#" * 80)
+    logging.info("End of the '%s' Hockey Game Bot game.", context.preferred_team_name)
+    logging.info(
+        "Final Score: %s: %s / %s: %s",
+        context.preferred_team_name,
+        context.preferred_score,
+        context.other_team_name,
+        context.other_score,
+    )
+    logging.info("TIME: %s", datetime.now())
+    logging.info("%s\n", "#" * 80)
+    sys.exit()
+
+
+def handle_is_game_today(game, target_date, team_abbreviation, season_id, context: GameContext):
     """
     Handle logic when there is a game today.
     """
@@ -59,9 +172,13 @@ def handle_is_game_today(game, target_date, team_abbreviation, season_id, contex
     context.preferred_team_hashtag = TEAM_DETAILS[team_abbreviation]["hashtag"]
     context.game_hashtag = f"#{away_team}vs{home_team}"
 
-    # Get Game ID & Store It
+    # Get Game ID & Store it in the GameContext
     game_id = game["id"]
     context.game_id = game_id
+
+    # Get Game State & Store it in the GameContext
+    game_state = game["gameState"]
+    context.game_state = game_state
 
     # Load Combined Rosters into Game Context
     context.combined_roster = rosters.load_combined_roster(game, team_abbreviation, season_id)
@@ -82,86 +199,9 @@ def handle_is_game_today(game, target_date, team_abbreviation, season_id, contex
     # DEBUG Log the GameContext
     logging.debug(f"Full Game Context: {vars(context)}")
 
-    # If we enter this function on the day of a game (before the game starts), gameState = "FUT"
-    # We should send preview posts & then sleep until game time.
-    if game["gameState"] == "FUT":
-        logging.info("Handling future (FUT) game state.")
-
-        # Generate and post the game time preview
-        game_time_post = format_future_game_post(game, context)
-        bsky_gametime = context.bluesky_client.post(game_time_post)
-        logging.info(vars(bsky_gametime))
-        logging.info("Posted game time preview.")
-
-        # Fetch the team schedule and calculate the season series
-        team_schedule = schedule.fetch_schedule(team_abbreviation, season_id)
-        home_team = game["homeTeam"]["abbrev"]
-        away_team = game["awayTeam"]["abbrev"]
-        opposing_team = away_team if home_team == team_abbreviation else home_team
-
-        # Generate and post the season series preview
-        season_series_post = format_season_series_post(
-            team_schedule, team_abbreviation, opposing_team, context
-        )
-        bsky_seasonseries = context.bluesky_client.post(
-            season_series_post, reply_root=bsky_gametime, reply_post=bsky_gametime
-        )
-        logging.info("Posted season series preview.")
-
-        # Sleep until the game starts
-        start_time = game["startTimeUTC"]
-        sleep_until_game_start(start_time)
-
-        # POLL Until Game Goes Live
-        while True:
-            updated_game_state = schedule.fetch_game_state(game_id)  # Implement this API call
-            if updated_game_state == "LIVE":
-                logging.info("Game state is now LIVE. Transitioning to live parsing.")
-                parse_live_game(game_id, context)
-                return
-            elif updated_game_state == "OFF":
-                logging.warning("Game transitioned to OFF without going LIVE. Exiting.")
-                return
-            else:
-                logging.info("Game still in FUT state. Sleeping for 30 seconds.")
-                time.sleep(30)
-
-    if game["gameState"] == "LIVE":
-        logging.info("Game Context: %s", vars(context))
-        logging.info("Handling live (LIVE) game state.")
-
-        # Get Game-Time Rosters and Combine w/ Pre-Game Rosters
-        game_time_rosters = rosters.load_game_rosters(context)
-        final_combined_rosters = {**context.combined_roster, **game_time_rosters}
-        context.combined_roster = final_combined_rosters
-
-        # Parse Live Game Data
-        parse_live_game(game_id, context)
-        return
-
-    # If we enter this function from a date in the future & gameState = "OFF"
-    # Parse everything once & exit.
-    # TODO: "trigger" end of game functions before exiting
-    if game["gameState"] == "OFF":
-        logging.info("Game state is OFF. Fetching play-by-play data and parsing it once.")
-
-        # Extract game ID and build the play-by-play URL
-        game_id = game["id"]
-        play_by_play_url = f"https://api-web.nhle.com/v1/gamecenter/{game_id}/play-by-play"
-        logging.info(f"Fetching play-by-play data from {play_by_play_url}")
-
-        # Fetch play-by-play data
-        response = requests.get(play_by_play_url)
-        if response.status_code == 200:
-            play_by_play_data = response.json()
-            logging.info("Play-by-play data successfully fetched. Parsing events.")
-            events = play_by_play_data.get("plays", [])
-            parse_play_by_play_with_names(events, context)
-        else:
-            logging.error(f"Failed to fetch play-by-play data. Status code: {response.status_code}")
-
-        # Exit the function after parsing
-        return
+    # Pre-Game Setup is Completed
+    # Start Game Loop by passing in GameContext
+    start_game_loop(context)
 
 
 def handle_was_game_yesterday(game, yesterday, context):
@@ -234,6 +274,7 @@ def main():
         # Check for a game on the target date
         game_today, _ = schedule.is_game_on_date(team_schedule, target_date)
         if game_today:
+            context.game = game_today
             handle_is_game_today(game_today, target_date, team_abbreviation, season_id, context)
             return
 

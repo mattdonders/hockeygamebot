@@ -175,3 +175,15 @@ def clock_emoji(time):
     hour %= 12  # Convert to 12-hour format if it's in 24-hour format
 
     return clock_emojis.get((hour, minutes), "🕛")  # Default to 🕛 if time is invalid
+
+
+def replace_ids_with_names(details, roster):
+    """
+    Replace fields ending with 'Id' in the details dictionary with their corresponding 'Name' fields,
+    excluding fields ending in 'TeamId'.
+    """
+    for key, value in list(details.items()):  # Use list() to avoid runtime modification issues
+        if key.endswith("Id") and not key.endswith("TeamId") and isinstance(value, int):
+            player_name = roster.get(value, "Unknown Player")
+            details[key.replace("Id", "Name")] = player_name
+    return details
