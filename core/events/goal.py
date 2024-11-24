@@ -1,3 +1,4 @@
+import logging
 from .base import Cache, Event
 from utils.others import ordinal, get_player_name
 
@@ -13,7 +14,7 @@ class GoalEvent(Event):
 
         # Add preferred team flag
         event_owner_team_id = details.get("eventOwnerTeamId")
-        is_preferred = event_owner_team_id == self.context.preferred_team_id
+        is_preferred = event_owner_team_id == self.context.preferred_team.team_id
         details["is_preferred"] = is_preferred
 
         # Adjust scores
@@ -26,8 +27,8 @@ class GoalEvent(Event):
 
         # Add Updated Scores to Game Context
         # This allows us to print scores for non-goal events
-        self.context.preferred_score = details["preferredScore"]
-        self.context.other_score = details["otherScore"]
+        self.context.preferred_team.score = details["preferredScore"]
+        self.context.other_team.score = details["otherScore"]
 
         details.pop("homeScore", None)
         details.pop("awayScore", None)
@@ -39,7 +40,12 @@ class GoalEvent(Event):
         assist1_total = details.get("assist1PlayerTotal", 0)
         assist2_name = details.get("assist2PlayerName")
         assist2_total = details.get("assist2PlayerTotal", 0)
-        shot_type = details.get("shotType", "unknown shot")
+        shot_type = details.get("shotType")
+
+        # 'Force Fail' on missing data
+        if not shot_type:
+            logging.warning("Goal data not fully available - force fail & will retry next loop.")
+            return False
 
         # Get Video Highlight Fields
 
@@ -49,14 +55,14 @@ class GoalEvent(Event):
         if is_preferred:
             goal_emoji = "🚨" * details["preferredScore"]
             goal_message = (
-                f"{self.context.preferred_team_name} GOAL! {goal_emoji}\n\n"
+                f"{self.context.preferred_team.full_name} GOAL! {goal_emoji}\n\n"
                 f"{scoring_player_name} ({scoring_player_total}) scores on a {shot_type} shot "
                 f"with {self.time_remaining} remaining in the {self.period_number_ordinal} period.\n\n"
             )
         else:
             goal_emoji = "👎" * details["otherScore"]
             goal_message = (
-                f"{self.context.other_team_name} scores. {goal_emoji}\n\n"
+                f"{self.context.other_team.full_name} goal. {goal_emoji}\n\n"
                 f"{scoring_player_name} ({scoring_player_total}) scores on a {shot_type} shot "
                 f"with {self.time_remaining} remaining in the {self.period_number_ordinal} period.\n\n"
             )
@@ -73,8 +79,8 @@ class GoalEvent(Event):
 
         # Add team scores
         goal_message += (
-            f"{self.context.preferred_team_name}: {details['preferredScore']}\n"
-            f"{self.context.other_team_name}: {details['otherScore']}"
+            f"{self.context.preferred_team.full_name}: {details['preferredScore']}\n"
+            f"{self.context.other_team.full_name}: {details['otherScore']}"
         )
 
         return goal_message

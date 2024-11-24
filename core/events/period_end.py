@@ -27,8 +27,8 @@ class PeriodEndEvent(Event):
 
         message += (
             f"\n\n"
-            f"{self.context.preferred_team_name}: {self.context.preferred_score}\n"
-            f"{self.context.other_team_name}: {self.context.other_score}"
+            f"{self.context.preferred_team.full_name}: {self.context.preferred_team.score}\n"
+            f"{self.context.other_team.full_name}: {self.context.other_team.score}"
         )
 
         return message

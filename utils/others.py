@@ -94,7 +94,7 @@ def convert_utc_to_eastern(utc_time):
     return eastern.strftime("%I:%M %p")  # Format as 12-hour time with AM/PM
 
 
-def convert_utc_to_localteam(utc_time_str, team_abbreviation):
+def convert_utc_to_localteam(utc_time_str, team_timezone):
     """
     Convert a UTC time string to the local time zone of the specified team.
 
@@ -105,18 +105,34 @@ def convert_utc_to_localteam(utc_time_str, team_abbreviation):
     Returns:
         str: Local time formatted as "HH:MM AM/PM".
     """
-    # Get the team's time zone from TEAM_DETAILS
-    team_timezone = pytz.timezone(TEAM_DETAILS[team_abbreviation]["timezone"])
+    # Convert to the team's local time
+    local_time = convert_utc_to_localteam_dt(utc_time_str, team_timezone)
+
+    # Format the local time as "HH:MM AM/PM"
+    return local_time.strftime("%I:%M %p")
+
+
+def convert_utc_to_localteam_dt(utc_time_str, team_timezone):
+    """
+    Convert a UTC time string to the local time zone of the specified team.
+
+    Args:
+        utc_time_str (str): Time in UTC, e.g., "2024-11-20T19:30:00Z".
+        team_abbreviation (str): The team's abbreviation, e.g., "NJD".
+
+    Returns:
+        str: Local time formatted as "HH:MM AM/PM".
+    """
 
     # Parse the UTC time string
     utc_time = datetime.strptime(utc_time_str, "%Y-%m-%dT%H:%M:%SZ")
     utc_time = pytz.utc.localize(utc_time)
 
     # Convert to the team's local time
-    local_time = utc_time.astimezone(team_timezone)
+    local_time = utc_time.astimezone(pytz.timezone(team_timezone))
 
     # Format the local time as "HH:MM AM/PM"
-    return local_time.strftime("%I:%M %p")
+    return local_time
 
 
 def categorize_broadcasts(broadcasts):
@@ -187,3 +203,17 @@ def replace_ids_with_names(details, roster):
             player_name = roster.get(value, "Unknown Player")
             details[key.replace("Id", "Name")] = player_name
     return details
+
+
+def hex_to_rgb(hex_color):
+    """
+    Convert HEX color to RGB.
+
+    Args:
+        hex_color (str): Color in HEX format, e.g., "#FF0000".
+
+    Returns:
+        tuple: RGB color as a tuple of three integers, e.g., (255, 0, 0).
+    """
+    hex_color = hex_color.lstrip("#")  # Remove the '#' character
+    return tuple(int(hex_color[i : i + 2], 16) for i in (0, 2, 4))

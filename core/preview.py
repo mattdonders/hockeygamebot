@@ -4,9 +4,9 @@ import time
 
 import requests
 
+from core.models.game_context import GameContext
 from utils.others import categorize_broadcasts, clock_emoji, convert_utc_to_localteam
 from utils.team_details import TEAM_DETAILS
-from utils.team_hashtags import TEAM_HASHTAGS
 from core.schedule import fetch_schedule
 
 
@@ -37,7 +37,7 @@ def format_future_game_post(game, context):
     broadcasts = game.get("tvBroadcasts", [])
 
     # Convert game time to Eastern Time
-    game_time_local = convert_utc_to_localteam(start_time_utc, context.preferred_team_abbreviation)
+    game_time_local = convert_utc_to_localteam(start_time_utc, context.preferred_team.abbreviation)
 
     # Generate clock emoji
     clock = clock_emoji(game_time_local)
@@ -135,7 +135,9 @@ def calculate_season_series(
     return record_str, last_season
 
 
-def format_season_series_post(schedule, preferred_team_abbreviation, opposing_team_abbreviation, context):
+def format_season_series_post(
+    schedule, preferred_team_abbreviation, opposing_team_abbreviation, context: GameContext
+):
     """
     Format a social media post with the season series record.
 
@@ -151,21 +153,19 @@ def format_season_series_post(schedule, preferred_team_abbreviation, opposing_te
     record, last_season = calculate_season_series(
         schedule, preferred_team_abbreviation, opposing_team_abbreviation, season_id
     )
-    preferred_team_name = TEAM_DETAILS[preferred_team_abbreviation]["full_name"]
-    opposing_team_name = TEAM_DETAILS[opposing_team_abbreviation]["full_name"]
 
     if last_season:
         return (
             f"This is the first meeting of the season between the two teams. "
-            f"Last season the {preferred_team_name} were {record} "
-            f"against the {opposing_team_name}.\n\n"
-            f"{context.preferred_team_hashtag} | {context.game_hashtag}"
+            f"Last season the {context.preferred_team.full_name} were {record} "
+            f"against the {context.other_team.full_name}.\n\n"
+            f"{context.preferred_team.hashtag} | {context.game_hashtag}"
         )
     else:
         return (
-            f"This season, the {preferred_team_name} are {record} "
-            f"against the {opposing_team_name}.\n\n"
-            f"{context.preferred_team_hashtag} | {context.game_hashtag}"
+            f"This season, the {context.preferred_team.full_name} are {record} "
+            f"against the {context.other_team.full_name}.\n\n"
+            f"{context.preferred_team.hashtag} | {context.game_hashtag}"
         )
 
 
