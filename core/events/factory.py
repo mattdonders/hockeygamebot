@@ -46,6 +46,7 @@ class EventFactory:
 
         # Check whether this event is in our Cache
         event_object = event_class.cache.get(event_id)
+        logging.debug("Existing Event Object: %s", event_object)
 
         if not event_object:
             # Add Name Fields for Each ID Field in Event Details
@@ -63,7 +64,25 @@ class EventFactory:
                 )
 
                 event_object = event_class(event_data, context)
-                event_class.cache.add(event_object)
+
+                # CHANGE: Parse now returns None for failed to create objects
+                # We can "force fail (via False)" events that are missing some data (maybe via retry)
+                event_message = event_object.parse()
+
+                if event_message is not False:
+                    event_class.cache.add(event_object)
+
+                    # Send Message (on new object creation only)
+                    event_object.post_message(event_message)
+                else:
+                    logging.warning(
+                        "Unable to create / parse %s event (type: %s) for ID: %s / SortOrder: %s.",
+                        event_class.__name__,
+                        event_type,
+                        event_id,
+                        sort_order,
+                    )
+                    logging.warning(event_data)
             except Exception as error:
                 logging.error(
                     "Error creating %s event (type: %s) for ID: %s / SortOrder: %s.",
@@ -81,6 +100,3 @@ class EventFactory:
             context.last_sort_order = sort_order
         else:
             logging.warning("Not setting GameContext sort order to %s - invalid value.", sort_order)
-
-        # Send Message
-        event_object.post_message()

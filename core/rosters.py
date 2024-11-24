@@ -98,19 +98,17 @@ def flatten_roster(roster_data):
     }
 
 
-def load_combined_roster(game, team_abbreviation, season_id):
+def load_combined_roster(game, preferred_team, other_team, season_id):
     """
     Load and combine the rosters for both teams involved in the game.
     """
-    opposing_team_abbreviation = get_opposing_team_abbreviation(game, team_abbreviation)
-
-    primary_team_roster_data = load_roster(team_abbreviation, season_id)
-    opposing_team_roster_data = load_roster(opposing_team_abbreviation, season_id)
+    preferred_team_roster_data = load_roster(preferred_team.abbreviation, season_id)
+    other_team_roster_data = load_roster(other_team.abbreviation, season_id)
 
     # Flatten and combine rosters
     combined_roster = {
-        **flatten_roster(primary_team_roster_data),
-        **flatten_roster(opposing_team_roster_data),
+        **flatten_roster(preferred_team_roster_data),
+        **flatten_roster(other_team_roster_data),
     }
 
     # print(combined_roster)

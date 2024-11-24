@@ -1,3 +1,4 @@
+import logging
 from .base import Cache, Event
 from utils.others import get_player_name
 from utils.team_details import get_team_name_by_id
@@ -10,6 +11,7 @@ class PenaltyEvent(Event):
         """A function that converts some poorly named penalty types."""
         secondarty_types = {
             "interference-goalkeeper": "goalie interference",
+            "delaying-game-puck-over-glass": "delay of game (puck over glass)",
             # "delaying game - puck over glass": "delay of game (puck over glass)",
             # "interference - goalkeeper": "goalie interference",
             # "missing key [pd_151]": "delay of game (unsuccessful challenge)",
@@ -24,6 +26,11 @@ class PenaltyEvent(Event):
         drawn_by = get_player_name(self.details.get("drawnByPlayerId"), self.context.combined_roster)
         served_by = get_player_name(self.details.get("servedByPlayerId"), self.context.combined_roster)
         penalty_team = get_team_name_by_id(self.details.get("eventOwnerTeamId"))
+
+        # 'Force Fail' on missing data
+        if penalty_name == "minor":
+            logging.warning("Penalty data not fully available - force fail & will retry next loop.")
+            return False
 
         # Start constructing the penalty string
         if penalty_name == "bench":
