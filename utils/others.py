@@ -1,9 +1,9 @@
 import logging
 from datetime import datetime, timezone
+import os
 
 import pytz
-from utils.team_details import TEAM_DETAILS
-
+from definitions import LOGS_DIR
 
 from pytz import timezone as pytz_timezone
 
@@ -17,7 +17,12 @@ def setup_logging(config, console=False, debug=False):
         console (bool): If True, log to console instead of a file.
         debug (bool): If True, set the logging level to DEBUG; otherwise, INFO.
     """
-    log_file_name = config["script"]["log_file_name"] + "-" + datetime.now().strftime("%Y%m%d%H%M%S") + ".log"
+    log_file_name_base = config["script"]["log_file_name"]
+    log_file_name_time = datetime.now().strftime("%Y%m%d%H%M%S")
+    log_file_name_full = f"{log_file_name_base}-{log_file_name_time}.log"
+    log_file_name = os.path.join(LOGS_DIR, log_file_name_full)
+
+    # Define Logger Level based on Args
     logger_level = logging.DEBUG if debug else logging.INFO
 
     # Configure logging
