@@ -247,6 +247,14 @@ TEAM_DETAILS = {
         "primary_color": "#B4975A",
         "secondary_color": "#333F48",
     },
+    "UTA": {
+        "full_name": "Utah Hockey Club",
+        "hashtag": "#UtahHC",
+        "timezone": "America/Denver",
+        "team_id": 59,
+        "primary_color": "#71AFE5",  # Placeholder color, update with the official team color
+        "secondary_color": "#090909",  # Placeholder color, update with the official team color
+    },
 }
 
 
