@@ -6,6 +6,8 @@ TEAM_DETAILS = {
         "team_id": 1,
         "primary_color": "#CE1126",
         "secondary_color": "#000000",
+        "primary_text_color": "#FFFFFF",
+        "secondary_text_color": "#FFFFFF",
     },
     "CAR": {
         "full_name": "Carolina Hurricanes",
@@ -14,6 +16,8 @@ TEAM_DETAILS = {
         "team_id": 12,
         "primary_color": "#CC0000",
         "secondary_color": "#000000",
+        "primary_text_color": "#FFFFFF",
+        "secondary_text_color": "#FFFFFF",
     },
     "WSH": {
         "full_name": "Washington Capitals",
@@ -22,6 +26,8 @@ TEAM_DETAILS = {
         "team_id": 15,
         "primary_color": "#041E42",
         "secondary_color": "#C8102E",
+        "primary_text_color": "#FFFFFF",
+        "secondary_text_color": "#FFFFFF",
     },
     "NYI": {
         "full_name": "New York Islanders",
@@ -30,6 +36,8 @@ TEAM_DETAILS = {
         "team_id": 2,
         "primary_color": "#00539B",
         "secondary_color": "#F47D30",
+        "primary_text_color": "#FFFFFF",
+        "secondary_text_color": "#000000",
     },
     "TBL": {
         "full_name": "Tampa Bay Lightning",
@@ -37,7 +45,9 @@ TEAM_DETAILS = {
         "timezone": "America/New_York",
         "team_id": 14,
         "primary_color": "#002868",
-        "secondary_color": "#FFFFFF",
+        "secondary_color": "#000000",
+        "primary_text_color": "#FFFFFF",
+        "secondary_text_color": "#FFFFFF",
     },
     "NYR": {
         "full_name": "New York Rangers",
@@ -46,6 +56,8 @@ TEAM_DETAILS = {
         "team_id": 3,
         "primary_color": "#0038A8",
         "secondary_color": "#CE1126",
+        "primary_text_color": "#FFFFFF",
+        "secondary_text_color": "#FFFFFF",
     },
     "PHI": {
         "full_name": "Philadelphia Flyers",
@@ -54,6 +66,8 @@ TEAM_DETAILS = {
         "team_id": 4,
         "primary_color": "#FA4616",
         "secondary_color": "#000000",
+        "primary_text_color": "#FFFFFF",
+        "secondary_text_color": "#FFFFFF",
     },
     "PIT": {
         "full_name": "Pittsburgh Penguins",
@@ -62,6 +76,8 @@ TEAM_DETAILS = {
         "team_id": 5,
         "primary_color": "#000000",
         "secondary_color": "#FCB514",
+        "primary_text_color": "#FFFFFF",
+        "secondary_text_color": "#000000",
     },
     "BOS": {
         "full_name": "Boston Bruins",
@@ -70,6 +86,8 @@ TEAM_DETAILS = {
         "team_id": 6,
         "primary_color": "#FFB81C",
         "secondary_color": "#000000",
+        "primary_text_color": "#000000",
+        "secondary_text_color": "#FFFFFF",
     },
     "BUF": {
         "full_name": "Buffalo Sabres",
@@ -78,6 +96,8 @@ TEAM_DETAILS = {
         "team_id": 7,
         "primary_color": "#002654",
         "secondary_color": "#FDBB30",
+        "primary_text_color": "#FFFFFF",
+        "secondary_text_color": "#000000",
     },
     "TOR": {
         "full_name": "Toronto Maple Leafs",
@@ -85,7 +105,9 @@ TEAM_DETAILS = {
         "timezone": "America/Toronto",
         "team_id": 10,
         "primary_color": "#00205B",
-        "secondary_color": "#FFFFFF",
+        "secondary_color": "#000000",
+        "primary_text_color": "#FFFFFF",
+        "secondary_text_color": "#FFFFFF",
     },
     "MTL": {
         "full_name": "Montreal Canadiens",
@@ -94,6 +116,8 @@ TEAM_DETAILS = {
         "team_id": 8,
         "primary_color": "#AF1E2D",
         "secondary_color": "#192168",
+        "primary_text_color": "#FFFFFF",
+        "secondary_text_color": "#FFFFFF",
     },
     "OTT": {
         "full_name": "Ottawa Senators",
@@ -102,6 +126,8 @@ TEAM_DETAILS = {
         "team_id": 9,
         "primary_color": "#C8102E",
         "secondary_color": "#000000",
+        "primary_text_color": "#FFFFFF",
+        "secondary_text_color": "#FFFFFF",
     },
     "FLA": {
         "full_name": "Florida Panthers",
@@ -110,6 +136,8 @@ TEAM_DETAILS = {
         "team_id": 13,
         "primary_color": "#041E42",
         "secondary_color": "#C8102E",
+        "primary_text_color": "#FFFFFF",
+        "secondary_text_color": "#FFFFFF",
     },
     "DET": {
         "full_name": "Detroit Red Wings",
@@ -117,7 +145,9 @@ TEAM_DETAILS = {
         "timezone": "America/Detroit",
         "team_id": 17,
         "primary_color": "#CE1126",
-        "secondary_color": "#FFFFFF",
+        "secondary_color": "#000000",
+        "primary_text_color": "#FFFFFF",
+        "secondary_text_color": "#FFFFFF",
     },
     "CBJ": {
         "full_name": "Columbus Blue Jackets",
@@ -126,6 +156,8 @@ TEAM_DETAILS = {
         "team_id": 29,
         "primary_color": "#002654",
         "secondary_color": "#CE1126",
+        "primary_text_color": "#FFFFFF",
+        "secondary_text_color": "#FFFFFF",
     },
     "CHI": {
         "full_name": "Chicago Blackhawks",
@@ -134,6 +166,8 @@ TEAM_DETAILS = {
         "team_id": 16,
         "primary_color": "#CF0A2C",
         "secondary_color": "#000000",
+        "primary_text_color": "#FFFFFF",
+        "secondary_text_color": "#FFFFFF",
     },
     "STL": {
         "full_name": "St. Louis Blues",
@@ -142,6 +176,8 @@ TEAM_DETAILS = {
         "team_id": 19,
         "primary_color": "#002F87",
         "secondary_color": "#FDB827",
+        "primary_text_color": "#FFFFFF",
+        "secondary_text_color": "#000000",
     },
     "NSH": {
         "full_name": "Nashville Predators",
@@ -150,6 +186,8 @@ TEAM_DETAILS = {
         "team_id": 18,
         "primary_color": "#FFB81C",
         "secondary_color": "#041E42",
+        "primary_text_color": "#000000",
+        "secondary_text_color": "#FFFFFF",
     },
     "DAL": {
         "full_name": "Dallas Stars",
@@ -158,6 +196,8 @@ TEAM_DETAILS = {
         "team_id": 25,
         "primary_color": "#006847",
         "secondary_color": "#8F8F8C",
+        "primary_text_color": "#FFFFFF",
+        "secondary_text_color": "#000000",
     },
     "COL": {
         "full_name": "Colorado Avalanche",
@@ -166,6 +206,8 @@ TEAM_DETAILS = {
         "team_id": 21,
         "primary_color": "#6F263D",
         "secondary_color": "#236192",
+        "primary_text_color": "#FFFFFF",
+        "secondary_text_color": "#FFFFFF",
     },
     "WPG": {
         "full_name": "Winnipeg Jets",
@@ -174,6 +216,8 @@ TEAM_DETAILS = {
         "team_id": 52,
         "primary_color": "#041E42",
         "secondary_color": "#004C97",
+        "primary_text_color": "#FFFFFF",
+        "secondary_text_color": "#FFFFFF",
     },
     "MIN": {
         "full_name": "Minnesota Wild",
@@ -182,6 +226,8 @@ TEAM_DETAILS = {
         "team_id": 30,
         "primary_color": "#154734",
         "secondary_color": "#A6192E",
+        "primary_text_color": "#FFFFFF",
+        "secondary_text_color": "#FFFFFF",
     },
     "VAN": {
         "full_name": "Vancouver Canucks",
@@ -190,6 +236,8 @@ TEAM_DETAILS = {
         "team_id": 23,
         "primary_color": "#00205B",
         "secondary_color": "#00843D",
+        "primary_text_color": "#FFFFFF",
+        "secondary_text_color": "#FFFFFF",
     },
     "EDM": {
         "full_name": "Edmonton Oilers",
@@ -198,6 +246,8 @@ TEAM_DETAILS = {
         "team_id": 22,
         "primary_color": "#FF4C00",
         "secondary_color": "#041E42",
+        "primary_text_color": "#FFFFFF",
+        "secondary_text_color": "#FFFFFF",
     },
     "CGY": {
         "full_name": "Calgary Flames",
@@ -206,6 +256,8 @@ TEAM_DETAILS = {
         "team_id": 20,
         "primary_color": "#C8102E",
         "secondary_color": "#F1BE48",
+        "primary_text_color": "#FFFFFF",
+        "secondary_text_color": "#000000",
     },
     "LAK": {
         "full_name": "Los Angeles Kings",
@@ -214,6 +266,8 @@ TEAM_DETAILS = {
         "team_id": 26,
         "primary_color": "#111111",
         "secondary_color": "#A2AAAD",
+        "primary_text_color": "#FFFFFF",
+        "secondary_text_color": "#000000",
     },
     "ANA": {
         "full_name": "Anaheim Ducks",
@@ -222,6 +276,8 @@ TEAM_DETAILS = {
         "team_id": 24,
         "primary_color": "#F47A38",
         "secondary_color": "#B09862",
+        "primary_text_color": "#FFFFFF",
+        "secondary_text_color": "#000000",
     },
     "SJS": {
         "full_name": "San Jose Sharks",
@@ -230,6 +286,8 @@ TEAM_DETAILS = {
         "team_id": 28,
         "primary_color": "#006D75",
         "secondary_color": "#EA7200",
+        "primary_text_color": "#FFFFFF",
+        "secondary_text_color": "#000000",
     },
     "SEA": {
         "full_name": "Seattle Kraken",
@@ -238,6 +296,8 @@ TEAM_DETAILS = {
         "team_id": 55,
         "primary_color": "#001628",
         "secondary_color": "#99D9D9",
+        "primary_text_color": "#FFFFFF",
+        "secondary_text_color": "#000000",
     },
     "VGK": {
         "full_name": "Vegas Golden Knights",
@@ -246,14 +306,18 @@ TEAM_DETAILS = {
         "team_id": 54,
         "primary_color": "#B4975A",
         "secondary_color": "#333F48",
+        "primary_text_color": "#000000",
+        "secondary_text_color": "#FFFFFF",
     },
     "UTA": {
         "full_name": "Utah Hockey Club",
         "hashtag": "#UtahHC",
         "timezone": "America/Denver",
         "team_id": 59,
-        "primary_color": "#71AFE5",  # Placeholder color, update with the official team color
-        "secondary_color": "#090909",  # Placeholder color, update with the official team color
+        "primary_color": "#71AFE5",
+        "secondary_color": "#090909",
+        "primary_text_color": "#000000",
+        "secondary_text_color": "#FFFFFF",
     },
 }
 
@@ -274,6 +338,22 @@ def get_team_details_by_name(team_name):
             details["abbreviation"] = team_abbr
             return details
     return None
+
+
+def get_team_details_by_id(team_id):
+    """
+    Re-use existing functions to get the team set of team details based on the team ID.
+
+    Args:
+        team_id (int): The NHL team ID.
+
+    Returns:
+        dict: The full dictionary of team details.
+    """
+
+    team_name = get_team_name_by_id(team_id)
+    team_details = get_team_details_by_name(team_name)
+    return team_details
 
 
 def get_abbreviation_by_name(team_name):

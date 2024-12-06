@@ -18,7 +18,7 @@ class EventFactory:
     """
 
     @staticmethod
-    def create_event(event_data, context):
+    def create_event(event_data, context, new_plays):
         # Get & Add Event ID to Master List of Parsed Events
         event_id = event_data.get("eventId")
 
@@ -48,7 +48,22 @@ class EventFactory:
         event_object = event_class.cache.get(event_id)
         logging.debug("Existing Event Object: %s", event_object)
 
+        # Check for scoring changes and NHL Video IDs on GoalEvents
+        # We also use the new_plays variable to only check for scoring changes on no new events
+        if event_class == GoalEvent and event_object is not None and not new_plays:
+            event_object: GoalEvent  # Type Hinting for IDE
+
+            # Scoring Changes Checked Here
+            event_object.check_scoring_changes(event_data)
+
+            # Check for Highlight URLs
+            if not event_object.highlight_clip_url:
+                event_object.check_and_add_highlight(event_data)
+
         if not event_object:
+            # Initialize empty event image
+            event_img = None
+
             # Add Name Fields for Each ID Field in Event Details
             details = event_data.get("details", {})
             details = otherutils.replace_ids_with_names(details, context.combined_roster)
@@ -67,13 +82,31 @@ class EventFactory:
 
                 # CHANGE: Parse now returns None for failed to create objects
                 # We can "force fail (via False)" events that are missing some data (maybe via retry)
-                event_message = event_object.parse()
+                events_returning_image = PeriodEndEvent
+                if isinstance(event_object, events_returning_image):
+                    event_img, event_message = event_object.parse()
+                else:
+                    event_message = event_object.parse()
 
                 if event_message is not False:
                     event_class.cache.add(event_object)
 
                     # Send Message (on new object creation only)
-                    event_object.post_message(event_message)
+                    # Define the event types where add_score should be False
+                    disable_add_score_events = (GoalEvent, PeriodEndEvent)
+                    add_score = not isinstance(event_object, disable_add_score_events)
+
+                    # Post message with the determined add_score value
+                    if event_img:
+                        event_object.post_message(event_message, add_score=add_score, media=event_img)
+                    else:
+                        event_object.post_message(event_message, add_score=add_score)
+
+                    # For GoalEvents, we want to Check & Add Highlight Clip (even on event creation)
+                    if event_class == GoalEvent:
+                        logging.info("New GoalEvent creation - checking for highlights.")
+                        event_object: GoalEvent  # IDE Typing Hint
+                        event_object.check_and_add_highlight(event_data)
                 else:
                     logging.warning(
                         "Unable to create / parse %s event (type: %s) for ID: %s / SortOrder: %s.",

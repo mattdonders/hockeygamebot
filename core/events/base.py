@@ -106,24 +106,52 @@ class Event:
         self.context = context
         self.bsky_root = None
         self.bsky_parent = None
-        self.add_hashtags = True
+        # self.add_hashtags = True
 
         self.context.events.append(self)
 
     def parse(self):
         pass
 
-    def post_message(self, message):
+    def post_message(
+        self,
+        message,
+        link=None,
+        add_hashtags=True,
+        add_score=True,
+        bsky_parent=None,
+        bsky_root=None,
+        media=None,
+    ):
         """
         Post the parsed message to the appropriate channel, if applicable.
         """
 
+        # Force Hashtags Off for Debugging
+        add_hashtags = False if self.context.debugsocial else add_hashtags
+
         if message:
-            if self.add_hashtags:
-                message += f"\n\n{self.context.preferred_team.hashtag} | {self.context.game_hashtag}"
+            # Calculate Footer String
+            footer_parts = []
+
+            if add_hashtags:
+                footer_parts.append(self.context.preferred_team.hashtag)
+
+            if add_score:
+                pref_team = self.context.preferred_team
+                other_team = self.context.other_team
+                pref_score = f"{pref_team.abbreviation}: {pref_team.score}"
+                other_score = f"{other_team.abbreviation}: {other_team.score}"
+                footer_parts.append(f"{pref_score} / {other_score}")
+
+            if footer_parts:
+                footer_string = " | ".join(footer_parts)
+                message += f"\n\n{footer_string}"
 
             # Post Message to Bluesky
-            bsky_post = self.context.bluesky_client.post(message)
+            bsky_post = self.context.bluesky_client.post(
+                message, link=link, reply_parent=bsky_parent, reply_root=bsky_root, media=media
+            )
 
             # Add BlueSky post object to event object
             # If there is no root object, set the post as the root

@@ -1,4 +1,6 @@
-from datetime import datetime, timezone
+from dataclasses import dataclass, field
+from datetime import datetime
+from typing import Optional, List, Dict, Any
 
 import pytz
 from core.models.clock import Clock
@@ -7,6 +9,7 @@ from socials.bluesky import BlueskyClient
 from socials.social_state import StartOfGameSocial, EndOfGameSocial
 
 
+@dataclass
 class GameContext:
     """
     Centralized context for managing NHL game-related data and shared resources.
@@ -60,56 +63,61 @@ class GameContext:
         __init__: Initializes the `GameContext` with configuration and shared resources.
     """
 
-    def __init__(self, config, bluesky_client, nosocial=False, debugsocial=False):
-        self.config = config
-        self.bluesky_client: BlueskyClient = bluesky_client
-        self.nosocial = nosocial
-        self.debugsocial = debugsocial
+    # Configuration and Client
+    config: Dict[str, Any]
+    bluesky_client: BlueskyClient
+    nosocial: bool = False
+    debugsocial: bool = False
 
-        # Attributes Below are Not Passed-In at Initialization Time
-        self.game = None
-        self.game_id = None
-        self.game_type = None
-        self.game_shortid = None
-        self.game_state = None
-        self.season_id = None
-        self.game_time = None
-        self.game_time_local = None
-        self.game_time_local_str = None
-        self.venue = None
-        self.clock: Clock = Clock()
+    # Game Details
+    game: Optional[Dict] = None
+    game_id: Optional[str] = None
+    game_type: Optional[str] = None
+    game_shortid: Optional[str] = None
+    game_state: Optional[str] = None
+    season_id: Optional[str] = None
+    game_time: Optional[datetime] = None
+    game_time_local: Optional[datetime] = None
+    game_time_local_str: Optional[str] = None
+    venue: Optional[str] = None
+    clock: Clock = field(default_factory=Clock)
 
-        self.preferred_team: Team = None
-        self.other_team: Team = None
-        self.home_team: Team = None
-        self.away_team: Team = None
+    # Team Details
+    preferred_team: Optional[Team] = None
+    other_team: Optional[Team] = None
+    home_team: Optional[Team] = None
+    away_team: Optional[Team] = None
+    preferred_homeaway: Optional[str] = None
 
-        self.preferred_homeaway = None
+    # Roster and Hashtag Details
+    combined_roster: Optional[Dict] = None
+    gametime_rosters_set: bool = False
+    game_hashtag: Optional[str] = None
+    preferred_team_hashtag: Optional[str] = None
 
-        self.combined_roster = None
-        self.gametime_rosters_set = False
-        self.game_hashtag = None
-        self.preferred_team_hashtag = None
+    # Event Tracking
+    last_sort_order: int = 0
+    all_goals: List = field(default_factory=list)
+    events: List = field(default_factory=list)
+    live_loop_counter: int = 0
 
-        self.last_sort_order = 0
-        self.all_goals = []
-        self.events = []
-
-        self.live_loop_counter = 0
-
-        # Social Media Related Trackers
-        self.preview_socials = StartOfGameSocial()
-        self.final_socials = EndOfGameSocial()
+    # Social Media Trackers
+    preview_socials: StartOfGameSocial = field(default_factory=StartOfGameSocial)
+    final_socials: EndOfGameSocial = field(default_factory=EndOfGameSocial)
 
     @property
-    def game_time_of_day(self):
+    def game_time_of_day(self) -> str:
         """Returns the time of the day of the game (later today or tonight)."""
+        if not self.game_time_local:
+            return ""
         game_date_hour = self.game_time_local.strftime("%H")
         return "tonight" if int(game_date_hour) > 17 else "later today"
 
     @property
-    def game_time_countdown(self):
+    def game_time_countdown(self) -> float:
         """Returns a countdown (in seconds) to the game start time."""
+        if not self.game_time_local or not self.preferred_team:
+            return 0
         now = datetime.now().astimezone(pytz.timezone(self.preferred_team.timezone))
         countdown = (self.game_time_local - now).total_seconds()
-        return 0 if countdown < 0 else countdown
+        return max(0, countdown)

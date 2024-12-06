@@ -1,8 +1,10 @@
 from datetime import datetime
 import logging
+from typing import Tuple
 from core import schedule
 from core.models.game_context import GameContext
 import utils.others as otherutils
+import core.charts as charts
 
 
 def final_score(context: GameContext):
@@ -22,14 +24,14 @@ def final_score(context: GameContext):
         final_score_text = (
             f"{context.preferred_team.full_name} lose {pref_home_text} to the "
             f"{context.other_team.full_name} by a score of {context.preferred_team.score} to "
-            f"{context.preferred_team.score}! 👎🏻👎🏻👎🏻"
+            f"{context.other_team.score}! 👎🏻👎🏻👎🏻"
         )
 
     next_game_str = next_game(context)
     if next_game_str:
         final_score_text += f"\n\n{next_game_str}"
 
-    final_score_text += f"\n\n{context.preferred_team_hashtag} | {context.game_hashtag}"
+    final_score_text += f"\n\n{context.preferred_team.hashtag} | {context.game_hashtag}"
 
     return final_score_text
 
@@ -96,6 +98,19 @@ def three_stars(context: GameContext):
     stars_text = f"⭐️: {first_star_full}\n⭐️⭐️: {second_star_full}\n⭐️⭐️⭐️: {third_star_full}"
     three_stars_msg = f"The three stars for the game are - \n{stars_text}"
 
-    three_stars_msg += f"\n\n{context.preferred_team_hashtag} | {context.game_hashtag}"
+    three_stars_msg += f"\n\n{context.preferred_team.hashtag} | {context.game_hashtag}"
 
     return three_stars_msg
+
+
+def team_stats_chart(context: GameContext) -> Tuple[str, str]:
+    """
+    Sends the final team stats chart when the game is over.
+    """
+    right_rail_data = schedule.fetch_rightrail(context.game_id)
+    team_stats_data = right_rail_data.get("teamGameStats")
+    if not team_stats_data:
+        return None, None
+
+    chart_path = charts.teamstats_chart(context, team_stats_data, ingame=True)
+    chart_message = "Team Game"

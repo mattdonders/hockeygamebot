@@ -4,6 +4,7 @@ import time
 
 import requests
 
+from core import schedule
 from core.models.game_context import GameContext
 from utils.others import categorize_broadcasts, clock_emoji, convert_utc_to_localteam
 from utils.team_details import TEAM_DETAILS
@@ -26,7 +27,48 @@ def sleep_until_game_start(start_time_utc):
         time.sleep(30)
 
 
-def format_future_game_post(game, context):
+def preview_sleep_calculator(context: GameContext):
+    """
+    Auto sleep-time calculator for FUT or PRE game states.
+    """
+
+    preview_sleep_time = context.config["script"]["preview_sleep_time"]
+    preview_sleep_mins = int(preview_sleep_time / 60)
+
+    # Scenario 1: Game Time Passed, but not LIVE yet
+    if context.game_time_countdown < 0:
+        logging.warning("Game start time is in the past, but not live yet - sleep for 30s.")
+        time.sleep(30)
+        return
+
+    # Scenario 2: All Pre-Game Posts Sent - just sleep until game time
+    if context.preview_socials.all_pregame_sent:
+        preview_sleep_mins = int(context.game_time_countdown / 60)
+        logging.info(
+            "All pre-game messages are now sent, sleep until game time (~%s minutes).",
+            context.game_time_countdown,
+        )
+        time.sleep(context.game_time_countdown)
+        return
+
+    # Scenario 3: All Pre-Game Posts NOT Sent, but preview_sleep_time is longer than game_time_countdown
+    if preview_sleep_time > context.game_time_countdown:
+        logging.info(
+            "Preview sleep time is greater than game countdown - sleep until game time (~%s minutes).",
+            context.game_time_countdown,
+        )
+        time.sleep(context.game_time_countdown)
+        return
+
+    # FALLBACK
+    logging.info(
+        "Not all pre-game messages are sent, sleep for %s minutes & try again.",
+        preview_sleep_mins,
+    )
+    time.sleep(preview_sleep_time)
+
+
+def format_future_game_post(game, context: GameContext):
     """
     Format a social media post for a future game preview.
     """
@@ -37,7 +79,7 @@ def format_future_game_post(game, context):
     broadcasts = game.get("tvBroadcasts", [])
 
     # Convert game time to Eastern Time
-    game_time_local = convert_utc_to_localteam(start_time_utc, context.preferred_team.abbreviation)
+    game_time_local = convert_utc_to_localteam(start_time_utc, context.preferred_team.timezone)
 
     # Generate clock emoji
     clock = clock_emoji(game_time_local)
@@ -48,10 +90,10 @@ def format_future_game_post(game, context):
     # Generate the message
     broadcast_info = ", ".join(local_broadcasts + national_broadcasts)
     post = (
-        f"Tune in tonight when the {home_team} take on the {away_team} at {venue}.\n\n"
+        f"Tune in {context.game_time_of_day} when the {home_team} take on the {away_team} at {venue}.\n\n"
         f"{clock} {game_time_local}\n"
         f"📺 {broadcast_info}\n"
-        f"#️⃣ {context.preferred_team_hashtag} | {context.game_hashtag}"
+        f"#️⃣ {context.preferred_team.hashtag} | {context.game_hashtag}"
     )
 
     return post
@@ -169,12 +211,26 @@ def format_season_series_post(
         )
 
 
-def generate_referees_post(game):
+def generate_referees_post(context: GameContext):
     """
     Generate a social media post highlighting the referees for the game.
     """
-    # Implement referee data logic
-    pass
+    logging.info("Attempting to fetch officials from NHL Gamecenter site now to generate preview post.")
+
+    right_rail = schedule.fetch_rightrail(context.game_id)
+    game_info = right_rail["gameInfo"]
+    referees = game_info.get("referees")
+    linesmen = game_info.get("linesmen")
+
+    if referees and linesmen:
+        r_string = "\n".join([f"R: {r['default']}" for r in referees])
+        l_string = "\n".join([f"R: {l['default']}" for l in linesmen])
+        officials_string = (
+            f"The officials for {context.game_time_of_day}'s game are:\n\n{r_string}\n{l_string}"
+        )
+        return officials_string
+
+    return None
 
 
 def generate_goalies_post(game):
@@ -182,4 +238,8 @@ def generate_goalies_post(game):
     Generate a social media post previewing the starting goalies.
     """
     # Implement goalie data logic
+    pass
+
+
+def generate_team_stats_chart(context):
     pass

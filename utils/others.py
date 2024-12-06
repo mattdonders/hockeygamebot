@@ -17,27 +17,39 @@ def setup_logging(config, console=False, debug=False):
         console (bool): If True, log to console instead of a file.
         debug (bool): If True, set the logging level to DEBUG; otherwise, INFO.
     """
+    # Generate log file name
     log_file_name_base = config["script"]["log_file_name"]
     log_file_name_time = datetime.now().strftime("%Y%m%d%H%M%S")
     log_file_name_full = f"{log_file_name_base}-{log_file_name_time}.log"
-    log_file_name = os.path.join(LOGS_DIR, log_file_name_full)
+    log_file_path = os.path.join(LOGS_DIR, log_file_name_full)
 
-    # Define Logger Level based on Args
+    # Ensure the logs directory exists
+    os.makedirs(LOGS_DIR, exist_ok=True)
+
+    # Define logger level
     logger_level = logging.DEBUG if debug else logging.INFO
 
-    # Configure logging
+    # Define logging format
+    log_format = "%(asctime)s - %(module)s.%(funcName)s (%(lineno)d) - %(levelname)s - %(message)s"
+    date_format = "%Y-%m-%d %H:%M:%S"
+
+    # Configure logging handlers
+    handlers = [logging.StreamHandler()] if console else [logging.FileHandler(log_file_path)]
+
+    # Set up the logging configuration
     logging.basicConfig(
         level=logger_level,
-        datefmt="%Y-%m-%d %H:%M:%S",
-        # format="%(asctime)s - %(levelname)s - %(message)s",
-        format="%(asctime)s - %(module)s.%(funcName)s (%(lineno)d) - %(levelname)s - %(message)s",
-        handlers=[logging.StreamHandler() if console else logging.FileHandler(log_file_name)],
+        format=log_format,
+        datefmt=date_format,
+        handlers=handlers,
     )
+
+    # Log initialization messages
     logging.info("Logging initialized.")
     if console:
         logging.info("Logging to console.")
     else:
-        logging.info(f"Logging to file: {log_file_name}")
+        logging.info(f"Logging to file: {log_file_path}")
 
 
 def log_startup_info(args, config):
@@ -222,3 +234,9 @@ def hex_to_rgb(hex_color):
     """
     hex_color = hex_color.lstrip("#")  # Remove the '#' character
     return tuple(int(hex_color[i : i + 2], 16) for i in (0, 2, 4))
+
+
+def safe_remove(item, collection):
+    """Safely remove an item from a collection, if it exists."""
+    if item in collection:
+        collection.remove(item)
