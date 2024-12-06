@@ -68,6 +68,23 @@ def fetch_landing(game_id: str):
         raise Exception(f"Failed to fetch GameCenter landing data. Status Code: {response.status_code}")
 
 
+def fetch_stories(game_id: str):
+    """
+    Fetch the post-game stories data (used for video highlights the next day.)
+    """
+
+    url = f"https://forge-dapi.d3.nhle.com/v2/content/en-us/stories?tags.slug=gameid-{game_id}&tags.slug=game-recap&context.slug=nhl"
+    logging.info(f"Fetching Stories data data from {url}")
+
+    # Fetch play-by-play data
+    response = requests.get(url)
+    if response.status_code == 200:
+        landing_data = response.json()
+        return landing_data
+    else:
+        raise Exception(f"Failed to fetch Stories Page data. Status Code: {response.status_code}")
+
+
 def fetch_rightrail(game_id: str):
     """
     Fetch the right rail for the current game from GameCenter.

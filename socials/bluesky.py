@@ -1,6 +1,51 @@
 import logging
-from atproto import Client, client_utils, models
+from pathlib import Path
 import re
+import typing as t
+
+import httpx
+from atproto import Client, client_utils, models
+from PIL import Image
+
+_META_PATTERN = re.compile(r'<meta property="og:.*?>')
+_CONTENT_PATTERN = re.compile(r'<meta[^>]+content="([^"]+)"')
+
+
+def _find_tag(og_tags: t.List[str], search_tag: str) -> t.Optional[str]:
+    for tag in og_tags:
+        if search_tag in tag:
+            return tag
+
+    return None
+
+
+def _get_tag_content(tag: str) -> t.Optional[str]:
+    match = _CONTENT_PATTERN.match(tag)
+    if match:
+        return match.group(1)
+
+    return None
+
+
+def _get_og_tag_value(og_tags: t.List[str], tag_name: str) -> t.Optional[str]:
+    tag = _find_tag(og_tags, tag_name)
+    if tag:
+        return _get_tag_content(tag)
+
+    return None
+
+
+def get_og_tags(url: str) -> t.Tuple[t.Optional[str], t.Optional[str], t.Optional[str]]:
+    response = httpx.get(url)
+    response.raise_for_status()
+
+    og_tags = _META_PATTERN.findall(response.text)
+
+    og_image = _get_og_tag_value(og_tags, "og:image")
+    og_title = _get_og_tag_value(og_tags, "og:title")
+    og_description = _get_og_tag_value(og_tags, "og:description")
+
+    return og_image, og_title, og_description
 
 
 class BlueskyClient:
@@ -63,7 +108,37 @@ class BlueskyClient:
         """
         self.client.login(self.account, self.password)
 
-    def post(self, message: str, reply_root=None, reply_post=None):
+    def _send_post(self, text_builder, media=None, reply_to=None, embed=None):
+        """
+        Send a post with optional media or a reply reference.
+
+        :param text_builder: The text content to be posted.
+        :param media: None, a single path string, or a list of path strings representing images.
+        :param reply_to: Optional reference to another post (e.g., a CID).
+        :param embed: Optional embed data.
+        """
+        if media is None:
+            # No media: just send a standard post
+            return self.client.send_post(text_builder, reply_to=reply_to, embed=embed)
+
+        # If media is a list of multiple images
+        if isinstance(media, list):
+            images = [Path(path).read_bytes() for path in media]
+            return self.client.send_images(text_builder, images=images, reply_to=reply_to)
+
+        # Otherwise, we have a single image
+        # Extract dimensions for aspect ratio
+        with Image.open(media) as img:
+            width, height = img.size
+
+        aspect_ratio = models.AppBskyEmbedDefs.AspectRatio(height=height, width=width)
+        image_data = Path(media).read_bytes()
+
+        return self.client.send_image(
+            text_builder, image=image_data, reply_to=reply_to, image_alt="", image_aspect_ratio=aspect_ratio
+        )
+
+    def post(self, message: str, link=None, reply_root=None, reply_parent=None, media=None):
         """
         Sends a formatted post to Bluesky with optional reply references.
 
@@ -96,38 +171,97 @@ class BlueskyClient:
             logging.info(f"[NOSOCIAL] {message}")
             return
 
-        # Initialize TextBuilder
+        # Initialize TextBuilder & External Embed
         text_builder = client_utils.TextBuilder()
+        embed_external = None
+        reply_model = None
 
-        # Extract all hashtags
-        hashtags = re.findall(r"#(\w+)", message)
-        remaining_message = message
+        # Build a list of matches (hashtags and URLs)
+        matches = []
 
-        for hashtag in hashtags:
-            # Find the position of the current hashtag in the message
-            match = re.search(rf"#{hashtag}", remaining_message)
-            if match:
-                start, end = match.span()
+        # Find hashtags
+        for match in re.finditer(r"#(\w+)", message):
+            matches.append(
+                {"type": "hashtag", "start": match.start(), "end": match.end(), "value": match.group()}
+            )
 
-                # Add text before the hashtag
-                text_builder.text(remaining_message[:start])
+        # Find URLs
+        for match in re.finditer(r"(https?://\S+)", message):
+            matches.append(
+                {"type": "link", "start": match.start(), "end": match.end(), "value": match.group()}
+            )
 
-                # Add the hashtag with tag formatting
-                text_builder.tag(f"#{hashtag}", hashtag)  # Strip '#' for tag formatting
+        # Sort matches by their start position
+        matches = sorted(matches, key=lambda x: x["start"])
+        logging.debug(f"Bluesky Text Builder Matches: {matches}")
 
-                # Update the remaining message to exclude the processed part
-                remaining_message = remaining_message[end:]
+        # Process the message based on matches
+        last_pos = 0  # Tracks the end of the last processed segment
+        for match in matches:
+            # Add text before the match
+            if match["start"] > last_pos:
+                text_builder.text(message[last_pos : match["start"]])
 
-        # Add any remaining text after the last hashtag
-        text_builder.text(remaining_message)
+            # Add the match as a tag or link
+            if match["type"] == "hashtag":
+                text_builder.tag(match["value"], match["value"][1:])  # Strip '#' for tag
+            elif match["type"] == "link":
+                text_builder.link(match["value"], match["value"])  # Add as clickable link
 
-        # Send the post with formatted message
-        if reply_root and reply_post:
-            parent = models.create_strong_ref(reply_post)
+            # Update the last processed position
+            last_pos = match["end"]
+
+        # Add any remaining text after the last match
+        if last_pos < len(message):
+            text_builder.text(message[last_pos:])
+
+        # Debugging TextBuilder facets
+        if hasattr(text_builder, "_facets"):
+            for i, facet in enumerate(text_builder._facets):
+                logging.debug(f"Facet {i}: {facet}")
+
+        # If Link is True, Add External Embed
+        if link:
+            img_url, title, description = get_og_tags(link)
+            if title and description:
+                thumb_blob = None
+                if img_url:
+                    # Download image from og:image url and upload it as a blob
+                    img_data = httpx.get(img_url).content
+                    thumb_blob = self.client.upload_blob(img_data).blob
+
+                    # AppBskyEmbedExternal is the same as "link card" in the app
+                    embed_external = models.AppBskyEmbedExternal.Main(
+                        external=models.AppBskyEmbedExternal.External(
+                            title=title, description=description, uri=link, thumb=thumb_blob
+                        )
+                    )
+
+        # # Send the post with formatted message
+        # if reply_root and reply_parent:
+        #     parent = models.create_strong_ref(reply_parent)
+        #     root = models.create_strong_ref(reply_root)
+        #     reply_model = models.AppBskyFeedPost.ReplyRef(parent=parent, root=root)
+        #     post_response = self.client.send_post(text_builder, reply_to=reply_model, embed=embed_external)
+        # else:
+        #     if media:
+        #         media = media if isinstance(media, list) else [media]
+        #         images = []
+
+        #         for path in media:
+        #             with open(path, "rb") as f:
+        #                 images.append(f.read())
+
+        #         post_response = self.client.send_images(text_builder, images=images)
+        #     else:
+        #         post_respo[open(path, "rb").read() for path in media]
+        # return post_response
+
+        if reply_root and reply_parent:
+            parent = models.create_strong_ref(reply_parent)
             root = models.create_strong_ref(reply_root)
             reply_model = models.AppBskyFeedPost.ReplyRef(parent=parent, root=root)
-            post_response = self.client.send_post(text_builder, reply_to=reply_model)
-        else:
-            post_response = self.client.send_post(text_builder)
 
+        # Send the Post w/ Formatted Message & Properties
+        post_response = self._send_post(text_builder, media=media, reply_to=reply_model, embed=embed_external)
         return post_response

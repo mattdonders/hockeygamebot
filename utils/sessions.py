@@ -1,4 +1,35 @@
 import requests
+import time
+
+from functools import wraps
+
+
+def retry(max_attempts=3, backoff_seconds=1):
+    """
+    Decorator for retrying network requests with exponential backoff.
+
+    Args:
+        max_attempts (int): Maximum number of retry attempts
+        backoff_seconds (int): Base time to wait between retries
+    """
+
+    def decorator(func):
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            attempts = 0
+            while attempts < max_attempts:
+                try:
+                    return func(*args, **kwargs)
+                except (requests.RequestException, ConnectionError) as e:
+                    attempts += 1
+                    if attempts == max_attempts:
+                        raise
+                    wait_time = backoff_seconds * (2**attempts)
+                    time.sleep(wait_time)
+
+        return wrapper
+
+    return decorator
 
 
 class SessionFactory:
@@ -41,3 +72,19 @@ class SessionFactory:
         if self.session is None:
             self.session = requests.session()
         return self.session
+
+    @retry()
+    def request_with_retry(self, method, url, **kwargs):
+        """
+        Makes a request with built-in retry mechanism
+
+        Args:
+            method (str): HTTP method (get, post, etc.)
+            url (str): Request URL
+            **kwargs: Additional request parameters
+
+        Returns:
+            requests.Response: Response from the request
+        """
+        session = self.get()
+        return getattr(session, method)(url, **kwargs)

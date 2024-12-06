@@ -44,6 +44,8 @@ class Team(object):
         self.team_id = team_data["team_id"]
         self.primary_color = team_data["primary_color"]
         self.secondary_color = team_data["secondary_color"]
+        self.primary_text_color = team_data["primary_text_color"]
+        self.secondary_text_color = team_data["secondary_text_color"]
 
         self.score = 0
         self.goals = []

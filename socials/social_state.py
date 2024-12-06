@@ -1,3 +1,6 @@
+import logging
+
+
 class StartOfGameSocial:
     """Tracks social media messages and statuses for the start of the game."""
 
@@ -13,6 +16,7 @@ class StartOfGameSocial:
         self.core_sent = False
         self.season_series_msg = None
         self.season_series_sent = False
+        self.team_stats_sent = False
         self.goalies_pref_msg = None
         self.goalies_pref_sent = False
         self.goalies_other_msg = None
@@ -29,6 +33,15 @@ class StartOfGameSocial:
         # This is for starting lineups
         self.starters_sent = False
         self.starters_msg = None
+
+    @property
+    def all_pregame_sent(self):
+        pregame_checks = ("core_sent", "season_series_sent", "officials_sent")
+        status = {attr: getattr(self, attr) for attr in pregame_checks}
+        if not all(status.values()):
+            # Log the missing attributes and their values
+            logging.info(f"Pregame Socials Status: %s", status)
+        return all(status.values())
 
 
 class EndOfGameSocial:
@@ -56,6 +69,7 @@ class EndOfGameSocial:
         self.hsc_msg = None
         self.hsc_sent = False
         self.shotmap_retweet = False
+        self.team_stats_sent = False
 
     @property
     def all_social_sent(self):
