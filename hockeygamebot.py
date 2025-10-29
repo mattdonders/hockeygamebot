@@ -367,7 +367,11 @@ def handle_was_game_yesterday(game, yesterday, context: GameContext):
     # Game Headline w/ Recap & Game Summary w/ Condensed Game
     game_headline = game_stories["items"][0]["headline"]
     game_headline = f"{game_headline}." if not game_headline.endswith(".") else game_headline
-    game_summary = game_stories["items"][0]["summary"].split("--")[1].strip()
+
+    if "--" in game_stories["items"][0]["summary"]:
+        game_summary = game_stories["items"][0]["summary"].split("--")[1].strip()
+    else:
+        game_summary = game_stories["items"][0]["summary"]
 
     game_videos = right_rail["gameVideo"]
     game_video_prefix = (

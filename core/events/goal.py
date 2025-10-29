@@ -134,6 +134,10 @@ class GoalEvent(Event):
             logging.info("No highlight clip URL found for event ID %s.", event_data["eventId"])
             return
 
+        if highlight_clip_url == "https://www.nhl.com/video/":
+            logging.info("Invalid highlight clip URL found for event ID %s.", event_data["eventId"])
+            return
+
         # Update the GoalEvent object
         highlight_clip_url = highlight_clip_url.replace("https://nhl.com", "https://www.nhl.com")
         self.highlight_clip_url = highlight_clip_url
