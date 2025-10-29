@@ -1,72 +1,36 @@
-# Byte-compiled / optimized / DLL files
-__pycache__/
-.pytest_cache/
+# Hockey Game Bot - Git Ignore File
 
-# Miscellaneous Files
-nohup.out
-archive/
-localdata/
-
-# Mac specific DS Store
-.DS_Store
-
-# IDE Temp Files
-.vscode/
-.idea/
-
-# Credentials
-secret.py
-
-# Generated Log Files
-*.log
-*.log.*
-
-# Customized Resources
-resources/images/Gameday-*.jpg
-resources/images/GamedayFinal-*.jpg
-resources/images/Gameday-*.png
-resources/images/GamedayFinal-*.png
-resources/images/RinkShotmap-*.png
-resources/images/GamedayAdvStats-*.png
-resources/images/Rink-Shotmap-Blank-Backup.png
-resources/images/Rink-Shotmap-Generated.png
-resources/images/Final*.png
-resources/PSDs
-resources/images/temp
-hockeygamebot/resources/images/temp/
-resources/*-roster.json
-
-
-# VirtualEnv Files
-bin/
-lib/
-lib64
-pyvenv.cfg
-share/
-env/
-.project
-
-# Other Files
-.coverage
+# ===========================================
+# SECRETS & CREDENTIALS - NEVER COMMIT THESE
+# ===========================================
 config.yaml
 config*.yaml
+.env
+secret.py
+*.pem
+*.key
 
-# V1 Files (Ignoring After V2)
-hockey_twitter_bot.py
-nhl_game_events.py
-
-
-#############################################
-# Github Python Default .gitignore
-#############################################
-
+# ===========================================
+# PYTHON
+# ===========================================
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
 *$py.class
-
-# C extensions
 *.so
+
+# Virtual environments
+venv/
+env/
+ENV/
+.venv/
+bin/
+lib/
+lib64/
+pyvenv.cfg
+share/
+env.bak/
+venv.bak/
 
 # Distribution / packaging
 .Python
@@ -76,8 +40,6 @@ dist/
 downloads/
 eggs/
 .eggs/
-lib/
-lib64/
 parts/
 sdist/
 var/
@@ -89,17 +51,51 @@ share/python-wheels/
 *.egg
 MANIFEST
 
-# PyInstaller
-#  Usually these files are written by a python script from a template
-#  before PyInstaller builds the exe, so as to inject date/other infos into it.
-*.manifest
-*.spec
+# ===========================================
+# GENERATED FILES - DON'T COMMIT THESE
+# ===========================================
+# Generated images (charts, stats)
+images/*.png
+images/*.jpg
+images/*.jpeg
 
-# Installer logs
+# Exception: Keep example images if you have them
+!images/example*.png
+
+# Custom resource images (your specific patterns)
+resources/images/Gameday-*.jpg
+resources/images/GamedayFinal-*.jpg
+resources/images/Gameday-*.png
+resources/images/GamedayFinal-*.png
+resources/images/RinkShotmap-*.png
+resources/images/GamedayAdvStats-*.png
+resources/images/Rink-Shotmap-Blank-Backup.png
+resources/images/Rink-Shotmap-Generated.png
+resources/images/Final*.png
+resources/images/temp/
+hockeygamebot/resources/images/temp/
+resources/PSDs
+resources/*-roster.json
+
+# Generated data files
+data/*.json
+data/*.csv
+
+# Logs
+logs/
+*.log
+*.log.*
 pip-log.txt
 pip-delete-this-directory.txt
+nohup.out
 
-# Unit test / coverage reports
+# Status/metrics files
+status.json
+metrics.json
+
+# ===========================================
+# TESTING
+# ===========================================
 htmlcov/
 .tox/
 .nox/
@@ -113,22 +109,93 @@ coverage.xml
 .hypothesis/
 .pytest_cache/
 
-# Translations
-*.mo
-*.pot
+# ===========================================
+# WORK IN PROGRESS - DON'T COMMIT THESE
+# ===========================================
+wip-*
+WIP-*
+TODO.md
+NOTES.md
+scratch/
+experiments/
+archive/
+localdata/
 
-# Django stuff:
-*.log
+# ===========================================
+# V1 LEGACY FILES (After V2 Migration)
+# ===========================================
+hockey_twitter_bot.py
+nhl_game_events.py
+
+# ===========================================
+# OPERATING SYSTEM
+# ===========================================
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# Linux
+*~
+
+# ===========================================
+# IDE / EDITORS
+# ===========================================
+# VS Code
+.vscode/
+*.code-workspace
+
+# PyCharm
+.idea/
+*.iml
+.project
+
+# Sublime Text
+*.sublime-project
+*.sublime-workspace
+
+# Vim
+*.swp
+*.swo
+
+# Spyder
+.spyderproject
+.spyproject
+
+# Rope
+.ropeproject
+
+# ===========================================
+# FRAMEWORKS (if you add them later)
+# ===========================================
+# Django
 local_settings.py
 db.sqlite3
 db.sqlite3-journal
 
-# Flask stuff:
+# Flask
 instance/
 .webassets-cache
 
-# Scrapy stuff:
+# Scrapy
 .scrapy
+
+# Jupyter Notebook
+.ipynb_checkpoints
+profile_default/
+ipython_config.py
+
+# ===========================================
+# BUILD TOOLS
+# ===========================================
+# PyInstaller
+*.manifest
+*.spec
 
 # Sphinx documentation
 docs/_build/
@@ -136,52 +203,44 @@ docs/_build/
 # PyBuilder
 target/
 
-# Jupyter Notebook
-.ipynb_checkpoints
-
-# IPython
-profile_default/
-ipython_config.py
-
-# pyenv
-.python-version
-
-# pipenv
-#   According to pypa/pipenv#598, it is recommended to include Pipfile.lock in version control.
-#   However, in case of collaboration, if having platform-specific dependencies or dependencies
-#   having no cross-platform support, pipenv may install dependencies that don't work, or not
-#   install all needed dependencies.
-#Pipfile.lock
-
-# celery beat schedule file
-celerybeat-schedule
-
-# SageMath parsed files
-*.sage.py
-
-# Environments
-.env
-.venv
-env/
-venv/
-ENV/
-env.bak/
-venv.bak/
-
-# Spyder project settings
-.spyderproject
-.spyproject
-
-# Rope project settings
-.ropeproject
-
-# mkdocs documentation
+# mkdocs
 /site
 
+# ===========================================
+# TYPE CHECKERS
+# ===========================================
 # mypy
 .mypy_cache/
 .dmypy.json
 dmypy.json
 
-# Pyre type checker
+# Pyre
 .pyre/
+
+# pyenv
+.python-version
+
+# ===========================================
+# DOCKER
+# ===========================================
+.dockerignore
+
+# ===========================================
+# OTHER
+# ===========================================
+# Temporary files
+tmp/
+temp/
+*.tmp
+*.bak
+
+# API response cache (if you add caching)
+.cache/
+cache/
+
+# Translations
+*.mo
+*.pot
+
+# Celery
+celerybeat-schedule
