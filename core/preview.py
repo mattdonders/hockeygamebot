@@ -30,40 +30,70 @@ def sleep_until_game_start(start_time_utc):
 def preview_sleep_calculator(context: GameContext):
     """
     Auto sleep-time calculator for FUT or PRE game states.
+
+    IMPORTANT: Always sleeps for at least 5 seconds to prevent busy loops
+    that can hammer the NHL API and cause rate limit errors.
     """
+    # MINIMUM SLEEP TIME - prevents busy loop when game time approaches
+    MIN_SLEEP_TIME = 10  # seconds
 
     preview_sleep_time = context.config["script"]["preview_sleep_time"]
     preview_sleep_mins = int(preview_sleep_time / 60)
 
     # Scenario 1: Game Time Passed, but not LIVE yet
     if context.game_time_countdown < 0:
-        logging.warning("Game start time is in the past, but not live yet - sleep for 30s.")
+        logging.warning(
+            "Game start time is in the past (%s seconds ago), but not live yet - sleep for 30s.",
+            abs(context.game_time_countdown)
+        )
         time.sleep(30)
         return
 
-    # Scenario 2: All Pre-Game Posts Sent - just sleep until game time
+    # Scenario 2: All Pre-Game Posts Sent - sleep until game time (with minimum)
     if context.preview_socials.all_pregame_sent:
-        preview_sleep_mins = int(context.game_time_countdown / 60)
-        logging.info(
-            "All pre-game messages are now sent, sleep until game time (~%s minutes).",
-            context.game_time_countdown,
-        )
-        time.sleep(context.game_time_countdown)
+        # CRITICAL FIX: Always sleep at least MIN_SLEEP_TIME seconds
+        actual_sleep_time = max(context.game_time_countdown, MIN_SLEEP_TIME)
+        preview_sleep_mins = int(actual_sleep_time / 60)
+
+        if context.game_time_countdown < MIN_SLEEP_TIME:
+            logging.info(
+                "All pre-game messages sent. Game starts in %s seconds - sleeping for minimum %s seconds to avoid API spam.",
+                int(context.game_time_countdown),
+                MIN_SLEEP_TIME
+            )
+        else:
+            logging.info(
+                "All pre-game messages sent. Sleeping until game time (~%s minutes).",
+                preview_sleep_mins
+            )
+
+        time.sleep(actual_sleep_time)
         return
 
-    # Scenario 3: All Pre-Game Posts NOT Sent, but preview_sleep_time is longer than game_time_countdown
+    # Scenario 3: Pre-Game Posts NOT Sent, but preview_sleep_time is longer than game_time_countdown
     if preview_sleep_time > context.game_time_countdown:
-        logging.info(
-            "Preview sleep time is greater than game countdown - sleep until game time (~%s minutes).",
-            context.game_time_countdown,
-        )
-        time.sleep(context.game_time_countdown)
+        # CRITICAL FIX: Always sleep at least MIN_SLEEP_TIME seconds
+        actual_sleep_time = max(context.game_time_countdown, MIN_SLEEP_TIME)
+
+        if context.game_time_countdown < MIN_SLEEP_TIME:
+            logging.info(
+                "Not all pre-game messages sent, but game starts in %s seconds - sleeping for minimum %s seconds to avoid API spam.",
+                int(context.game_time_countdown),
+                MIN_SLEEP_TIME
+            )
+        else:
+            logging.info(
+                "Preview sleep time is greater than game countdown - sleeping until game time (~%s seconds).",
+                int(context.game_time_countdown)
+            )
+
+        time.sleep(actual_sleep_time)
         return
 
-    # FALLBACK
+    # Scenario 4: FALLBACK - Not all pre-game messages sent and we have time
     logging.info(
-        "Not all pre-game messages are sent, sleep for %s minutes & try again.",
-        preview_sleep_mins,
+        "Not all pre-game messages are sent, sleeping for %s minutes & will try again.",
+        preview_sleep_mins
     )
     time.sleep(preview_sleep_time)
 
