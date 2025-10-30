@@ -1,0 +1,572 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🏒 Hockey Bot Dashboard</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+            color: #333;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .header {
+            background: white;
+            border-radius: 12px;
+            padding: 24px;
+            margin-bottom: 20px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .header h1 {
+            font-size: 28px;
+            color: #2d3748;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .status-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-size: 14px;
+            font-weight: 600;
+        }
+
+        .status-running {
+            background: #10b981;
+            color: white;
+        }
+
+        .status-sleeping {
+            background: #6366f1;
+            color: white;
+        }
+
+        .status-error {
+            background: #ef4444;
+            color: white;
+        }
+
+        .status-stopped {
+            background: #6b7280;
+            color: white;
+        }
+
+        .status-starting {
+            background: #f59e0b;
+            color: white;
+        }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: currentColor;
+            animation: pulse 2s ease-in-out infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        .last-update {
+            font-size: 14px;
+            color: #6b7280;
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+
+        .card {
+            background: white;
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+
+        .card-title {
+            font-size: 16px;
+            font-weight: 600;
+            color: #4b5563;
+            margin-bottom: 16px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .card-title::before {
+            content: '';
+            width: 4px;
+            height: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border-radius: 2px;
+        }
+
+        .stat-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px 0;
+            border-bottom: 1px solid #f3f4f6;
+        }
+
+        .stat-row:last-child {
+            border-bottom: none;
+        }
+
+        .stat-label {
+            font-size: 14px;
+            color: #6b7280;
+        }
+
+        .stat-value {
+            font-size: 18px;
+            font-weight: 600;
+            color: #1f2937;
+        }
+
+        .game-score {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 20px;
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border-radius: 8px;
+            color: white;
+            margin-bottom: 16px;
+        }
+
+        .team-score {
+            text-align: center;
+        }
+
+        .team-name {
+            font-size: 24px;
+            font-weight: bold;
+            margin-bottom: 8px;
+        }
+
+        .score {
+            font-size: 48px;
+            font-weight: bold;
+        }
+
+        .vs {
+            font-size: 20px;
+            opacity: 0.8;
+        }
+
+        .event-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+            gap: 12px;
+        }
+
+        .event-stat {
+            background: #f9fafb;
+            padding: 12px;
+            border-radius: 8px;
+            text-align: center;
+        }
+
+        .event-stat-value {
+            font-size: 24px;
+            font-weight: bold;
+            color: #667eea;
+            margin-bottom: 4px;
+        }
+
+        .event-stat-label {
+            font-size: 12px;
+            color: #6b7280;
+            text-transform: uppercase;
+        }
+
+        .health-good {
+            color: #10b981;
+            font-weight: 600;
+        }
+
+        .health-bad {
+            color: #ef4444;
+            font-weight: 600;
+        }
+
+        .issues-list {
+            list-style: none;
+            margin-top: 12px;
+        }
+
+        .issues-list li {
+            padding: 8px 12px;
+            background: #fef2f2;
+            border-left: 3px solid #ef4444;
+            margin-bottom: 8px;
+            border-radius: 4px;
+            font-size: 14px;
+            color: #991b1b;
+        }
+
+        .no-game {
+            text-align: center;
+            padding: 40px;
+            color: #6b7280;
+            font-size: 18px;
+        }
+
+        .error-message {
+            background: #fef2f2;
+            border: 1px solid #fee2e2;
+            border-radius: 8px;
+            padding: 16px;
+            margin: 20px 0;
+            color: #991b1b;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 40px;
+            font-size: 18px;
+            color: #6b7280;
+        }
+
+        .period-info {
+            background: #f9fafb;
+            padding: 12px;
+            border-radius: 8px;
+            margin-bottom: 16px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .period-label {
+            font-size: 14px;
+            color: #6b7280;
+        }
+
+        .period-value {
+            font-size: 16px;
+            font-weight: 600;
+            color: #1f2937;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🏒 Hockey Bot Dashboard</h1>
+            <div>
+                <div class="status-badge" id="statusBadge">
+                    <span class="status-dot"></span>
+                    <span id="statusText">Loading...</span>
+                </div>
+                <div class="last-update" id="lastUpdate">Loading...</div>
+            </div>
+        </div>
+
+        <div id="content">
+            <div class="loading">
+                <div>Loading dashboard...</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let lastFetchTime = null;
+
+        function formatUptime(seconds) {
+            const hours = Math.floor(seconds / 3600);
+            const minutes = Math.floor((seconds % 3600) / 60);
+            const secs = seconds % 60;
+
+            if (hours > 0) {
+                return `${hours}h ${minutes}m ${secs}s`;
+            } else if (minutes > 0) {
+                return `${minutes}m ${secs}s`;
+            } else {
+                return `${secs}s`;
+            }
+        }
+
+        function formatTimestamp(isoString) {
+            if (!isoString) return 'Never';
+            const date = new Date(isoString);
+            return date.toLocaleString();
+        }
+
+        function timeSince(isoString) {
+            if (!isoString) return 'Never';
+            const date = new Date(isoString);
+            const seconds = Math.floor((new Date() - date) / 1000);
+
+            if (seconds < 60) return `${seconds}s ago`;
+            if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`;
+            if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ago`;
+            return `${Math.floor(seconds / 86400)}d ago`;
+        }
+
+        function updateStatusBadge(status) {
+            const badge = document.getElementById('statusBadge');
+            const text = document.getElementById('statusText');
+
+            badge.className = 'status-badge status-' + status.toLowerCase();
+            text.textContent = status;
+        }
+
+        function renderDashboard(data) {
+            const bot = data.bot;
+            const game = data.game;
+            const events = data.events;
+            const performance = data.performance;
+            const errors = data.errors;
+            const socials = data.socials;
+            const health = data.health;
+
+            // Update header
+            updateStatusBadge(bot.status);
+            document.getElementById('lastUpdate').textContent =
+                `Last Update: ${timeSince(bot.last_update)}`;
+
+            // Build content
+            let html = '';
+
+            // Game Info Card
+            html += '<div class="grid">';
+            html += '<div class="card" style="grid-column: span 2;">';
+            html += '<div class="card-title">Game Information</div>';
+
+            if (game.game_id && game.game_state !== null) {
+                // Score Display
+                if (game.home_team && game.away_team) {
+                    html += '<div class="game-score">';
+                    html += `<div class="team-score">
+                                <div class="team-name">${game.away_team}</div>
+                                <div class="score">${game.away_score || 0}</div>
+                             </div>`;
+                    html += '<div class="vs">@</div>';
+                    html += `<div class="team-score">
+                                <div class="team-name">${game.home_team}</div>
+                                <div class="score">${game.home_score || 0}</div>
+                             </div>`;
+                    html += '</div>';
+                }
+
+                // Period and Time
+                if (game.period || game.time_remaining) {
+                    html += '<div class="period-info">';
+                    html += `<div>
+                                <div class="period-label">Period</div>
+                                <div class="period-value">${game.period || 'N/A'}</div>
+                             </div>`;
+                    html += `<div>
+                                <div class="period-label">Time Remaining</div>
+                                <div class="period-value">${game.time_remaining || 'N/A'}</div>
+                             </div>`;
+                    html += `<div>
+                                <div class="period-label">Intermission</div>
+                                <div class="period-value">${game.in_intermission ? 'Yes' : 'No'}</div>
+                             </div>`;
+                    html += '</div>';
+                }
+
+                // Game Details
+                html += `<div class="stat-row">
+                            <span class="stat-label">Game ID</span>
+                            <span class="stat-value">${game.game_id}</span>
+                         </div>`;
+                html += `<div class="stat-row">
+                            <span class="stat-label">Game State</span>
+                            <span class="stat-value">${game.game_state}</span>
+                         </div>`;
+                if (game.venue) {
+                    html += `<div class="stat-row">
+                                <span class="stat-label">Venue</span>
+                                <span class="stat-value">${game.venue}</span>
+                             </div>`;
+                }
+            } else {
+                html += '<div class="no-game">No active game</div>';
+            }
+
+            html += '</div>';
+
+            // Bot Stats Card
+            html += '<div class="card">';
+            html += '<div class="card-title">Bot Statistics</div>';
+            html += `<div class="stat-row">
+                        <span class="stat-label">Uptime</span>
+                        <span class="stat-value">${formatUptime(bot.uptime_seconds)}</span>
+                     </div>`;
+            html += `<div class="stat-row">
+                        <span class="stat-label">Live Loops</span>
+                        <span class="stat-value">${performance.live_loop_count}</span>
+                     </div>`;
+            html += `<div class="stat-row">
+                        <span class="stat-label">Started</span>
+                        <span class="stat-value">${timeSince(bot.start_time)}</span>
+                     </div>`;
+            html += `<div class="stat-row">
+                        <span class="stat-label">Last Loop</span>
+                        <span class="stat-value">${timeSince(performance.last_loop_time)}</span>
+                     </div>`;
+            html += '</div>';
+
+            // Health Card
+            html += '<div class="card">';
+            html += '<div class="card-title">System Health</div>';
+            html += `<div class="stat-row">
+                        <span class="stat-label">Status</span>
+                        <span class="stat-value ${health.healthy ? 'health-good' : 'health-bad'}">
+                            ${health.healthy ? '✓ Healthy' : '✗ Issues Detected'}
+                        </span>
+                     </div>`;
+            html += `<div class="stat-row">
+                        <span class="stat-label">Total Errors</span>
+                        <span class="stat-value">${errors.count}</span>
+                     </div>`;
+            html += `<div class="stat-row">
+                        <span class="stat-label">Last Error</span>
+                        <span class="stat-value">${timeSince(errors.last_error_time)}</span>
+                     </div>`;
+
+            if (!health.healthy && health.issues.length > 0) {
+                html += '<ul class="issues-list">';
+                health.issues.forEach(issue => {
+                    html += `<li>⚠️ ${issue}</li>`;
+                });
+                html += '</ul>';
+            }
+
+            if (errors.last_error) {
+                html += `<div style="margin-top: 12px; padding: 8px; background: #fef2f2; border-radius: 4px; font-size: 12px; color: #991b1b;">
+                            ${errors.last_error}
+                         </div>`;
+            }
+            html += '</div>';
+            html += '</div>'; // end grid
+
+            // Events Card
+            html += '<div class="grid">';
+            html += '<div class="card" style="grid-column: span 2;">';
+            html += '<div class="card-title">Game Events Processed</div>';
+            html += '<div class="event-grid">';
+
+            const eventTypes = [
+                { key: 'total', label: 'Total Events' },
+                { key: 'goals', label: 'Goals' },
+                { key: 'penalties', label: 'Penalties' },
+                { key: 'shots', label: 'Shots' },
+                { key: 'saves', label: 'Saves' },
+                { key: 'hits', label: 'Hits' },
+                { key: 'blocks', label: 'Blocks' },
+                { key: 'takeaways', label: 'Takeaways' },
+                { key: 'giveaways', label: 'Giveaways' },
+                { key: 'faceoffs', label: 'Faceoffs' },
+            ];
+
+            eventTypes.forEach(event => {
+                html += `<div class="event-stat">
+                            <div class="event-stat-value">${events[event.key]}</div>
+                            <div class="event-stat-label">${event.label}</div>
+                         </div>`;
+            });
+
+            html += '</div>';
+            html += '</div>';
+
+            // API & Social Stats
+            html += '<div class="card">';
+            html += '<div class="card-title">API Performance</div>';
+            html += `<div class="stat-row">
+                        <span class="stat-label">Total Calls</span>
+                        <span class="stat-value">${performance.api_calls.total}</span>
+                     </div>`;
+            html += `<div class="stat-row">
+                        <span class="stat-label">Successful</span>
+                        <span class="stat-value" style="color: #10b981;">${performance.api_calls.successful}</span>
+                     </div>`;
+            html += `<div class="stat-row">
+                        <span class="stat-label">Failed</span>
+                        <span class="stat-value" style="color: #ef4444;">${performance.api_calls.failed}</span>
+                     </div>`;
+            const successRate = performance.api_calls.total > 0
+                ? ((performance.api_calls.successful / performance.api_calls.total) * 100).toFixed(1)
+                : 100;
+            html += `<div class="stat-row">
+                        <span class="stat-label">Success Rate</span>
+                        <span class="stat-value">${successRate}%</span>
+                     </div>`;
+            html += '</div>';
+
+            html += '<div class="card">';
+            html += '<div class="card-title">Social Media</div>';
+            html += `<div class="stat-row">
+                        <span class="stat-label">Posts Sent</span>
+                        <span class="stat-value">${socials.posts_sent}</span>
+                     </div>`;
+            html += `<div class="stat-row">
+                        <span class="stat-label">Last Post</span>
+                        <span class="stat-value">${timeSince(socials.last_post_time)}</span>
+                     </div>`;
+            html += `<div class="stat-row">
+                        <span class="stat-label">Preview Posts</span>
+                        <span class="stat-value">${Object.values(socials.preview_posts).filter(v => v).length}/4</span>
+                     </div>`;
+            html += '</div>';
+            html += '</div>'; // end grid
+
+            document.getElementById('content').innerHTML = html;
+        }
+
+        async function fetchStatus() {
+            try {
+                const response = await fetch('status.json?t=' + Date.now());
+                if (!response.ok) {
+                    throw new Error('Failed to fetch status');
+                }
+                const data = await response.json();
+                lastFetchTime = Date.now();
+                renderDashboard(data);
+            } catch (error) {
+                console.error('Error fetching status:', error);
+                document.getElementById('content').innerHTML =
+                    '<div class="error-message">⚠️ Error loading status.json - Make sure the bot is running and status.json exists</div>';
+            }
+        }
+
+        // Initial fetch
+        fetchStatus();
+
+        // Auto-refresh every 2 seconds
+        setInterval(fetchStatus, 2000);
+    </script>
+</body>
+</html>

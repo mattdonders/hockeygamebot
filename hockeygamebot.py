@@ -5,6 +5,11 @@ import os
 import sys
 import time
 
+import threading
+import http.server
+import socketserver
+import os
+
 from matplotlib import font_manager, rcParams
 import requests
 
@@ -22,9 +27,24 @@ import core.preview as preview
 from core.live import parse_live_game
 from socials.bluesky import BlueskyClient
 from utils.config import load_config
+from utils.status_monitor import StatusMonitor
 from utils.team_details import TEAM_DETAILS
 from core.models.game_context import GameContext
 
+class SilentHTTPHandler(http.server.SimpleHTTPRequestHandler):
+    def log_message(self, format, *args):
+        pass  # Suppress all HTTP logs
+
+def start_dashboard_server(port=8000):
+    """Start the dashboard web server in a background thread."""
+    os.chdir(os.path.dirname(os.path.abspath(__file__)))
+
+    # Use the silent handler to suppress logs
+    Handler = SilentHTTPHandler
+
+    with socketserver.TCPServer(("0.0.0.0", port), Handler) as httpd:
+        logging.info(f"Dashboard server running at http://0.0.0.0:{port}/dashboard.html")
+        httpd.serve_forever()
 
 def start_game_loop(context: GameContext):
     """
@@ -49,6 +69,10 @@ def start_game_loop(context: GameContext):
 
         clock_data = schedule.fetch_clock(context.game_id)
         context.clock.update(clock_data)
+
+        # Update monitoring dashboard with current game state
+        if hasattr(context, 'monitor'):
+            context.monitor.update_game_state(context)
 
         # If we enter this function on the day of a game (before the game starts), gameState = "FUT"
         # We should send preview posts & then sleep until game time.
@@ -122,11 +146,17 @@ def start_game_loop(context: GameContext):
                     logging.info("Posted season series preview.")
 
             # Use our auto-sleep calculator now
+            if hasattr(context, 'monitor'):
+                context.monitor.set_status("SLEEPING")
             preview.preview_sleep_calculator(context)
 
         elif context.game_state in ["PRE", "LIVE", "CRIT"]:
             logging.debug("Game Context: %s", vars(context))
             logging.info("Handling a LIVE game state: %s", context.game_state)
+
+            # Set status to RUNNING when actively processing game
+            if hasattr(context, 'monitor'):
+                context.monitor.set_status("RUNNING")
 
             if not context.gametime_rosters_set:
                 # Get Game-Time Rosters and Combine w/ Pre-Game Rosters
@@ -144,6 +174,8 @@ def start_game_loop(context: GameContext):
                 logging.info(
                     "Game is in intermission - sleep for the remaining time (%ss).", intermission_sleep_time
                 )
+                if hasattr(context, 'monitor'):
+                    context.monitor.set_status("SLEEPING")
                 time.sleep(intermission_sleep_time)
             else:
                 live_sleep_time = context.config["script"]["live_sleep_time"]
@@ -440,6 +472,11 @@ def main():
     otherutils.setup_logging(config, console=args.console, debug=args.debug)
     otherutils.log_startup_info(args, config)
 
+    # Start dashboard server in background
+    dashboard_thread = threading.Thread(target=start_dashboard_server, args=(8000,), daemon=True)
+    dashboard_thread.start()
+    logging.info("Dashboard server started in background")
+
     team_name = config.get("default", {}).get("team_name", "New Jersey Devils")
     preferred_team = Team(team_name)
 
@@ -460,6 +497,14 @@ def main():
     context = GameContext(
         config=config, bluesky_client=bluesky_client, nosocial=args.nosocial, debugsocial=args.debugsocial
     )
+
+    # After creating monitor
+    monitor = StatusMonitor()
+    context.monitor = monitor
+
+    # Attach the Monitor to BlueSky Client & Schedule Modules
+    bluesky_client.monitor = monitor
+    schedule.set_monitor(monitor)
 
     # Add Preferred Team to GameContext
     context.preferred_team = preferred_team
@@ -496,6 +541,14 @@ def main():
 
     except Exception as e:
         logging.error(f"Error occurred: {e}", exc_info=True)
+        if hasattr(context, 'monitor'):
+            context.monitor.record_error(str(e))
+            context.monitor.set_status("ERROR")
+
+    finally:
+        # Shutdown monitor gracefully
+        if 'context' in locals() and hasattr(context, 'monitor'):
+            context.monitor.shutdown()
 
 
 if __name__ == "__main__":

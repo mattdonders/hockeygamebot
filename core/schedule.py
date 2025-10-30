@@ -3,6 +3,42 @@ import requests
 
 from utils.retry import retry
 
+# Module-level monitor for tracking API calls
+_monitor = None
+
+
+def set_monitor(monitor):
+    """Set the module-level monitor for API call tracking."""
+    global _monitor
+    _monitor = monitor
+
+
+def _make_api_call(url: str, timeout: int = 10):
+    """
+    Make an API call with optional monitoring.
+
+    Args:
+        url: The URL to fetch
+        timeout: Request timeout in seconds
+
+    Returns:
+        Response object
+    """
+    try:
+        response = requests.get(url, timeout=timeout)
+        response.raise_for_status()
+
+        # Track successful API call
+        if _monitor:
+            _monitor.record_api_call(success=True)
+
+        return response
+    except Exception as e:
+        # Track failed API call
+        if _monitor:
+            _monitor.record_api_call(success=False)
+        raise
+
 
 @retry(max_attempts=3, delay=2.0, exceptions=(requests.RequestException,))
 def fetch_season_id(team_abbreviation: str):
@@ -12,8 +48,7 @@ def fetch_season_id(team_abbreviation: str):
     url = f"https://api-web.nhle.com/v1/club-schedule-season/{team_abbreviation}/now"
     logging.info(f"Fetching season ID from URL: {url}")
 
-    response = requests.get(url, timeout=10)
-    response.raise_for_status()  # Raises HTTPError for 4xx/5xx responses
+    response = _make_api_call(url, timeout=10)
 
     data = response.json()
     season_id = data.get("currentSeason")
@@ -29,8 +64,7 @@ def fetch_schedule(team_abbreviation: str, season_id: str):
     url = f"https://api-web.nhle.com/v1/club-schedule-season/{team_abbreviation}/{season_id}"
     logging.debug(f"Fetching schedule from URL: {url}")
 
-    response = requests.get(url, timeout=10)
-    response.raise_for_status()
+    response = _make_api_call(url, timeout=10)
 
     logging.info(f"Fetched schedule for team: {team_abbreviation}, season: {season_id}")
     return response.json()
@@ -44,8 +78,7 @@ def fetch_playbyplay(game_id: str):
     url = f"https://api-web.nhle.com/v1/gamecenter/{game_id}/play-by-play"
     logging.info(f"Fetching play-by-play data from {url}")
 
-    response = requests.get(url, timeout=10)
-    response.raise_for_status()
+    response = _make_api_call(url, timeout=10)
 
     return response.json()
 
@@ -58,8 +91,7 @@ def fetch_landing(game_id: str):
     url = f"https://api-web.nhle.com/v1/gamecenter/{game_id}/landing"
     logging.info(f"Fetching GameCenter landing page data from {url}")
 
-    response = requests.get(url, timeout=10)
-    response.raise_for_status()
+    response = _make_api_call(url, timeout=10)
 
     return response.json()
 
@@ -72,8 +104,7 @@ def fetch_stories(game_id: str):
     url = f"https://forge-dapi.d3.nhle.com/v2/content/en-us/stories?tags.slug=gameid-{game_id}&tags.slug=game-recap&context.slug=nhl"
     logging.info(f"Fetching Stories data from {url}")
 
-    response = requests.get(url, timeout=10)
-    response.raise_for_status()
+    response = _make_api_call(url, timeout=10)
 
     return response.json()
 
@@ -87,8 +118,7 @@ def fetch_rightrail(game_id: str):
     url = f"https://api-web.nhle.com/v1/gamecenter/{game_id}/right-rail"
     logging.info(f"Fetching GameCenter right-rail page data from {url}")
 
-    response = requests.get(url, timeout=10)
-    response.raise_for_status()
+    response = _make_api_call(url, timeout=10)
 
     return response.json()
 
@@ -140,8 +170,7 @@ def fetch_game_state(game_id: str):
     url = f"https://api-web.nhle.com/v1/gamecenter/{game_id}/play-by-play"
     logging.debug(f"Fetching game state from {url}")
 
-    response = requests.get(url, timeout=10)
-    response.raise_for_status()
+    response = _make_api_call(url, timeout=10)
 
     game_data = response.json()
     game_state = game_data.get("gameState", "UNKNOWN")
@@ -161,8 +190,7 @@ def fetch_clock(game_id: str):
     url = f"https://api-web.nhle.com/v1/gamecenter/{game_id}/play-by-play"
     logging.debug(f"Fetching clock data from {url}")
 
-    response = requests.get(url, timeout=10)
-    response.raise_for_status()
+    response = _make_api_call(url, timeout=10)
 
     game_data = response.json()
     clock_data = game_data.get("clock", {})

@@ -169,6 +169,9 @@ class BlueskyClient:
         """
         if self.nosocial:
             logging.info(f"[NOSOCIAL] {message}")
+            # Track social post in monitor (even in nosocial mode for testing)
+            if hasattr(self, 'monitor') and self.monitor:
+                self.monitor.record_social_post()
             return
 
         # Initialize TextBuilder & External Embed
@@ -264,4 +267,9 @@ class BlueskyClient:
 
         # Send the Post w/ Formatted Message & Properties
         post_response = self._send_post(text_builder, media=media, reply_to=reply_model, embed=embed_external)
+
+        # Track social post in monitor
+        if hasattr(self, 'monitor') and self.monitor:
+            self.monitor.record_social_post()
+
         return post_response
