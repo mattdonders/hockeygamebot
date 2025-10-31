@@ -209,7 +209,11 @@ class StatusMonitor:
                 # Count events by type
                 event_types = {}
                 for event in events_snapshot:
-                    event_type = event.get("typeDescKey", "other")
+                    # Events are objects with event_type attribute, not dicts
+                    if isinstance(event, dict):
+                        event_type = event.get("typeDescKey", "other")
+                    else:
+                        event_type = getattr(event, 'event_type', 'other')
                     event_types[event_type] = event_types.get(event_type, 0) + 1
 
                 # Map to tracking categories
