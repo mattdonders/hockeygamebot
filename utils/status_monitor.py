@@ -42,6 +42,11 @@ class StatusMonitor:
         self.lock = Lock()
         self.start_time = datetime.now()
 
+        # Track write failures
+        self._consecutive_write_failures = 0
+        self._max_consecutive_failures = 10
+        self._monitoring_enabled = True
+
         # Initialize status structure
         self.status = {
             "bot": {
@@ -112,56 +117,105 @@ class StatusMonitor:
 
     def update_game_state(self, context) -> None:
         """
-        Update game state from GameContext.
+        Update game state from GameContext (thread-safe with snapshots).
 
         Args:
             context: GameContext object containing current game state
         """
-        with self.lock:
-            # Update game info
-            if context.game:
-                self.status["game"]["game_id"] = context.game_id
-                self.status["game"]["game_state"] = context.game_state
-                self.status["game"]["venue"] = context.venue
+        # STEP 1: Create immutable snapshots (fast, no lock needed)
+        game_snapshot = None
+        game_id = None
+        game_state = None
+        venue = None
+        home_team_abbrev = None
+        away_team_abbrev = None
+        home_score = None
+        away_score = None
+        clock_time_remaining = None
+        clock_in_intermission = False
+        period = None
+        period_type = None
+        events_snapshot = []
+        live_loop_counter = 0
 
-                # Team info
+        # Quickly copy only what we need
+        try:
+            if context.game:
+                game_snapshot = dict(context.game)
+                game_id = context.game_id
+                game_state = context.game_state
+                venue = context.venue
+
                 if context.home_team:
-                    self.status["game"]["home_team"] = f"{context.home_team.abbreviation}"
-                    self.status["game"]["home_score"] = context.game.get("homeTeam", {}).get("score")
+                    home_team_abbrev = context.home_team.abbreviation
+                    home_score = game_snapshot.get("homeTeam", {}).get("score")
 
                 if context.away_team:
-                    self.status["game"]["away_team"] = f"{context.away_team.abbreviation}"
-                    self.status["game"]["away_score"] = context.game.get("awayTeam", {}).get("score")
+                    away_team_abbrev = context.away_team.abbreviation
+                    away_score = game_snapshot.get("awayTeam", {}).get("score")
 
-                # Clock info (Clock object only has time_remaining and in_intermission)
                 if context.clock:
-                    self.status["game"]["time_remaining"] = context.clock.time_remaining
-                    self.status["game"]["in_intermission"] = context.clock.in_intermission
+                    clock_time_remaining = context.clock.time_remaining
+                    clock_in_intermission = context.clock.in_intermission
 
-                # Period info comes from the game data, not Clock
-                if context.game:
-                    period_descriptor = context.game.get("periodDescriptor", {})
-                    self.status["game"]["period"] = period_descriptor.get("number")
-                    # Also store period type (REG, OT, SO) if available
-                    period_type = period_descriptor.get("periodType")
-                    if period_type and period_type != "REG":
-                        period_num = self.status["game"]["period"]
-                        self.status["game"]["period"] = f"{period_num} ({period_type})"
+                period_descriptor = game_snapshot.get("periodDescriptor", {})
+                period = period_descriptor.get("number")
+                period_type = period_descriptor.get("periodType")
+
+            if context.events:
+                events_snapshot = list(context.events)
+
+            if hasattr(context, 'live_loop_counter'):
+                live_loop_counter = context.live_loop_counter
+
+            # Copy social tracking state
+            preview_socials_data = None
+            if hasattr(context, 'preview_socials'):
+                preview_socials_data = {
+                    'core_sent': context.preview_socials.core_sent,
+                    'season_series_sent': context.preview_socials.season_series_sent,
+                    'team_stats_sent': context.preview_socials.team_stats_sent,
+                    'officials_sent': context.preview_socials.officials_sent,
+                }
+
+        except Exception as e:
+            # If snapshot fails, log but don't crash
+            logger.error(f"Error creating game state snapshot: {e}")
+            return
+
+        # STEP 2: Now update status with lock (using snapshots)
+        with self.lock:
+            # Update game info
+            if game_snapshot:
+                self.status["game"]["game_id"] = game_id
+                self.status["game"]["game_state"] = game_state
+                self.status["game"]["venue"] = venue
+                self.status["game"]["home_team"] = home_team_abbrev
+                self.status["game"]["home_score"] = home_score
+                self.status["game"]["away_team"] = away_team_abbrev
+                self.status["game"]["away_score"] = away_score
+                self.status["game"]["time_remaining"] = clock_time_remaining
+                self.status["game"]["in_intermission"] = clock_in_intermission
+
+                # Period info
+                self.status["game"]["period"] = period
+                if period_type and period_type != "REG":
+                    self.status["game"]["period"] = f"{period} ({period_type})"
 
             # Update event counts
-            if context.events:
-                self.status["events"]["total"] = len(context.events)
+            if events_snapshot:
+                self.status["events"]["total"] = len(events_snapshot)
 
                 # Count events by type
                 event_types = {}
-                for event in context.events:
+                for event in events_snapshot:
                     event_type = event.get("typeDescKey", "other")
                     event_types[event_type] = event_types.get(event_type, 0) + 1
 
-                # Map to our tracking categories
+                # Map to tracking categories
                 self.status["events"]["goals"] = event_types.get("goal", 0)
                 self.status["events"]["penalties"] = event_types.get("penalty", 0)
-                self.status["events"]["saves"] = event_types.get("shot-on-goal", 0)  # Approximate
+                self.status["events"]["saves"] = event_types.get("shot-on-goal", 0)
                 self.status["events"]["shots"] = event_types.get("shot-on-goal", 0)
                 self.status["events"]["hits"] = event_types.get("hit", 0)
                 self.status["events"]["blocks"] = event_types.get("blocked-shot", 0)
@@ -170,16 +224,15 @@ class StatusMonitor:
                 self.status["events"]["faceoffs"] = event_types.get("faceoff", 0)
 
             # Update loop counter
-            if hasattr(context, 'live_loop_counter'):
-                self.status["performance"]["live_loop_count"] = context.live_loop_counter
-                self.status["performance"]["last_loop_time"] = datetime.now().isoformat()
+            self.status["performance"]["live_loop_count"] = live_loop_counter
+            self.status["performance"]["last_loop_time"] = datetime.now().isoformat()
 
             # Update social tracking
-            if hasattr(context, 'preview_socials'):
-                self.status["socials"]["preview_posts"]["core_sent"] = context.preview_socials.core_sent
-                self.status["socials"]["preview_posts"]["season_series_sent"] = context.preview_socials.season_series_sent
-                self.status["socials"]["preview_posts"]["team_stats_sent"] = context.preview_socials.team_stats_sent
-                self.status["socials"]["preview_posts"]["officials_sent"] = context.preview_socials.officials_sent
+            if preview_socials_data:
+                self.status["socials"]["preview_posts"]["core_sent"] = preview_socials_data['core_sent']
+                self.status["socials"]["preview_posts"]["season_series_sent"] = preview_socials_data['season_series_sent']
+                self.status["socials"]["preview_posts"]["team_stats_sent"] = preview_socials_data['team_stats_sent']
+                self.status["socials"]["preview_posts"]["officials_sent"] = preview_socials_data['officials_sent']
 
             self._check_health()
             self._write_status()
@@ -286,7 +339,11 @@ class StatusMonitor:
         self.status["health"]["issues"] = issues
 
     def _write_status(self) -> None:
-        """Write status to JSON file."""
+        """Write status to JSON file with error recovery."""
+        # If monitoring is disabled due to too many failures, skip
+        if not self._monitoring_enabled:
+            return
+
         try:
             # Update timestamps and uptime
             now = datetime.now()
@@ -299,8 +356,42 @@ class StatusMonitor:
                 json.dump(self.status, f, indent=2)
             temp_file.replace(self.status_file)
 
+            # Success - reset failure counter
+            self._consecutive_write_failures = 0
+
+        except PermissionError as e:
+            self._consecutive_write_failures += 1
+            logger.error(
+                f"Permission denied writing status file (failure {self._consecutive_write_failures}): {e}"
+            )
+            self._check_disable_monitoring()
+
+        except OSError as e:
+            self._consecutive_write_failures += 1
+            logger.error(
+                f"OS error writing status file (failure {self._consecutive_write_failures}): {e}"
+            )
+            self._check_disable_monitoring()
+
         except Exception as e:
-            logger.error(f"Error writing status file: {e}")
+            self._consecutive_write_failures += 1
+            logger.error(
+                f"Unexpected error writing status file (failure {self._consecutive_write_failures}): {e}",
+                exc_info=True
+            )
+            self._check_disable_monitoring()
+
+    def _check_disable_monitoring(self) -> None:
+        """Disable monitoring if too many consecutive failures."""
+        if self._consecutive_write_failures >= self._max_consecutive_failures:
+            self._monitoring_enabled = False
+            logger.critical(
+                f"Monitoring disabled after {self._max_consecutive_failures} consecutive write failures. "
+                "Bot will continue running but dashboard will show stale data."
+            )
+            logger.critical(
+                "To re-enable, fix the status.json write issue and restart the bot."
+            )
 
     def get_status(self) -> Dict[str, Any]:
         """Get current status as dictionary."""

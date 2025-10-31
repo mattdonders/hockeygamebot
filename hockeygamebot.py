@@ -35,16 +35,90 @@ class SilentHTTPHandler(http.server.SimpleHTTPRequestHandler):
     def log_message(self, format, *args):
         pass  # Suppress all HTTP logs
 
-def start_dashboard_server(port=8000):
-    """Start the dashboard web server in a background thread."""
-    os.chdir(os.path.dirname(os.path.abspath(__file__)))
+def start_dashboard_server(port=8000, max_retries=5):
+    """
+    Start the dashboard web server with error recovery and port file.
 
-    # Use the silent handler to suppress logs
+    Creates .dashboard_port file containing:
+    - Port number
+    - Local IP address
+    - Dashboard URLs
+
+    Args:
+        port: Initial port to try (will increment if in use)
+        max_retries: Maximum number of restart attempts
+    """
+    import errno
+    import socket
+
+    os.chdir(os.path.dirname(os.path.abspath(__file__)))
     Handler = SilentHTTPHandler
 
-    with socketserver.TCPServer(("0.0.0.0", port), Handler) as httpd:
-        logging.info(f"Dashboard server running at http://0.0.0.0:{port}/dashboard.html")
-        httpd.serve_forever()
+    retry_count = 0
+    current_port = port
+
+    while retry_count < max_retries:
+        try:
+            # Try to bind to the port
+            with socketserver.TCPServer(("0.0.0.0", current_port), Handler) as httpd:
+                logging.info(f"Dashboard server running at http://0.0.0.0:{current_port}/dashboard.html")
+
+                # Write port file for easy reference
+                try:
+                    # Get local IP address
+                    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+                    s.connect(("8.8.8.8", 80))
+                    local_ip = s.getsockname()[0]
+                    s.close()
+
+                    # Write port and IP to file
+                    with open('.dashboard_port', 'w') as f:
+                        f.write(f"{current_port}\n")
+                        f.write(f"{local_ip}\n")
+                        f.write(f"http://localhost:{current_port}/dashboard.html\n")
+                        f.write(f"http://{local_ip}:{current_port}/dashboard.html\n")
+
+                    logging.info(f"Dashboard info written to .dashboard_port")
+                    logging.info(f"Network access: http://{local_ip}:{current_port}/dashboard.html")
+                except Exception as e:
+                    logging.warning(f"Could not write dashboard port file: {e}")
+
+                # If we had to use a different port, warn user
+                if current_port != port:
+                    logging.warning(f"Original port {port} unavailable, using {current_port}")
+
+                # Start serving (this blocks)
+                httpd.serve_forever()
+
+        except OSError as e:
+            if e.errno == errno.EADDRINUSE:
+                # Port is already in use, try next port
+                logging.warning(f"Port {current_port} is in use, trying {current_port + 1}")
+                current_port += 1
+                retry_count += 1
+                continue
+            else:
+                # Other OS error, log and retry after delay
+                logging.error(f"Dashboard server error: {e}", exc_info=True)
+                retry_count += 1
+                if retry_count < max_retries:
+                    import time
+                    time.sleep(10)
+                continue
+
+        except Exception as e:
+            # Unexpected error, log and retry
+            logging.error(f"Dashboard server crashed: {e}", exc_info=True)
+            retry_count += 1
+            if retry_count < max_retries:
+                logging.info(f"Restarting dashboard server (attempt {retry_count}/{max_retries})...")
+                import time
+                time.sleep(10)
+            continue
+
+    # If we get here, all retries failed
+    logging.critical(f"Dashboard server failed to start after {max_retries} attempts")
+    logging.critical("Bot will continue running but dashboard will be unavailable")
 
 def start_game_loop(context: GameContext):
     """
