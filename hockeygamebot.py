@@ -264,6 +264,10 @@ def start_game_loop(context: GameContext):
                 "Game is now over and / or 'Official' - run end of game functions with increased sleep time."
             )
 
+            # Set status to RUNNING for final game processing
+            if hasattr(context, 'monitor'):
+                context.monitor.set_status("RUNNING")
+
             # If (for some reason) the bot was started after the end of the game
             # We need to re-run the live loop once to parse all of the events
             if not context.events:
@@ -285,32 +289,116 @@ def start_game_loop(context: GameContext):
                 # Parse Live Game Data
                 parse_live_game(context)
 
+            # Retry loop for final content (three stars may not be available immediately)
+            max_final_attempts = 10  # Check up to 10 times
+            final_attempt = 0
+            final_sleep_time = 30  # Wait 30 seconds between attempts
+
+            while final_attempt < max_final_attempts:
+                final_attempt += 1
+                all_content_posted = True
+
+                logging.info(f"Final content check - attempt {final_attempt}/{max_final_attempts}")
+
+                # 1. Post Final Score (should always be ready)
+                if not context.final_socials.final_score_sent:
+                    try:
+                        final_score_post = final.final_score(context)
+                        if final_score_post:  # Validate not None
+                            bsky_finalscore = context.bluesky_client.post(final_score_post)
+                            if bsky_finalscore:  # Only mark as sent if successful
+                                context.final_socials.final_score_sent = True
+                                context.final_socials.bluesky_root = bsky_finalscore
+                                context.final_socials.bluesky_parent = bsky_finalscore
+                                logging.info("✅ Final score posted successfully")
+                        else:
+                            logging.warning("Final score post returned None")
+                    except Exception as e:
+                        logging.error(f"Error posting final score: {e}", exc_info=True)
+                        if hasattr(context, 'monitor'):
+                            context.monitor.record_error(f"Final score post failed: {e}")
+
+                # 2. Post Three Stars (may not be ready immediately)
+                if not context.final_socials.three_stars_sent:
+                    try:
+                        three_stars_post = final.three_stars(context)
+                        if three_stars_post:  # ✅ Check for None before posting
+                            bsky_threestars = context.bluesky_client.post(three_stars_post)
+                            if bsky_threestars:  # Only mark as sent if successful
+                                context.final_socials.three_stars_sent = True
+                                context.final_socials.bluesky_parent = bsky_threestars
+                                logging.info("✅ Three stars posted successfully")
+                        else:
+                            logging.info("⏳ Three stars not available yet, will retry")
+                            all_content_posted = False
+                    except Exception as e:
+                        logging.error(f"Error posting three stars: {e}", exc_info=True)
+                        if hasattr(context, 'monitor'):
+                            context.monitor.record_error(f"Three stars post failed: {e}")
+
+                # 3. Post Team Stats Chart
+                if not context.final_socials.team_stats_sent:
+                    try:
+                        right_rail_data = schedule.fetch_rightrail(context.game_id)
+                        team_stats_data = right_rail_data.get("teamGameStats")
+                        if team_stats_data:
+                            chart_path = charts.teamstats_chart(context, team_stats_data, ingame=True)
+                            if chart_path:  # ✅ Validate chart was created
+                                chart_message = f"Final team stats for tonight's game.\n\n{context.preferred_team.hashtag} | {context.game_hashtag}"
+                                bsky_teamstats = context.bluesky_client.post(
+                                    message=chart_message,
+                                    media=chart_path,
+                                    reply_parent=context.final_socials.bluesky_parent,
+                                    reply_root=context.final_socials.bluesky_root,
+                                )
+                                if bsky_teamstats:  # Only mark as sent if successful
+                                    context.final_socials.team_stats_sent = True
+                                    context.final_socials.bluesky_parent = bsky_teamstats
+                                    logging.info("✅ Team stats chart posted successfully")
+                            else:
+                                logging.warning("Team stats chart returned None")
+                        else:
+                            logging.warning("Team stats data not available")
+                    except Exception as e:
+                        logging.error(f"Error posting team stats: {e}", exc_info=True)
+                        if hasattr(context, 'monitor'):
+                            context.monitor.record_error(f"Team stats post failed: {e}")
+
+                # Check if all required content has been posted
+                if (context.final_socials.final_score_sent and
+                    context.final_socials.three_stars_sent and
+                    context.final_socials.team_stats_sent):
+                    logging.info("🎉 All final content posted successfully!")
+                    end_game_loop(context)
+                    return  # Exit the function
+
+                # If not all content posted and we have attempts remaining, sleep and retry
+                if final_attempt < max_final_attempts:
+                    if hasattr(context, 'monitor'):
+                        context.monitor.set_status("SLEEPING")
+                    logging.info(f"Waiting {final_sleep_time}s before next final content check...")
+                    time.sleep(final_sleep_time)
+                    if hasattr(context, 'monitor'):
+                        context.monitor.set_status("RUNNING")
+
+            # If we exhausted all attempts, log what's missing and exit anyway
+            missing_content = []
             if not context.final_socials.final_score_sent:
-                final_score_post = final.final_score(context)
-                bsky_finalscore = context.bluesky_client.post(final_score_post)
-                context.final_socials.final_score_sent = True
-                if bsky_finalscore:
-                    logging.debug(vars(bsky_finalscore))
-                    context.final_socials.bluesky_root = bsky_finalscore
-                    context.final_socials.bluesky_parent = bsky_finalscore
-
+                missing_content.append("final score")
             if not context.final_socials.three_stars_sent:
-                three_stars_post = final.three_stars(context)
-                bsky_threestars = context.bluesky_client.post(three_stars_post)
-                context.final_socials.three_stars_sent = True
-                if bsky_threestars:
-                    logging.debug(vars(bsky_threestars))
-                    context.final_socials.bluesky_parent = bsky_threestars
-
+                missing_content.append("three stars")
             if not context.final_socials.team_stats_sent:
-                right_rail_data = schedule.fetch_rightrail(context.game_id)
-                team_stats_data = right_rail_data.get("teamGameStats")
-                if team_stats_data:
-                    chart_path = charts.teamstats_chart(context, team_stats_data, ingame=True)
-                    chart_message = "Team Game Stats"
+                missing_content.append("team stats")
+
+            if missing_content:
+                logging.warning(f"⚠️  Max final attempts reached. Missing content: {', '.join(missing_content)}")
+                if hasattr(context, 'monitor'):
+                    context.monitor.record_error(f"Incomplete final content: {', '.join(missing_content)}")
 
             end_game_loop(context)
+
         else:
+            logging.error(f"Unknown game state: {context.game_state}")
             print(context.game_state)
             sys.exit()
 

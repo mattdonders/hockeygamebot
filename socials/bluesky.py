@@ -167,6 +167,16 @@ class BlueskyClient:
                 reply_post=parent_post_ref
             )
         """
+
+        # Validation for Empty Messages or non-strings
+        if not message:
+            logging.warning("Attempted to post empty/None message to Bluesky - skipping")
+            return None
+
+        if not isinstance(message, str):
+            logging.error(f"Invalid message type: {type(message).__name__}. Expected str.")
+            return None
+
         if self.nosocial:
             logging.info(f"[NOSOCIAL] {message}")
             # Track social post in monitor (even in nosocial mode for testing)
