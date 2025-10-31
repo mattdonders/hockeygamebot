@@ -248,3 +248,4 @@ cache/
 
 # Celery
 celerybeat-schedule
+.dashboard_port
