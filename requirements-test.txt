@@ -1,0 +1,11 @@
+# Test Dependencies
+# Install with: pip install -r requirements-test.txt
+
+# Testing framework
+pytest>=7.4.0
+pytest-cov>=4.1.0          # Code coverage
+pytest-mock>=3.11.1         # Mocking helpers
+
+# Testing utilities
+freezegun>=1.2.2            # Mock datetime
+responses>=0.23.0           # Mock HTTP requests
