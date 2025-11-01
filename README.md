@@ -3,7 +3,7 @@
 [![Version](https://img.shields.io/badge/version-2.0.0-brightgreen.svg)](https://shields.io/)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](http://makeapullrequest.com)
 [![Maintained](https://img.shields.io/maintenance/yes/2025)]()
-[![Python Version](https://img.shields.io/badge/python-3.10%2B-blue)]()
+[![Python Version](https://img.shields.io/badge/python-3.11%2B-blue)]()
 
 The **Hockey Game Bot** is a Python application that leverages the NHL API and hockey statistics sites to send real-time game updates to social media platforms. The bot provides fans with a comprehensive view of NHL games including live events, statistics, and advanced analytics - all in one convenient place.
 
@@ -63,7 +63,7 @@ The dashboard provides real-time visibility into your bot:
 
 ### Prerequisites
 
-- **Python 3.10 or higher**
+- **Python 3.11 or higher** (for optimal performance and security)
 - Basic understanding of virtualenv and pip
 - A server or computer that can run continuously (Raspberry Pi, AWS EC2, local machine, etc.)
 
