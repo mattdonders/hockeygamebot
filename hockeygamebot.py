@@ -13,6 +13,13 @@ import os
 from matplotlib import font_manager, rcParams
 import requests
 
+import warnings
+warnings.filterwarnings(
+    "ignore",
+    message="The 'default' attribute.*`Field\\(\\)`",
+    category=UserWarning,
+)
+
 from core import final
 from core import charts
 from core.charts import intermission_chart, teamstats_chart
