@@ -61,7 +61,7 @@ def parse_live_game(context: GameContext):
     logging.debug("Number of *TOTAL* Events Retrieved from PBP: %s", len(all_events))
     logging.info("%s total event(s) detected in PBP - checking for new events.", len(all_events))
 
-    goal_events = [event for event in all_events if event["typeDescKey"] == "goal"]
+    goal_events = [event for event in all_events if event.get("typeDescKey") == "goal"]
     logging.debug("Number of *GOAL* Events Retrieved from PBP: %s", len(goal_events))
 
     last_sort_order = context.last_sort_order
