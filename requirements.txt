@@ -1,19 +1,14 @@
-# Hockey Game Bot V2 - Dependencies
-# Python 3.9+ required
+# Hockey Game Bot V2 - Security-Updated Dependencies
+# Python 3.8+ supported (but 3.9+ recommended - see upgrade guide)
 
-# Core Dependencies
+# Core Dependencies - SECURITY UPDATED VERSIONS
 atproto>=0.0.40        # Bluesky AT Protocol client
 httpx>=0.24.0          # HTTP client for Bluesky
 PyYAML>=6.0            # Configuration file parsing
 matplotlib>=3.7.0      # Chart generation
-Pillow>=10.0.0         # Image processing
+Pillow>=10.3.0         # Image processing - SECURITY: Fixes CVE-2023-50447 (Critical), CVE-2024-28219 (High), and multiple other CVEs
 pytz>=2023.3           # Timezone handling
-requests>=2.31.0       # HTTP requests for NHL API
-
-# Development Dependencies (optional - install with: pip install -r requirements-dev.txt)
-# pytest>=7.4.0
-# pytest-cov>=4.1.0
-# black>=23.0.0
-# pylint>=2.17.0
-# mypy>=1.0.0
-# pre-commit>=3.3.0
+requests>=2.32.4       # HTTP requests for NHL API - SECURITY: Fixes CVE-2024-47081 (netrc credential leak)
+pandas>=2.0.0          # Data analysis and manipulation - REQUIRED: Used by core/charts.py and core/integrations/nst.py
+numpy>=1.22.0          # Numerical computing - SECURITY: Fixes CVE-2021-34141 (Incorrect Comparison)
+lxml>=4.9.1            # XML/HTML processing - SECURITY: Fixes multiple moderate CVEs including XSS and DoS issues
