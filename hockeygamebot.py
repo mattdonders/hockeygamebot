@@ -1,46 +1,48 @@
 import argparse
-import logging
-from datetime import datetime, timedelta
-import os
-import sys
-import time
-
-import threading
 import http.server
-import socketserver
+import logging
 import os
-
-from matplotlib import font_manager, rcParams
-import requests
-
+import socketserver
+import sys
+import threading
+import time
 import warnings
+from datetime import datetime, timedelta
+from pprint import pformat
+
+import requests
+from matplotlib import font_manager, rcParams
+
 warnings.filterwarnings(
     "ignore",
     message="The 'default' attribute.*`Field\\(\\)`",
     category=UserWarning,
 )
 
-from core import final
-from core import charts
-from core.charts import intermission_chart, teamstats_chart
-from core.integrations import nst
-from core.models.team import Team
+import core.preview as preview
 import core.rosters as rosters
 import core.schedule as schedule
-from definitions import RESOURCES_DIR
 import utils.others as otherutils
-from core.play_by_play import parse_play_by_play_with_names
-import core.preview as preview
+from core import charts, final
+from core.charts import intermission_chart, teamstats_chart
+from core.integrations import nst
 from core.live import parse_live_game
+from core.models.game_context import GameContext
+from core.models.team import Team
+from core.play_by_play import parse_play_by_play_with_names
+from definitions import RESOURCES_DIR
 from socials.bluesky import BlueskyClient
+from socials.publisher import SocialPublisher
+from socials.utils import any_posted, seed_roots_from_results
 from utils.config import load_config
 from utils.status_monitor import StatusMonitor
 from utils.team_details import TEAM_DETAILS
-from core.models.game_context import GameContext
+
 
 class SilentHTTPHandler(http.server.SimpleHTTPRequestHandler):
     def log_message(self, format, *args):
         pass  # Suppress all HTTP logs
+
 
 def start_dashboard_server(port=8000, max_retries=5):
     """
@@ -79,7 +81,7 @@ def start_dashboard_server(port=8000, max_retries=5):
                     s.close()
 
                     # Write port and IP to file
-                    with open('.dashboard_port', 'w') as f:
+                    with open(".dashboard_port", "w") as f:
                         f.write(f"{current_port}\n")
                         f.write(f"{local_ip}\n")
                         f.write(f"http://localhost:{current_port}/dashboard.html\n")
@@ -110,6 +112,7 @@ def start_dashboard_server(port=8000, max_retries=5):
                 retry_count += 1
                 if retry_count < max_retries:
                     import time
+
                     time.sleep(10)
                 continue
 
@@ -120,12 +123,14 @@ def start_dashboard_server(port=8000, max_retries=5):
             if retry_count < max_retries:
                 logging.info(f"Restarting dashboard server (attempt {retry_count}/{max_retries})...")
                 import time
+
                 time.sleep(10)
             continue
 
     # If we get here, all retries failed
     logging.critical(f"Dashboard server failed to start after {max_retries} attempts")
     logging.critical("Bot will continue running but dashboard will be unavailable")
+
 
 def start_game_loop(context: GameContext):
     """
@@ -152,7 +157,7 @@ def start_game_loop(context: GameContext):
         context.clock.update(clock_data)
 
         # Update monitoring dashboard with current game state
-        if hasattr(context, 'monitor'):
+        if hasattr(context, "monitor"):
             context.monitor.update_game_state(context)
 
         # If we enter this function on the day of a game (before the game starts), gameState = "FUT"
@@ -163,71 +168,88 @@ def start_game_loop(context: GameContext):
             # Generate and post the game time preview
             if not context.preview_socials.core_sent:
                 game_time_post = preview.format_future_game_post(context.game, context)
-                bsky_gametime = context.bluesky_client.post(game_time_post)
-                context.preview_socials.core_sent = True
-                if bsky_gametime:
-                    logging.debug(vars(bsky_gametime))
-                    context.preview_socials.bluesky_root = bsky_gametime
-                    context.preview_socials.bluesky_parent = bsky_gametime
-                logging.info("Posted game time preview.")
+                try:
+                    # Handles posting + seeding thread roots automatically
+                    context.social.post_and_seed(
+                        message=game_time_post, platforms="enabled", state=context.preview_socials
+                    )
+                    context.preview_socials.core_sent = True
+                    logging.info("Posted and seeded pre-game thread roots.")
+                except Exception as e:
+                    logging.exception("Failed to post preview: %s", e)
 
-            # Generate and post the season series preview
             if not context.preview_socials.season_series_sent:
-                # Fetch the team schedule and calculate the season series
-                team_schedule = schedule.fetch_schedule(
-                    context.preferred_team.abbreviation, context.season_id
-                )
-                home_team = context.game["homeTeam"]["abbrev"]
-                away_team = context.game["awayTeam"]["abbrev"]
-                opposing_team = away_team if home_team == context.preferred_team.abbreviation else home_team
-
-                season_series_post = preview.format_season_series_post(
-                    team_schedule, context.preferred_team.abbreviation, opposing_team, context
-                )
-                bsky_seasonseries = context.bluesky_client.post(
-                    season_series_post, reply_root=bsky_gametime, reply_parent=bsky_gametime
-                )
-                context.preview_socials.season_series_sent = True
-                if bsky_seasonseries:
-                    logging.debug(vars(bsky_seasonseries))
-                    context.preview_socials.bluesky_parent = bsky_seasonseries
-                logging.info("Posted season series preview.")
-
-            if not context.preview_socials.team_stats_sent:
-                right_rail_data = schedule.fetch_rightrail(context.game_id)
-                teamstats_data = right_rail_data.get("teamSeasonStats")
-                teamstats_chart_path = teamstats_chart(context, teamstats_data, ingame=False)
-                teamstats_msg = f"Pre-Game team stats for {context.game_time_of_day}'s game."
-                if teamstats_chart_path:
-                    bsky_teamstats = context.bluesky_client.post(
-                        message=teamstats_msg,
-                        media=teamstats_chart_path,
-                        reply_parent=context.preview_socials.bluesky_parent,
-                        reply_root=context.preview_socials.bluesky_root,
+                try:
+                    team_schedule = schedule.fetch_schedule(
+                        context.preferred_team.abbreviation, context.season_id
                     )
-                    context.preview_socials.team_stats_sent = True
-                    if bsky_teamstats:
-                        logging.debug(vars(bsky_teamstats))
-                        context.preview_socials.bluesky_parent = bsky_teamstats
-                    logging.info("Posted pre-game team stats chart.")
+                    home_team = context.game["homeTeam"]["abbrev"]
+                    away_team = context.game["awayTeam"]["abbrev"]
+                    opposing_team = (
+                        away_team if home_team == context.preferred_team.abbreviation else home_team
+                    )
 
-            # Get Referees from "Right Rail" of Gamecenter Page
+                    season_series_post = preview.format_season_series_post(
+                        team_schedule, context.preferred_team.abbreviation, opposing_team, context
+                    )
+
+                    # Reply into the existing pre-game thread on all enabled platforms
+                    context.social.reply(
+                        message=season_series_post,
+                        platforms="enabled",
+                        state=context.preview_socials,  # keeps roots/parents advancing
+                    )
+
+                    context.preview_socials.season_series_sent = True
+                    logging.info("Posted season series preview (threaded).")
+                except Exception as e:
+                    logging.exception("Failed to post season series preview: %s", e)
+
+            # Post pre-game team stats chart (reply under the same thread)
+            if not context.preview_socials.team_stats_sent and context.preview_socials.core_sent:
+                try:
+                    right_rail_data = schedule.fetch_rightrail(context.game_id)
+                    teamstats_data = right_rail_data.get("teamSeasonStats")
+                    chart_path = teamstats_chart(context, teamstats_data, ingame=False)
+
+                    if chart_path:
+                        msg = f"Pre-game team stats for {context.game_time_of_day}'s game."
+                        context.social.reply(
+                            message=msg,
+                            media=chart_path,
+                            platforms="enabled",
+                            alt_text="Pre-game team stats comparison",
+                        )
+                        context.preview_socials.team_stats_sent = True
+                        logging.info("Posted pre-game team stats chart (threaded).")
+                    else:
+                        logging.info("No team stats chart produced; skipping.")
+                except Exception as e:
+                    logging.exception("Failed to post pre-game team stats chart: %s", e)
+
+            # Post officials (reply under the same thread)
             if not context.preview_socials.officials_sent:
-                officials_post = preview.generate_referees_post(context)
-                if officials_post:
-                    bsky_officials = context.bluesky_client.post(
-                        officials_post,
-                        reply_parent=context.preview_socials.bluesky_parent,
-                        reply_root=context.preview_socials.bluesky_root,
-                    )
-                    context.preview_socials.officials_sent = True
-                    if bsky_officials:
-                        logging.debug(vars(bsky_officials))
-                        context.preview_socials.bluesky_parent = bsky_officials
-                    logging.info("Posted season series preview.")
+                try:
+                    officials_post = preview.generate_referees_post(context)
+                    if officials_post:
+                        context.social.reply(
+                            message=officials_post,
+                            platforms="enabled",
+                            state=context.preview_socials,  # keeps roots/parents advancing
+                        )
+                        context.preview_socials.officials_sent = True
+                        logging.info("Posted officials preview (threaded).")
+                    else:
+                        logging.info("No officials info available; skipping.")
+                except Exception as e:
+                    logging.exception("Failed to post officials preview: %s", e)
+
+            logging.debug("SocialPublisher: %s", context.social.__dict__)
+            logging.info("PreviewSocials state:\n%s", pformat(context.preview_socials))
+            sys.exit("[TEST] Stopping after preview-post sanity check.")
 
             # Use our auto-sleep calculator now
-            if hasattr(context, 'monitor'):
+            if hasattr(context, "monitor"):
                 context.monitor.set_status("SLEEPING")
             preview.preview_sleep_calculator(context)
 
@@ -236,7 +258,7 @@ def start_game_loop(context: GameContext):
             logging.info("Handling a LIVE game state: %s", context.game_state)
 
             # Set status to RUNNING when actively processing game
-            if hasattr(context, 'monitor'):
+            if hasattr(context, "monitor"):
                 context.monitor.set_status("RUNNING")
 
             if not context.gametime_rosters_set:
@@ -255,7 +277,7 @@ def start_game_loop(context: GameContext):
                 logging.info(
                     "Game is in intermission - sleep for the remaining time (%ss).", intermission_sleep_time
                 )
-                if hasattr(context, 'monitor'):
+                if hasattr(context, "monitor"):
                     context.monitor.set_status("SLEEPING")
                 time.sleep(intermission_sleep_time)
             else:
@@ -272,7 +294,7 @@ def start_game_loop(context: GameContext):
             )
 
             # Set status to RUNNING for final game processing
-            if hasattr(context, 'monitor'):
+            if hasattr(context, "monitor"):
                 context.monitor.set_status("RUNNING")
 
             # If (for some reason) the bot was started after the end of the game
@@ -322,7 +344,7 @@ def start_game_loop(context: GameContext):
                             logging.warning("Final score post returned None")
                     except Exception as e:
                         logging.error(f"Error posting final score: {e}", exc_info=True)
-                        if hasattr(context, 'monitor'):
+                        if hasattr(context, "monitor"):
                             context.monitor.record_error(f"Final score post failed: {e}")
 
                 # 2. Post Three Stars (may not be ready immediately)
@@ -340,7 +362,7 @@ def start_game_loop(context: GameContext):
                             all_content_posted = False
                     except Exception as e:
                         logging.error(f"Error posting three stars: {e}", exc_info=True)
-                        if hasattr(context, 'monitor'):
+                        if hasattr(context, "monitor"):
                             context.monitor.record_error(f"Three stars post failed: {e}")
 
                 # 3. Post Team Stats Chart
@@ -368,24 +390,26 @@ def start_game_loop(context: GameContext):
                             logging.warning("Team stats data not available")
                     except Exception as e:
                         logging.error(f"Error posting team stats: {e}", exc_info=True)
-                        if hasattr(context, 'monitor'):
+                        if hasattr(context, "monitor"):
                             context.monitor.record_error(f"Team stats post failed: {e}")
 
                 # Check if all required content has been posted
-                if (context.final_socials.final_score_sent and
-                    context.final_socials.three_stars_sent and
-                    context.final_socials.team_stats_sent):
+                if (
+                    context.final_socials.final_score_sent
+                    and context.final_socials.three_stars_sent
+                    and context.final_socials.team_stats_sent
+                ):
                     logging.info("🎉 All final content posted successfully!")
                     end_game_loop(context)
                     return  # Exit the function
 
                 # If not all content posted and we have attempts remaining, sleep and retry
                 if final_attempt < max_final_attempts:
-                    if hasattr(context, 'monitor'):
+                    if hasattr(context, "monitor"):
                         context.monitor.set_status("SLEEPING")
                     logging.info(f"Waiting {final_sleep_time}s before next final content check...")
                     time.sleep(final_sleep_time)
-                    if hasattr(context, 'monitor'):
+                    if hasattr(context, "monitor"):
                         context.monitor.set_status("RUNNING")
 
             # If we exhausted all attempts, log what's missing and exit anyway
@@ -398,8 +422,10 @@ def start_game_loop(context: GameContext):
                 missing_content.append("team stats")
 
             if missing_content:
-                logging.warning(f"⚠️  Max final attempts reached. Missing content: {', '.join(missing_content)}")
-                if hasattr(context, 'monitor'):
+                logging.warning(
+                    f"⚠️  Max final attempts reached. Missing content: {', '.join(missing_content)}"
+                )
+                if hasattr(context, "monitor"):
                     context.monitor.record_error(f"Incomplete final content: {', '.join(missing_content)}")
 
             end_game_loop(context)
@@ -650,12 +676,31 @@ def main():
     preferred_team = Team(team_name)
 
     # Initialize Bluesky Client
-    bluesky_environment = "debug" if args.debugsocial else "prod"
-    bluesky_account = config["bluesky"][bluesky_environment]["account"]
-    bluesky_password = config["bluesky"][bluesky_environment]["password"]
-    bluesky_client = BlueskyClient(account=bluesky_account, password=bluesky_password, nosocial=args.nosocial)
-    bluesky_client.login()
-    logging.info(f"Bluesky client initialized for environment: {bluesky_environment}.")
+    # bluesky_environment = "debug" if args.debugsocial else "prod"
+    # bluesky_account = config["bluesky"][bluesky_environment]["account"]
+    # bluesky_password = config["bluesky"][bluesky_environment]["password"]
+    # bluesky_client = BlueskyClient(account=bluesky_account, password=bluesky_password, nosocial=args.nosocial)
+    # bluesky_client.login()
+    # logging.info(f"Bluesky client initialized for environment: {bluesky_environment}.")
+
+    # Initialize unified Social Publisher (handles Bluesky + Threads)
+    # Resolve social mode (CLI can still force debug via --debugsocial if you want)
+    config_mode = str(config.get("script", {}).get("mode", "prod")).lower()
+    social_mode = "debug" if (args.debugsocial or config_mode == "debug") else "prod"
+    debug_social_flag = bool(social_mode == "debug")
+
+    # Instantiate publisher; let it read script.nosocial from the YAML
+    publisher = SocialPublisher(config=config, mode=social_mode)
+    publisher.login_all()  # safe no-op for Threads
+
+    # Log exactly what the publisher is using
+    yaml_nosocial = bool(config.get("script", {}).get("nosocial", False))
+    logging.info(
+        "SocialPublisher initialized (mode=%s, nosocial=%s) [yaml=%s]",
+        social_mode,
+        publisher.nosocial,  # authoritative
+        yaml_nosocial,  # helpful for debugging config vs runtime
+    )
 
     # Load Custom Fonts for Charts
     inter_font_path = os.path.join(RESOURCES_DIR, "Inter-Regular.ttf")
@@ -664,7 +709,10 @@ def main():
 
     # Create the GameContext
     context = GameContext(
-        config=config, bluesky_client=bluesky_client, nosocial=args.nosocial, debugsocial=args.debugsocial
+        config=config,
+        social=publisher,
+        nosocial=publisher.nosocial,
+        debugsocial=debug_social_flag,
     )
 
     # After creating monitor
@@ -672,7 +720,8 @@ def main():
     context.monitor = monitor
 
     # Attach the Monitor to BlueSky Client & Schedule Modules
-    bluesky_client.monitor = monitor
+    # bluesky_client.monitor = monitor
+    publisher.monitor = monitor
     schedule.set_monitor(monitor)
 
     # Add Preferred Team to GameContext
@@ -710,13 +759,13 @@ def main():
 
     except Exception as e:
         logging.error(f"Error occurred: {e}", exc_info=True)
-        if hasattr(context, 'monitor'):
+        if hasattr(context, "monitor"):
             context.monitor.record_error(str(e))
             context.monitor.set_status("ERROR")
 
     finally:
         # Shutdown monitor gracefully
-        if 'context' in locals() and hasattr(context, 'monitor'):
+        if "context" in locals() and hasattr(context, "monitor"):
             context.monitor.shutdown()
 
 

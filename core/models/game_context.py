@@ -1,10 +1,14 @@
 from datetime import datetime, timezone
+from typing import Any, Dict, Optional
 
 import pytz
+
 from core.models.clock import Clock
 from core.models.team import Team
 from socials.bluesky import BlueskyClient
-from socials.social_state import StartOfGameSocial, EndOfGameSocial
+from socials.publisher import SocialPublisher
+from socials.social_state import EndOfGameSocial, StartOfGameSocial
+from socials.types import PostRef
 
 
 class GameContext:
@@ -60,11 +64,14 @@ class GameContext:
         __init__: Initializes the `GameContext` with configuration and shared resources.
     """
 
-    def __init__(self, config, bluesky_client, nosocial=False, debugsocial=False):
+    def __init__(
+        self, config: dict, social: SocialPublisher, nosocial: bool = False, debugsocial: bool = False
+    ):
         self.config = config
-        self.bluesky_client: BlueskyClient = bluesky_client
-        self.nosocial = nosocial
-        self.debugsocial = debugsocial
+        self.social = social  # unified SocialPublisher (Bluesky+Threads)
+        self.bluesky_client = social  # back-compat shim for old call sites
+        self.nosocial: bool = nosocial
+        self.debugsocial: bool = debugsocial
 
         # Attributes Below are Not Passed-In at Initialization Time
         self.game = None
@@ -100,6 +107,37 @@ class GameContext:
         # Social Media Related Trackers
         self.preview_socials = StartOfGameSocial()
         self.final_socials = EndOfGameSocial()
+
+    # -------------------------
+    # Helpers
+    # -------------------------
+    @staticmethod
+    def make_post_ref(res: Optional[Dict[str, Any]]) -> Optional[PostRef]:
+        """
+        Normalize a publisher result dict (from Bluesky/Threads/etc.) into PostRef.
+        Expected keys (best-effort, optional in input):
+          - platform: str
+          - id: str (Threads published/creation id; Bluesky URI)
+          - uri: str (Bluesky)
+          - cid: str (Bluesky)
+          - published: bool
+        """
+        if not res:
+            return None
+
+        platform = str(res.get("platform", "unknown"))
+        canonical_id = (
+            res.get("id") or res.get("uri") or res.get("published_id") or res.get("container_id") or ""
+        )
+
+        return PostRef(
+            platform=platform,
+            id=str(canonical_id),
+            uri=res.get("uri"),
+            cid=res.get("cid"),
+            published=bool(res.get("published", True)),
+            raw=res,
+        )
 
     @property
     def game_time_of_day(self):
