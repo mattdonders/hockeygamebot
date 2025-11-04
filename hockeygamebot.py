@@ -8,10 +8,8 @@ import threading
 import time
 import warnings
 from datetime import datetime, timedelta
-from pprint import pformat
 
-import requests
-from matplotlib import font_manager, rcParams
+from matplotlib import font_manager
 
 warnings.filterwarnings(
     "ignore",
@@ -24,16 +22,13 @@ import core.rosters as rosters
 import core.schedule as schedule
 import utils.others as otherutils
 from core import charts, final
-from core.charts import intermission_chart, teamstats_chart
+from core.charts import teamstats_chart
 from core.integrations import nst
 from core.live import parse_live_game
 from core.models.game_context import GameContext
 from core.models.team import Team
-from core.play_by_play import parse_play_by_play_with_names
 from definitions import RESOURCES_DIR
-from socials.bluesky import BlueskyClient
 from socials.publisher import SocialPublisher
-from socials.utils import any_posted, seed_roots_from_results
 from utils.config import load_config
 from utils.status_monitor import StatusMonitor
 from utils.team_details import TEAM_DETAILS
@@ -87,7 +82,7 @@ def start_dashboard_server(port=8000, max_retries=5):
                         f.write(f"http://localhost:{current_port}/dashboard.html\n")
                         f.write(f"http://{local_ip}:{current_port}/dashboard.html\n")
 
-                    logging.info(f"Dashboard info written to .dashboard_port")
+                    logging.info("Dashboard info written to .dashboard_port")
                     logging.info(f"Network access: http://{local_ip}:{current_port}/dashboard.html")
                 except Exception as e:
                     logging.warning(f"Could not write dashboard port file: {e}")
@@ -219,6 +214,7 @@ def start_game_loop(context: GameContext):
                             media=chart_path,
                             platforms="enabled",
                             alt_text="Pre-game team stats comparison",
+                            state=context.preview_socials,
                         )
                         context.preview_socials.team_stats_sent = True
                         logging.info("Posted pre-game team stats chart (threaded).")
@@ -243,10 +239,6 @@ def start_game_loop(context: GameContext):
                         logging.info("No officials info available; skipping.")
                 except Exception as e:
                     logging.exception("Failed to post officials preview: %s", e)
-
-            logging.debug("SocialPublisher: %s", context.social.__dict__)
-            logging.info("PreviewSocials state:\n%s", pformat(context.preview_socials))
-            sys.exit("[TEST] Stopping after preview-post sanity check.")
 
             # Use our auto-sleep calculator now
             if hasattr(context, "monitor"):
@@ -334,12 +326,13 @@ def start_game_loop(context: GameContext):
                     try:
                         final_score_post = final.final_score(context)
                         if final_score_post:  # Validate not None
-                            bsky_finalscore = context.bluesky_client.post(final_score_post)
-                            if bsky_finalscore:  # Only mark as sent if successful
-                                context.final_socials.final_score_sent = True
-                                context.final_socials.bluesky_root = bsky_finalscore
-                                context.final_socials.bluesky_parent = bsky_finalscore
-                                logging.info("✅ Final score posted successfully")
+                            results = context.social.post_and_seed(
+                                message=final_score_post,
+                                platforms="enabled",
+                                state=context.final_socials,
+                            )
+                            context.final_socials.final_score_sent = True
+                            logging.info("Posted and seeded final score thread roots.")
                         else:
                             logging.warning("Final score post returned None")
                     except Exception as e:
@@ -351,12 +344,14 @@ def start_game_loop(context: GameContext):
                 if not context.final_socials.three_stars_sent:
                     try:
                         three_stars_post = final.three_stars(context)
-                        if three_stars_post:  # ✅ Check for None before posting
-                            bsky_threestars = context.bluesky_client.post(three_stars_post)
-                            if bsky_threestars:  # Only mark as sent if successful
-                                context.final_socials.three_stars_sent = True
-                                context.final_socials.bluesky_parent = bsky_threestars
-                                logging.info("✅ Three stars posted successfully")
+                        if three_stars_post:
+                            res = context.social.reply(
+                                message=three_stars_post,
+                                platforms="enabled",
+                                state=context.final_socials,  # uses seeded roots/parents
+                            )
+                            context.final_socials.three_stars_sent = True
+                            logging.info("Posted three stars reply successfully.")
                         else:
                             logging.info("⏳ Three stars not available yet, will retry")
                             all_content_posted = False
@@ -374,16 +369,14 @@ def start_game_loop(context: GameContext):
                             chart_path = charts.teamstats_chart(context, team_stats_data, ingame=True)
                             if chart_path:  # ✅ Validate chart was created
                                 chart_message = f"Final team stats for tonight's game.\n\n{context.preferred_team.hashtag} | {context.game_hashtag}"
-                                bsky_teamstats = context.bluesky_client.post(
+                                res = context.social.reply(
                                     message=chart_message,
                                     media=chart_path,
-                                    reply_parent=context.final_socials.bluesky_parent,
-                                    reply_root=context.final_socials.bluesky_root,
+                                    platforms="enabled",
+                                    state=context.final_socials,  # auto-picks the current parent
                                 )
-                                if bsky_teamstats:  # Only mark as sent if successful
-                                    context.final_socials.team_stats_sent = True
-                                    context.final_socials.bluesky_parent = bsky_teamstats
-                                    logging.info("✅ Team stats chart posted successfully")
+                                context.final_socials.team_stats_sent = True
+                                logging.info("Posted team stats chart reply successfully.")
                             else:
                                 logging.warning("Team stats chart returned None")
                         else:
@@ -614,10 +607,13 @@ def handle_was_game_yesterday(game, yesterday, context: GameContext):
     game_recap_msg = f"{game_headline}\n\nGame Recap: {game_recap_url}"
     game_condensed_msg = f"{game_summary}\n\nCondensed Game: {game_condensed_url}"
 
-    bsky_recap = context.bluesky_client.post(game_recap_msg, link=game_recap_url)
-    bsky_condensed = context.bluesky_client.post(
-        game_condensed_msg, link=game_condensed_url, reply_parent=bsky_recap, reply_root=bsky_recap
-    )
+    try:
+        # TBD: Removed threading from Game Recap / Condensed posts for now
+        context.social.post(message=game_recap_msg, platforms="enabled")
+        context.social.post(message=game_condensed_msg, platforms="enabled")
+        logging.info("Posted Game Recap & Condensed Game Videos to Socials.")
+    except Exception as e:
+        logging.exception("Failed to post recap/condensed game: %s", e)
 
     logging.info("Generating Season & L10 Team Stat Charts from Natural Stat Trick.")
     team_season_msg = (
@@ -636,7 +632,15 @@ def handle_was_game_yesterday(game, yesterday, context: GameContext):
         team_season_fig_last10_all,
     ]
 
-    bsky_seasonimg = context.bluesky_client.post(team_season_msg, media=team_season_charts)
+    try:
+        context.social.post(
+            message=team_season_msg,
+            media=team_season_charts,  # list[str]; Bluesky multi-image, Threads mini-thread
+            platforms="enabled",
+        )
+        logging.info("Posted season charts successfully.")
+    except Exception as e:
+        logging.exception("Failed to post season charts: %s", e)
 
 
 def main():
