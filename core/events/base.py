@@ -1,4 +1,5 @@
-import logging
+from typing import List, Optional, Union
+
 from core.models.game_context import GameContext
 from utils.others import ordinal
 
@@ -115,6 +116,63 @@ class Event:
 
     def post_message(
         self,
+        message: str,
+        link: Optional[str] = None,
+        add_hashtags: bool = True,
+        add_score: bool = True,
+        media: Optional[Union[str, List[str]]] = None,
+        alt_text: str = "",
+    ) -> None:
+        """
+        Fire-and-forget post for regular events (no threading).
+        Supports text-only, single image (str), or multi-image (list[str]).
+        Delegates to the unified SocialPublisher (Bluesky/Threads parity).
+        Never raises; logs exceptions via context.logger if available.
+        """
+        # Respect debugsocial for hashtags
+        add_hashtags = False if getattr(self.context, "debugsocial", False) else add_hashtags
+
+        # Footer (hashtags + score)
+        footer_parts: List[str] = []
+        if add_hashtags:
+            try:
+                hashtag = getattr(self.context.preferred_team, "hashtag", "")
+                if hashtag:
+                    footer_parts.append(hashtag)
+            except Exception:
+                pass
+
+        if add_score:
+            try:
+                pref = self.context.preferred_team
+                other = self.context.other_team
+                footer_parts.append(
+                    f"{pref.abbreviation}: {pref.score} / {other.abbreviation}: {other.score}"
+                )
+            except Exception:
+                pass
+
+        text = message
+        if footer_parts:
+            text += "\n\n" + " | ".join(footer_parts)
+        if link:
+            text += f"\n\n{link}"
+
+        # Fan out to Bluesky + Threads (Publisher handles platform quirks + multi-image)
+        try:
+            self.context.social.post(
+                message=text,
+                media=media,
+                alt_text=alt_text or "",
+                platforms="enabled",
+            )
+        except Exception as e:
+            # Never crash event parsing
+            if getattr(self.context, "logger", None):
+                self.context.logger.exception("Social post failed: %s", e)
+
+    def post_message_old(
+        self,
         message,
         link=None,
         add_hashtags=True,
@@ -150,7 +208,11 @@ class Event:
 
             # Post Message to Bluesky
             bsky_post = self.context.bluesky_client.post(
-                message, link=link, reply_parent=bsky_parent, reply_root=bsky_root, media=media
+                message,
+                link=link,
+                reply_parent=bsky_parent,
+                reply_root=bsky_root,
+                media=media,
             )
 
             # Add BlueSky post object to event object

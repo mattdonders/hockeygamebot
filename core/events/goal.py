@@ -1,6 +1,6 @@
 import logging
+from typing import Dict, List, Optional, Union
 from .base import Cache, Event
-from utils.others import ordinal, get_player_name
 from utils.team_details import get_team_details_by_id
 
 
@@ -185,3 +185,116 @@ class GoalEvent(Event):
             self.REMOVAL_THRESHOLD,
         )
         return True
+
+    def post_message(
+        self,
+        message: str,
+        link: Optional[str] = None,
+        add_hashtags: bool = True,
+        add_score: bool = True,
+        media: Optional[Union[str, List[str]]] = None,
+        alt_text: str = "",
+    ) -> None:
+        """
+        Threaded posting for GoalEvent:
+        - First call: post on all enabled platforms, store PostRef(s).
+        - Subsequent calls: reply in-place per platform and advance stored refs.
+        Never raises; logs exceptions via context.logger if available.
+        """
+        # Ensure per-event thread map exists (platform -> PostRef)
+        if not hasattr(self, "_post_refs"):
+            self._post_refs = {}
+
+        # Respect debugsocial for hashtags
+        add_hashtags = False if getattr(self.context, "debugsocial", False) else add_hashtags
+
+        # Footer (hashtags + score)
+        footer_parts: List[str] = []
+        if add_hashtags:
+            try:
+                ht = getattr(self.context.preferred_team, "hashtag", "")
+                if ht:
+                    footer_parts.append(ht)
+            except Exception:
+                pass
+
+        if add_score:
+            try:
+                pref = self.context.preferred_team
+                other = self.context.other_team
+                footer_parts.append(
+                    f"{pref.abbreviation}: {pref.score} / {other.abbreviation}: {other.score}"
+                )
+            except Exception:
+                pass
+
+        text = message
+        if footer_parts:
+            text += "\n\n" + " | ".join(footer_parts)
+        if link:
+            text += f"\n\n{link}"
+
+        try:
+            if not self._post_refs:
+                # Initial post on all enabled platforms; store refs for future replies.
+                logging.info(
+                    "GoalEvent[%s]: initial post across platforms.", getattr(self, "event_id", "unknown")
+                )
+                results = self.context.social.post(
+                    message=text,
+                    media=media,
+                    alt_text=alt_text or "",
+                    platforms="enabled",
+                )
+                for platform, ref in (results or {}).items():
+                    self._post_refs[platform] = ref
+                if not results:
+                    logging.warning(
+                        "GoalEvent[%s]: no PostRefs returned from initial post.",
+                        getattr(self, "event_id", "unknown"),
+                    )
+            else:
+                # Reply per platform to maintain threading; update refs as we go.
+                logging.info(
+                    "GoalEvent[%s]: replying to existing thread on %d platform(s).",
+                    getattr(self, "event_id", "unknown"),
+                    len(self._post_refs),
+                )
+                new_refs: Dict[str, any] = {}
+                for platform, parent_ref in list(self._post_refs.items()):
+                    # For replies we only send a single media item argument.
+                    # (Threads carousel emulation still happens in .post(); reply() remains single-media.)
+                    media_arg: Optional[str] = None
+                    if isinstance(media, list) and media:
+                        media_arg = media[0]
+                    elif isinstance(media, str):
+                        media_arg = media
+
+                    res = self.context.social.reply(
+                        message=text,
+                        media=media_arg,
+                        platforms=[platform],
+                        reply_to=parent_ref,
+                        alt_text=alt_text or "",
+                    )
+                    if platform in res:
+                        new_refs[platform] = res[platform]
+                        logging.debug(
+                            "GoalEvent[%s]: advanced %s thread id=%s",
+                            getattr(self, "event_id", "unknown"),
+                            platform,
+                            res[platform].id,
+                        )
+                    else:
+                        logging.warning(
+                            "GoalEvent[%s]: no reply PostRef for %s",
+                            getattr(self, "event_id", "unknown"),
+                            platform,
+                        )
+                # Advance stored refs
+                self._post_refs.update(new_refs)
+        except Exception as e:
+            if getattr(self.context, "logger", None):
+                self.context.logger.exception("GoalEvent post failed: %s", e)
+            else:
+                logging.exception("GoalEvent post failed: %s", e)
