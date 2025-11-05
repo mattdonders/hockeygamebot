@@ -689,9 +689,11 @@ def main():
 
     # Initialize unified Social Publisher (handles Bluesky + Threads)
     # Resolve social mode (CLI can still force debug via --debugsocial if you want)
+    # Also support HOCKEYBOT_MODE env var and config.yaml script (launches via cron)
+    env_mode = os.getenv("HOCKEYBOT_MODE", "").strip().lower()
     config_mode = str(config.get("script", {}).get("mode", "prod")).lower()
-    social_mode = "debug" if (args.debugsocial or config_mode == "debug") else "prod"
-    debug_social_flag = bool(social_mode == "debug")
+    social_mode = "debug" if args.debugsocial or env_mode == "debug" or config_mode == "debug" else "prod"
+    debug_social_flag = social_mode == "debug"
 
     # Instantiate publisher; let it read script.nosocial from the YAML
     publisher = SocialPublisher(config=config, mode=social_mode)
@@ -700,7 +702,7 @@ def main():
     # Log exactly what the publisher is using
     yaml_nosocial = bool(config.get("script", {}).get("nosocial", False))
     logging.info(
-        "SocialPublisher initialized (mode=%s, nosocial=%s) [yaml=%s]",
+        "SocialPublisher initialized (mode=%s, nosocial=%s) [yaml_nosocial=%s]",
         social_mode,
         publisher.nosocial,  # authoritative
         yaml_nosocial,  # helpful for debugging config vs runtime
