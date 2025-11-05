@@ -124,35 +124,30 @@ class GoalEvent(Event):
 
         Args:
             event_data (dict): The raw event data from the NHL Play-by-Play API.
-
-        Returns:
-            None
         """
         # Extract highlight clip URL from event_data
         highlight_clip_url = event_data.get("details", {}).get("highlightClipSharingUrl")
         if not highlight_clip_url:
-            logging.info("No highlight clip URL found for event ID %s.", event_data["eventId"])
+            logging.info("No highlight clip URL found for event ID %s.", event_data.get("eventId"))
             return
 
         if highlight_clip_url == "https://www.nhl.com/video/":
-            logging.info("Invalid highlight clip URL found for event ID %s.", event_data["eventId"])
+            logging.info("Invalid highlight clip URL found for event ID %s.", event_data.get("eventId"))
             return
 
-        # Update the GoalEvent object
+        # Normalize and store
         highlight_clip_url = highlight_clip_url.replace("https://nhl.com", "https://www.nhl.com")
         self.highlight_clip_url = highlight_clip_url
-        logging.info("Added highlight clip URL to GoalEvent (event ID: %s).", event_data["eventId"])
+        logging.info("Added highlight clip URL to GoalEvent (event ID: %s).", event_data.get("eventId"))
 
-        # Construct the social media post
+        # Construct message and post as a reply within the existing goal thread (if present)
         message = f"🎥 HIGHLIGHT: {self.scoring_player_name} scores for the {self.team_name}!"
-
+        # Threading is handled by GoalEvent.post_message(): if refs exist → reply; else → initial post
         self.post_message(
             message,
             add_hashtags=False,
             add_score=False,
             link=self.highlight_clip_url,
-            bsky_root=self.bsky_root,
-            bsky_parent=self.bsky_parent,
         )
 
     def was_goal_removed(self, all_plays: dict) -> bool:
