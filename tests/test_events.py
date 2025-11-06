@@ -12,10 +12,11 @@ These tests cover:
 Run with: pytest tests/test_events.py -v
 """
 
+from unittest.mock import Mock, patch
+
 import pytest
-from unittest.mock import Mock, patch, MagicMock
+
 from core.events.goal import GoalEvent
-from core.events.penalty import PenaltyEvent
 
 
 class TestGoalEventParsing:
@@ -29,15 +30,8 @@ class TestGoalEventParsing:
         """
         # ARRANGE
         mock_context = Mock()
-        mock_context.preferred_team = Mock(
-            team_id=1,
-            full_name="New Jersey Devils",
-            score=0
-        )
-        mock_context.other_team = Mock(
-            full_name="San Jose Sharks",
-            score=0
-        )
+        mock_context.preferred_team = Mock(team_id=1, full_name="New Jersey Devils", score=0)
+        mock_context.other_team = Mock(full_name="San Jose Sharks", score=0)
         mock_context.preferred_homeaway = "home"
 
         event_data = {
@@ -54,8 +48,8 @@ class TestGoalEventParsing:
                 "homeScore": 1,
                 "awayScore": 0,
                 "shotType": "Wrist Shot",
-                "goalieInNetId": 123  # Not empty net
-            }
+                "goalieInNetId": 123,  # Not empty net
+            },
         }
 
         # ACT
@@ -82,15 +76,8 @@ class TestGoalEventParsing:
         """
         # ARRANGE
         mock_context = Mock()
-        mock_context.preferred_team = Mock(
-            team_id=1,
-            full_name="New Jersey Devils",
-            score=0
-        )
-        mock_context.other_team = Mock(
-            full_name="San Jose Sharks",
-            score=0
-        )
+        mock_context.preferred_team = Mock(team_id=1, full_name="New Jersey Devils", score=0)
+        mock_context.other_team = Mock(full_name="San Jose Sharks", score=0)
         mock_context.preferred_homeaway = "home"
 
         event_data = {
@@ -109,8 +96,8 @@ class TestGoalEventParsing:
                 "assist1PlayerTotal": 10,
                 "homeScore": 2,
                 "awayScore": 1,
-                "shotType": "Snap Shot"
-            }
+                "shotType": "Snap Shot",
+            },
         }
 
         # ACT
@@ -130,15 +117,8 @@ class TestGoalEventParsing:
         """
         # ARRANGE
         mock_context = Mock()
-        mock_context.preferred_team = Mock(
-            team_id=1,
-            full_name="New Jersey Devils",
-            score=0
-        )
-        mock_context.other_team = Mock(
-            full_name="San Jose Sharks",
-            score=0
-        )
+        mock_context.preferred_team = Mock(team_id=1, full_name="New Jersey Devils", score=0)
+        mock_context.other_team = Mock(full_name="San Jose Sharks", score=0)
         mock_context.preferred_homeaway = "home"
 
         event_data = {
@@ -160,8 +140,8 @@ class TestGoalEventParsing:
                 "assist2PlayerTotal": 15,
                 "homeScore": 3,
                 "awayScore": 1,
-                "shotType": "Backhand"
-            }
+                "shotType": "Backhand",
+            },
         }
 
         # ACT
@@ -181,15 +161,8 @@ class TestGoalEventParsing:
         """
         # ARRANGE
         mock_context = Mock()
-        mock_context.preferred_team = Mock(
-            team_id=1,
-            full_name="New Jersey Devils",
-            score=0
-        )
-        mock_context.other_team = Mock(
-            full_name="San Jose Sharks",
-            score=0
-        )
+        mock_context.preferred_team = Mock(team_id=1, full_name="New Jersey Devils", score=0)
+        mock_context.other_team = Mock(full_name="San Jose Sharks", score=0)
         mock_context.preferred_homeaway = "home"
 
         event_data = {
@@ -205,8 +178,8 @@ class TestGoalEventParsing:
                 "scoringPlayerTotal": 12,
                 "homeScore": 0,
                 "awayScore": 1,
-                "shotType": "Slap Shot"
-            }
+                "shotType": "Slap Shot",
+            },
         }
 
         # ACT
@@ -243,9 +216,9 @@ class TestGoalEventParsing:
                 "scoringPlayerId": 8478407,
                 "scoringPlayerName": "Nico Hischier",
                 "homeScore": 1,
-                "awayScore": 0
+                "awayScore": 0,
                 # Missing shotType!
-            }
+            },
         }
 
         # ACT
@@ -278,12 +251,7 @@ class TestGoalEventScoring:
             "periodDescriptor": {"number": 1},
             "timeInPeriod": "05:00",
             "timeRemaining": "15:00",
-            "details": {
-                "eventOwnerTeamId": 1,
-                "homeScore": 1,
-                "awayScore": 0,
-                "shotType": "Wrist Shot"
-            }
+            "details": {"eventOwnerTeamId": 1, "homeScore": 1, "awayScore": 0, "shotType": "Wrist Shot"},
         }
 
         # ACT
@@ -316,8 +284,8 @@ class TestGoalEventScoring:
                 "eventOwnerTeamId": 1,
                 "homeScore": 0,
                 "awayScore": 1,  # Preferred team scores
-                "shotType": "Snap Shot"
-            }
+                "shotType": "Snap Shot",
+            },
         }
 
         # ACT
@@ -354,12 +322,7 @@ class TestGoalEventRemoval:
             "periodDescriptor": {"number": 1},
             "timeInPeriod": "05:00",
             "timeRemaining": "15:00",
-            "details": {
-                "eventOwnerTeamId": 1,
-                "homeScore": 1,
-                "awayScore": 0,
-                "shotType": "Wrist Shot"
-            }
+            "details": {"eventOwnerTeamId": 1, "homeScore": 1, "awayScore": 0, "shotType": "Wrist Shot"},
         }
 
         goal = GoalEvent(event_data, mock_context)
@@ -367,7 +330,7 @@ class TestGoalEventRemoval:
 
         all_plays = [
             {"eventId": 130, "typeDescKey": "goal"},  # Goal is present
-            {"eventId": 131, "typeDescKey": "faceoff"}
+            {"eventId": 131, "typeDescKey": "faceoff"},
         ]
 
         # ACT
@@ -394,21 +357,14 @@ class TestGoalEventRemoval:
             "periodDescriptor": {"number": 1},
             "timeInPeriod": "05:00",
             "timeRemaining": "15:00",
-            "details": {
-                "eventOwnerTeamId": 1,
-                "homeScore": 1,
-                "awayScore": 0,
-                "shotType": "Wrist Shot"
-            }
+            "details": {"eventOwnerTeamId": 1, "homeScore": 1, "awayScore": 0, "shotType": "Wrist Shot"},
         }
 
         goal = GoalEvent(event_data, mock_context)
         goal.event_removal_counter = 0
 
         # Goal not in feed
-        all_plays = [
-            {"eventId": 140, "typeDescKey": "faceoff"}
-        ]
+        all_plays = [{"eventId": 140, "typeDescKey": "faceoff"}]
 
         # ACT - Check multiple times to hit threshold
         for i in range(GoalEvent.REMOVAL_THRESHOLD):
@@ -440,12 +396,7 @@ class TestGoalEventRemoval:
             "periodDescriptor": {"number": 1},
             "timeInPeriod": "05:00",
             "timeRemaining": "15:00",
-            "details": {
-                "eventOwnerTeamId": 1,
-                "homeScore": 1,
-                "awayScore": 0,
-                "shotType": "Wrist Shot"
-            }
+            "details": {"eventOwnerTeamId": 1, "homeScore": 1, "awayScore": 0, "shotType": "Wrist Shot"},
         }
 
         goal = GoalEvent(event_data, mock_context)
@@ -484,12 +435,7 @@ class TestGoalEventHighlights:
             "periodDescriptor": {"number": 1},
             "timeInPeriod": "05:00",
             "timeRemaining": "15:00",
-            "details": {
-                "eventOwnerTeamId": 1,
-                "homeScore": 1,
-                "awayScore": 0,
-                "shotType": "Wrist Shot"
-            }
+            "details": {"eventOwnerTeamId": 1, "homeScore": 1, "awayScore": 0, "shotType": "Wrist Shot"},
         }
 
         goal = GoalEvent(event_data, mock_context)
@@ -503,9 +449,7 @@ class TestGoalEventHighlights:
 
         updated_event_data = {
             "eventId": 133,
-            "details": {
-                "highlightClipSharingUrl": "https://nhl.com/video/c-12345"
-            }
+            "details": {"highlightClipSharingUrl": "https://nhl.com/video/c-12345"},
         }
 
         # ACT
@@ -532,12 +476,7 @@ class TestGoalEventHighlights:
             "periodDescriptor": {"number": 1},
             "timeInPeriod": "05:00",
             "timeRemaining": "15:00",
-            "details": {
-                "eventOwnerTeamId": 1,
-                "homeScore": 1,
-                "awayScore": 0,
-                "shotType": "Wrist Shot"
-            }
+            "details": {"eventOwnerTeamId": 1, "homeScore": 1, "awayScore": 0, "shotType": "Wrist Shot"},
         }
 
         goal = GoalEvent(event_data, mock_context)
@@ -547,7 +486,7 @@ class TestGoalEventHighlights:
             "eventId": 134,
             "details": {
                 "highlightClipSharingUrl": "https://www.nhl.com/video/"  # Invalid!
-            }
+            },
         }
 
         # ACT
@@ -574,12 +513,7 @@ class TestGoalEventHighlights:
             "periodDescriptor": {"number": 1},
             "timeInPeriod": "05:00",
             "timeRemaining": "15:00",
-            "details": {
-                "eventOwnerTeamId": 1,
-                "homeScore": 1,
-                "awayScore": 0,
-                "shotType": "Wrist Shot"
-            }
+            "details": {"eventOwnerTeamId": 1, "homeScore": 1, "awayScore": 0, "shotType": "Wrist Shot"},
         }
 
         goal = GoalEvent(event_data, mock_context)
@@ -587,7 +521,7 @@ class TestGoalEventHighlights:
 
         updated_event_data = {
             "eventId": 135,
-            "details": {}  # No highlight URL
+            "details": {},  # No highlight URL
         }
 
         # ACT
@@ -627,8 +561,8 @@ class TestGoalEventEdgeCases:
                 "assist1PlayerName": None,  # Name not available
                 "homeScore": 1,
                 "awayScore": 0,
-                "shotType": "Wrist Shot"
-            }
+                "shotType": "Wrist Shot",
+            },
         }
 
         # ACT
@@ -665,8 +599,8 @@ class TestGoalEventEdgeCases:
                 "scoringPlayerTotal": 1,  # First goal!
                 "homeScore": 1,
                 "awayScore": 0,
-                "shotType": "Wrist Shot"
-            }
+                "shotType": "Wrist Shot",
+            },
         }
 
         # ACT
@@ -688,21 +622,11 @@ class TestGoalEventIntegration:
         This simulates the entire lifecycle of a goal event.
         """
         # ARRANGE
-        mock_team_details.return_value = {
-            "full_name": "New Jersey Devils",
-            "abbreviation": "NJD"
-        }
+        mock_team_details.return_value = {"full_name": "New Jersey Devils", "abbreviation": "NJD"}
 
         mock_context = Mock()
-        mock_context.preferred_team = Mock(
-            team_id=1,
-            full_name="New Jersey Devils",
-            score=0
-        )
-        mock_context.other_team = Mock(
-            full_name="San Jose Sharks",
-            score=0
-        )
+        mock_context.preferred_team = Mock(team_id=1, full_name="New Jersey Devils", score=0)
+        mock_context.other_team = Mock(full_name="San Jose Sharks", score=0)
         mock_context.preferred_homeaway = "home"
         mock_context.social = Mock()
 
@@ -722,8 +646,8 @@ class TestGoalEventIntegration:
                 "assist1PlayerTotal": 20,
                 "homeScore": 3,
                 "awayScore": 2,
-                "shotType": "Wrist Shot"
-            }
+                "shotType": "Wrist Shot",
+            },
         }
 
         # ACT

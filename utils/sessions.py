@@ -1,7 +1,7 @@
-import requests
 import time
-
 from functools import wraps
+
+import requests
 
 
 def retry(max_attempts=3, backoff_seconds=1):
@@ -20,7 +20,7 @@ def retry(max_attempts=3, backoff_seconds=1):
             while attempts < max_attempts:
                 try:
                     return func(*args, **kwargs)
-                except (requests.RequestException, ConnectionError) as e:
+                except (requests.RequestException, ConnectionError):
                     attempts += 1
                     if attempts == max_attempts:
                         raise

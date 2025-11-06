@@ -10,10 +10,11 @@ These tests cover:
 Run with: pytest tests/test_live.py -v
 """
 
+from unittest.mock import Mock, patch
+
 import pytest
-from unittest.mock import Mock, patch, MagicMock, call
+
 from core import live
-from core.models.game_context import GameContext
 
 
 class TestParseLiveGame:
@@ -35,21 +36,9 @@ class TestParseLiveGame:
         # Mock API response with events
         mock_fetch.return_value = {
             "plays": [
-                {
-                    "eventId": 101,
-                    "typeDescKey": "faceoff",
-                    "sortOrder": 101
-                },
-                {
-                    "eventId": 102,
-                    "typeDescKey": "goal",
-                    "sortOrder": 102
-                },
-                {
-                    "eventId": 103,
-                    "typeDescKey": "penalty",
-                    "sortOrder": 103
-                }
+                {"eventId": 101, "typeDescKey": "faceoff", "sortOrder": 101},
+                {"eventId": 102, "typeDescKey": "goal", "sortOrder": 102},
+                {"eventId": 103, "typeDescKey": "penalty", "sortOrder": 103},
             ]
         }
 
@@ -84,7 +73,7 @@ class TestParseLiveGame:
         mock_fetch.return_value = {
             "plays": [
                 {"eventId": 101, "typeDescKey": "goal", "sortOrder": 101},
-                {"eventId": 102, "typeDescKey": "goal", "sortOrder": 102}
+                {"eventId": 102, "typeDescKey": "goal", "sortOrder": 102},
             ]
         }
 
@@ -137,7 +126,7 @@ class TestParseLiveGame:
                 {"eventId": 1, "typeDescKey": "faceoff", "sortOrder": 1},
                 {"eventId": 2, "typeDescKey": "goal", "sortOrder": 2},
                 {"eventId": 3, "typeDescKey": "shot-on-goal", "sortOrder": 3},
-                {"eventId": 4, "typeDescKey": "goal", "sortOrder": 4}
+                {"eventId": 4, "typeDescKey": "goal", "sortOrder": 4},
             ]
         }
 
@@ -160,6 +149,7 @@ class TestParseLiveGame:
         mock_context.game_id = "2025020176"
 
         import requests
+
         mock_fetch.side_effect = requests.RequestException("API Error")
 
         # ACT & ASSERT
@@ -195,10 +185,7 @@ class TestRemovedGoalDetection:
 
         mock_context.all_goals = [mock_goal1, mock_goal2]
 
-        all_plays = [
-            {"eventId": 123, "typeDescKey": "goal"},
-            {"eventId": 456, "typeDescKey": "goal"}
-        ]
+        all_plays = [{"eventId": 123, "typeDescKey": "goal"}, {"eventId": 456, "typeDescKey": "goal"}]
 
         # ACT
         live.detect_removed_goals(mock_context, all_plays)
@@ -231,9 +218,7 @@ class TestRemovedGoalDetection:
         mock_context.all_goals = [mock_goal]
 
         # all_plays doesn't contain this goal anymore
-        all_plays = [
-            {"eventId": 456, "typeDescKey": "goal"}
-        ]
+        all_plays = [{"eventId": 456, "typeDescKey": "goal"}]
 
         # ACT
         with patch('core.live.process_removed_goal') as mock_process:
@@ -346,7 +331,7 @@ class TestEventOrdering:
             "plays": [
                 {"eventId": 1, "typeDescKey": "faceoff", "sortOrder": 10},
                 {"eventId": 2, "typeDescKey": "goal", "sortOrder": 20},
-                {"eventId": 3, "typeDescKey": "penalty", "sortOrder": 30}
+                {"eventId": 3, "typeDescKey": "penalty", "sortOrder": 30},
             ]
         }
 
@@ -375,9 +360,9 @@ class TestEventOrdering:
 
         mock_fetch.return_value = {
             "plays": [
-                {"eventId": 1, "typeDescKey": "faceoff", "sortOrder": 10},   # Old
-                {"eventId": 2, "typeDescKey": "goal", "sortOrder": 20},      # New!
-                {"eventId": 3, "typeDescKey": "penalty", "sortOrder": 30}    # New!
+                {"eventId": 1, "typeDescKey": "faceoff", "sortOrder": 10},  # Old
+                {"eventId": 2, "typeDescKey": "goal", "sortOrder": 20},  # New!
+                {"eventId": 3, "typeDescKey": "penalty", "sortOrder": 30},  # New!
             ]
         }
 
@@ -410,7 +395,7 @@ class TestEventFiltering:
                 {"eventId": 2, "typeDescKey": "goal", "sortOrder": 2},
                 {"eventId": 3, "typeDescKey": "shot-on-goal", "sortOrder": 3},
                 {"eventId": 4, "typeDescKey": "goal", "sortOrder": 4},
-                {"eventId": 5, "typeDescKey": "penalty", "sortOrder": 5}
+                {"eventId": 5, "typeDescKey": "penalty", "sortOrder": 5},
             ]
         }
 
@@ -447,32 +432,12 @@ class TestLiveGameIntegration:
                     "eventId": 1,
                     "typeDescKey": "period-start",
                     "sortOrder": 1,
-                    "periodDescriptor": {"number": 1}
+                    "periodDescriptor": {"number": 1},
                 },
-                {
-                    "eventId": 10,
-                    "typeDescKey": "faceoff",
-                    "sortOrder": 10,
-                    "timeInPeriod": "20:00"
-                },
-                {
-                    "eventId": 50,
-                    "typeDescKey": "shot-on-goal",
-                    "sortOrder": 50,
-                    "timeInPeriod": "18:23"
-                },
-                {
-                    "eventId": 100,
-                    "typeDescKey": "goal",
-                    "sortOrder": 100,
-                    "timeInPeriod": "15:42"
-                },
-                {
-                    "eventId": 150,
-                    "typeDescKey": "penalty",
-                    "sortOrder": 150,
-                    "timeInPeriod": "12:11"
-                }
+                {"eventId": 10, "typeDescKey": "faceoff", "sortOrder": 10, "timeInPeriod": "20:00"},
+                {"eventId": 50, "typeDescKey": "shot-on-goal", "sortOrder": 50, "timeInPeriod": "18:23"},
+                {"eventId": 100, "typeDescKey": "goal", "sortOrder": 100, "timeInPeriod": "15:42"},
+                {"eventId": 150, "typeDescKey": "penalty", "sortOrder": 150, "timeInPeriod": "12:11"},
             ]
         }
 
@@ -504,7 +469,7 @@ class TestLiveGameIntegration:
         mock_fetch.return_value = {
             "plays": [
                 {"eventId": 1, "typeDescKey": "faceoff", "sortOrder": 10},
-                {"eventId": 2, "typeDescKey": "goal", "sortOrder": 20}
+                {"eventId": 2, "typeDescKey": "goal", "sortOrder": 20},
             ]
         }
 
@@ -519,7 +484,7 @@ class TestLiveGameIntegration:
             "plays": [
                 {"eventId": 1, "typeDescKey": "faceoff", "sortOrder": 10},
                 {"eventId": 2, "typeDescKey": "goal", "sortOrder": 20},
-                {"eventId": 3, "typeDescKey": "penalty", "sortOrder": 30}  # New!
+                {"eventId": 3, "typeDescKey": "penalty", "sortOrder": 30},  # New!
             ]
         }
 
@@ -575,7 +540,7 @@ class TestEdgeCases:
         mock_fetch.return_value = {
             "plays": [
                 {"eventId": 100, "typeDescKey": "goal", "sortOrder": 10},
-                {"eventId": 100, "typeDescKey": "goal", "sortOrder": 10}  # Duplicate!
+                {"eventId": 100, "typeDescKey": "goal", "sortOrder": 10},  # Duplicate!
             ]
         }
 

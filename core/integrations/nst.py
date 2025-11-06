@@ -1,19 +1,18 @@
 import logging
 import os
-from typing import Optional
 from urllib.parse import urlencode
 
-from matplotlib import pyplot as plt, rcParams
 import pandas as pd
+from matplotlib import pyplot as plt
 
+import utils.others as otherutils
 from core.integrations import api
 from core.models.game_context import GameContext
-from utils.team_details import get_team_details_by_name
-import utils.others as otherutils
 from definitions import IMAGES_DIR
+from utils.team_details import get_team_details_by_name
 
 
-def get_nst_report_url(context: GameContext, full: bool = False) -> Optional[str]:
+def get_nst_report_url(context: GameContext, full: bool = False) -> str | None:
     """
     Generate the Natural Stat Trick (NST) report URL for a given NHL game.
 

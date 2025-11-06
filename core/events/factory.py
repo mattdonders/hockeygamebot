@@ -1,15 +1,15 @@
 import logging
 import traceback
-from core.events.base import Event
+
+import utils.others as otherutils
+from core.events.faceoff import FaceoffEvent
 from core.events.game_end import GameEndEvent
+from core.events.generic import GenericEvent
 from core.events.goal import GoalEvent
 from core.events.penalty import PenaltyEvent
-from core.events.faceoff import FaceoffEvent
+from core.events.period_end import PeriodEndEvent
 from core.events.shootout import ShootoutEvent
 from core.events.stoppage import StoppageEvent
-from core.events.period_end import PeriodEndEvent
-from core.events.generic import GenericEvent
-import utils.others as otherutils
 
 
 class EventFactory:

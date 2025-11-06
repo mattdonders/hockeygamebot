@@ -1,7 +1,9 @@
 import logging
-from typing import Dict, List, Optional, Union
-from .base import Cache, Event
+
+from socials.types import PostRef
 from utils.team_details import get_team_details_by_id
+
+from .base import Cache, Event
 
 
 class GoalEvent(Event):
@@ -184,10 +186,10 @@ class GoalEvent(Event):
     def post_message(
         self,
         message: str,
-        link: Optional[str] = None,
+        link: str | None = None,
         add_hashtags: bool = True,
         add_score: bool = True,
-        media: Optional[Union[str, List[str]]] = None,
+        media: str | list[str] | None = None,
         alt_text: str = "",
     ) -> None:
         """
@@ -204,7 +206,7 @@ class GoalEvent(Event):
         add_hashtags = False if getattr(self.context, "debugsocial", False) else add_hashtags
 
         # Footer (hashtags + score)
-        footer_parts: List[str] = []
+        footer_parts: list[str] = []
         if add_hashtags:
             try:
                 ht = getattr(self.context.preferred_team, "hashtag", "")
@@ -255,11 +257,11 @@ class GoalEvent(Event):
                     getattr(self, "event_id", "unknown"),
                     len(self._post_refs),
                 )
-                new_refs: Dict[str, any] = {}
+                new_refs: dict[str, PostRef] = {}
                 for platform, parent_ref in list(self._post_refs.items()):
                     # For replies we only send a single media item argument.
                     # (Threads carousel emulation still happens in .post(); reply() remains single-media.)
-                    media_arg: Optional[str] = None
+                    media_arg: str | None = None
                     if isinstance(media, list) and media:
                         media_arg = media[0]
                     elif isinstance(media, str):

@@ -1,15 +1,17 @@
 # socials/threads_client.py
 from __future__ import annotations
+
+import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import List, Optional
-import time
+
 import requests
 
 from socials.types import PostRef
-from .base import SocialClient, SocialPost
 from socials.utils import sanitize_for_threads
 from utils.image_hosting import get_public_url
+
+from .base import SocialClient, SocialPost
 
 THREADS_BASE = "https://graph.threads.net/v1.0"
 
@@ -38,7 +40,7 @@ class ThreadsClient(SocialClient):
     # ---------------------------
     # Low-level Graph endpoints
     # ---------------------------
-    def _create_text(self, text: str, auto_publish: bool = True, reply_to_id: Optional[str] = None):
+    def _create_text(self, text: str, auto_publish: bool = True, reply_to_id: str | None = None):
         data = {
             "text": text,
             "media_type": "TEXT",
@@ -57,10 +59,10 @@ class ThreadsClient(SocialClient):
 
     def _create_image(
         self,
-        text: Optional[str],
+        text: str | None,
         image_url: str,
-        alt_text: Optional[str],
-        reply_to_id: Optional[str] = None,
+        alt_text: str | None,
+        reply_to_id: str | None = None,
     ):
         data = {"media_type": "IMAGE", "image_url": image_url}
         if text:
@@ -121,14 +123,14 @@ class ThreadsClient(SocialClient):
             return get_public_url(self.root_cfg, p)
         return path_or_url
 
-    def _collect_images(self, post: SocialPost) -> List[str]:
+    def _collect_images(self, post: SocialPost) -> list[str]:
         """
         Collect all images associated with the post as hosted URLs.
         Supports:
           - post.image_url (str), post.images (List[str] of URLs)
           - post.local_image (str path), post.local_images (List[str] of paths)
         """
-        urls: List[str] = []
+        urls: list[str] = []
         # Hosted first
         if getattr(post, "image_url", None):
             urls.append(str(post.image_url))

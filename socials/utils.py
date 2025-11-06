@@ -2,12 +2,11 @@
 from __future__ import annotations
 
 import re
-from typing import Dict
 
 from socials.types import PostRef
 
 
-def seed_roots_from_results(social_state, results: Dict[str, PostRef]) -> None:
+def seed_roots_from_results(social_state, results: dict[str, PostRef]) -> None:
     """
     Seed per-platform thread roots/parents from a platform->PostRef map.
     Works for any platform names present in `results`.
@@ -17,12 +16,12 @@ def seed_roots_from_results(social_state, results: Dict[str, PostRef]) -> None:
         social_state.set_root(platform, ref)
 
 
-def any_posted(results: Dict[str, PostRef]) -> bool:
+def any_posted(results: dict[str, PostRef]) -> bool:
     """True if at least one platform returned a PostRef."""
     return bool(results)
 
 
-def update_parents_from_results(preview_socials, results: dict[str, "PostRef"]) -> None:
+def update_parents_from_results(preview_socials, results: dict[str, PostRef]) -> None:
     """Advance per-platform parents after a reply."""
     if "bluesky" in results:
         preview_socials.bluesky_parent = results["bluesky"]

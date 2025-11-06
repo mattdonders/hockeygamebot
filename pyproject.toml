@@ -1,0 +1,67 @@
+[tool.ruff]
+# Paths Ruff should start from. Keep "." and let 'exclude' do the work.
+src = ["."]
+target-version = "py311"  # adjust to your actual runtime (py310/py311/py312)
+line-length = 110
+extend-exclude = [
+  "v1-oldapi",
+  "v2-toomuch",
+  "resources",
+  "images",
+  "logs",
+  "htmlcov",
+  ".venv",
+  "venv",
+  "node_modules",
+  ".mypy_cache",
+  ".ruff_cache",
+  "__pycache__",
+  "*.egg-info",
+  "dashboard.html",
+  "nohup.out",
+  "NJDevilsGameBot-*.log",
+  "*.png",
+  "*.jpg",
+  "*.jpeg",
+  "*.gif",
+]
+
+[tool.ruff.lint]
+# Balanced, production-safe rule sets (not overly strict)
+select = [
+  "E",      # pycodestyle errors
+  "W",      # pycodestyle warnings
+  "F",      # pyflakes
+  "I",      # isort (import sorting)
+  "B",      # flake8-bugbear
+  "UP",     # pyupgrade
+  "C4",     # flake8-comprehensions
+  "SIM",    # flake8-simplify
+  "RET",    # flake8-return
+  "T20",    # flake8-print (discourage stray prints)
+  "PTH",    # flake8-use-pathlib
+  "RUF",    # Ruff-specific rules (e.g., RUF100 unused-noqa)
+]
+# Keep it pragmatic: don't enforce docstrings, type-annotation rules, or complexity here.
+ignore = [
+  # If you rely on module-level imports that must come after runtime config, silence E402 repo-wide:
+  # "E402",
+]
+
+# Per-file exceptions (optional; uncomment if needed)
+#[tool.ruff.lint.per-file-ignores]
+# Tests can be more permissive (e.g., allow prints or asserts). Uncomment as needed:
+# "tests/**" = ["T20"]
+
+[tool.ruff.format]
+# Use Ruff's formatter (Black-compatible). Let Ruff manage line length.
+quote-style = "preserve"
+indent-style = "space"
+skip-magic-trailing-comma = false
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = [
+  "T201",  # allow print in tests
+  "E501",  # long lines are common in test strings
+  # "SIM108",  # uncomment if you prefer if/else over ternary in tests
+]

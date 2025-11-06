@@ -4,7 +4,6 @@ from __future__ import annotations
 import io
 import json
 import logging
-import mimetypes
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -13,7 +12,6 @@ from atproto import Client, client_utils
 from atproto import models as at_models
 from atproto_client import models as atc_models
 from PIL import Image
-from pytz import timezone
 
 from socials.types import PostRef
 

@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
-from typing import Optional, Dict, Any
+from typing import Any
 
 from socials.types import PostRef
 
@@ -16,10 +16,10 @@ class StartOfGameSocial:
     """
 
     # --- Per-platform thread anchors ---
-    bluesky_root: Optional[PostRef] = None
-    bluesky_parent: Optional[PostRef] = None
-    threads_root: Optional[PostRef] = None
-    threads_parent: Optional[PostRef] = None
+    bluesky_root: PostRef | None = None
+    bluesky_parent: PostRef | None = None
+    threads_root: PostRef | None = None
+    threads_parent: PostRef | None = None
 
     # --- Optional bookkeeping flags/metadata you already track ---
     did_season_series: bool = False
@@ -27,36 +27,36 @@ class StartOfGameSocial:
     did_officials: bool = False
 
     # --- Your existing message content + sent flags ---
-    core_msg: Optional[str] = None
+    core_msg: str | None = None
     core_sent: bool = False
 
-    season_series_msg: Optional[str] = None
+    season_series_msg: str | None = None
     season_series_sent: bool = False
 
     team_stats_sent: bool = False
 
-    goalies_pref_msg: Optional[str] = None
+    goalies_pref_msg: str | None = None
     goalies_pref_sent: bool = False
-    goalies_other_msg: Optional[str] = None
+    goalies_other_msg: str | None = None
     goalies_other_sent: bool = False
 
-    officials_msg: Optional[str] = None
+    officials_msg: str | None = None
     officials_sent: bool = False
 
-    pref_lines_msg: Optional[str] = None
+    pref_lines_msg: str | None = None
     pref_lines_sent: bool = False
     pref_lines_resent: bool = False
 
-    other_lines_msg: Optional[str] = None
+    other_lines_msg: str | None = None
     other_lines_sent: bool = False
     other_lines_resent: bool = False
 
     # This is for starting lineups
-    starters_msg: Optional[str] = None
+    starters_msg: str | None = None
     starters_sent: bool = False
 
     # --- Misc debug / last responses ---
-    last_payloads: Dict[str, Any] = field(default_factory=dict)
+    last_payloads: dict[str, Any] = field(default_factory=dict)
 
     # --- convenience helpers ---
     def set_root(self, platform: str, ref: PostRef) -> None:
@@ -73,17 +73,17 @@ class StartOfGameSocial:
         elif platform == "threads":
             self.threads_parent = ref
 
-    def get_parent(self, platform: str) -> Optional[PostRef]:
+    def get_parent(self, platform: str) -> PostRef | None:
         if platform == "bluesky":
             return self.bluesky_parent
         if platform == "threads":
             return self.threads_parent
         return None
 
-    def as_dict(self) -> Dict[str, Optional[Dict[str, Any]]]:
+    def as_dict(self) -> dict[str, dict[str, Any] | None]:
         """Serialize minimal thread anchors for persistence/logging."""
 
-        def to_min(ref: Optional[PostRef]):
+        def to_min(ref: PostRef | None):
             if not ref:
                 return None
             return {
@@ -121,10 +121,10 @@ class EndOfGameSocial:
     """
 
     # --- Per-platform thread anchors ---
-    bluesky_root: Optional[PostRef] = None
-    bluesky_parent: Optional[PostRef] = None
-    threads_root: Optional[PostRef] = None
-    threads_parent: Optional[PostRef] = None
+    bluesky_root: PostRef | None = None
+    bluesky_parent: PostRef | None = None
+    threads_root: PostRef | None = None
+    threads_parent: PostRef | None = None
 
     # --- Final posting switches you had ---
     did_final_score: bool = False
@@ -133,23 +133,23 @@ class EndOfGameSocial:
 
     # --- Retry / diagnostics ---
     retry_count: int = 0
-    last_payloads: Dict[str, Any] = field(default_factory=dict)
+    last_payloads: dict[str, Any] = field(default_factory=dict)
 
     # --- Scraped values you cache to avoid re-scraping ---
-    hsc_homegs: Optional[str] = None
-    hsc_awaygs: Optional[str] = None
+    hsc_homegs: str | None = None
+    hsc_awaygs: str | None = None
 
     # --- Messages + sent flags you already track ---
-    final_score_msg: Optional[str] = None
+    final_score_msg: str | None = None
     final_score_sent: bool = False
 
-    three_stars_msg: Optional[str] = None
+    three_stars_msg: str | None = None
     three_stars_sent: bool = False
 
-    nst_linetool_msg: Optional[str] = None
+    nst_linetool_msg: str | None = None
     nst_linetool_sent: bool = False
 
-    hsc_msg: Optional[str] = None
+    hsc_msg: str | None = None
     hsc_sent: bool = False
 
     shotmap_retweet: bool = False
@@ -171,15 +171,15 @@ class EndOfGameSocial:
         elif platform == "threads":
             self.threads_parent = ref
 
-    def get_parent(self, platform: str) -> Optional[PostRef]:
+    def get_parent(self, platform: str) -> PostRef | None:
         if platform == "bluesky":
             return self.bluesky_parent
         if platform == "threads":
             return self.threads_parent
         return None
 
-    def as_dict(self) -> Dict[str, Optional[Dict[str, Any]]]:
-        def to_min(ref: Optional[PostRef]):
+    def as_dict(self) -> dict[str, dict[str, Any] | None]:
+        def to_min(ref: PostRef | None):
             if not ref:
                 return None
             return {

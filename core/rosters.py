@@ -1,12 +1,8 @@
-import os
-import json
-import requests
-
-
-import os
 import json
 import logging
+import os
 from datetime import datetime, timedelta
+
 import requests
 
 
@@ -27,7 +23,7 @@ def load_roster(team_abbreviation: str, season_id: int):
 
         if time_difference <= timedelta(hours=24):
             # File is up-to-date, load it
-            with open(file_path, "r") as file:
+            with open(file_path) as file:
                 logging.info(f"Loaded roster for {team_abbreviation} from local file.")
                 return json.load(file)
         else:
@@ -50,12 +46,9 @@ def load_roster(team_abbreviation: str, season_id: int):
             logging.info(f"Saved updated roster for {team_abbreviation} to {file_path}.")
 
         return roster
-    else:
-        error_message = (
-            f"Failed to fetch roster for {team_abbreviation}. " f"Status Code: {response.status_code}"
-        )
-        logging.error(error_message)
-        raise Exception(error_message)
+    error_message = f"Failed to fetch roster for {team_abbreviation}. Status Code: {response.status_code}"
+    logging.error(error_message)
+    raise Exception(error_message)
 
 
 def load_game_rosters(context):

@@ -1,11 +1,9 @@
-from datetime import datetime, timezone
-from typing import Any, Dict, Optional
+from datetime import datetime
 
 import pytz
 
 from core.models.clock import Clock
 from core.models.team import Team
-from socials.bluesky import BlueskyClient
 from socials.publisher import SocialPublisher
 from socials.social_state import EndOfGameSocial, StartOfGameSocial
 from socials.types import PostRef
@@ -112,7 +110,7 @@ class GameContext:
     # Helpers
     # -------------------------
     @staticmethod
-    def make_post_ref(res: Optional[Dict[str, Any]]) -> Optional[PostRef]:
+    def make_post_ref(res: dict[str, PostRef] | None) -> PostRef | None:
         """
         Normalize a publisher result dict (from Bluesky/Threads/etc.) into PostRef.
         Expected keys (best-effort, optional in input):

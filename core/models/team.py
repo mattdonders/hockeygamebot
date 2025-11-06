@@ -1,7 +1,7 @@
 from utils.team_details import get_team_details_by_name
 
 
-class Team(object):
+class Team:
     """
     Represents an NHL team with attributes sourced from a predefined details dictionary.
 

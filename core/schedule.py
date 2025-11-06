@@ -1,4 +1,5 @@
 import logging
+
 import requests
 
 from utils.retry import retry
@@ -33,7 +34,7 @@ def _make_api_call(url: str, timeout: int = 10):
             _monitor.record_api_call(success=True)
 
         return response
-    except Exception as e:
+    except Exception:
         # Track failed API call
         if _monitor:
             _monitor.record_api_call(success=False)

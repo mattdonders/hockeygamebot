@@ -1,13 +1,16 @@
 import logging
 import os
-from matplotlib import pyplot as plt, rcParams
+
 import numpy as np
 import pandas as pd
+from matplotlib import pyplot as plt
+from matplotlib import rcParams
+
+import utils.others as otherutils
 from core import schedule
 from core.models.game_context import GameContext
 from definitions import IMAGES_DIR
 from utils.team_details import TEAM_DETAILS
-import utils.others as otherutils
 
 
 def generate_split_barchart(context: GameContext, game_title, stats):
@@ -182,7 +185,7 @@ def intermission_chart(context: GameContext):
     team_game_stats = right_rail.get("teamGameStats")
 
     if not team_game_stats:
-        return None
+        return
 
     team_game_stats_formatted = {"home": {}, "away": {}}
     stats_to_keep = ["sog", "pim", "hits", "blockedShots", "giveaways", "takeaways"]
@@ -269,7 +272,7 @@ def teamstats_chart(context: GameContext, team_game_stats: dict, ingame: bool = 
     if ingame:
         chart_file_prefix = "ingame"
         chart_figsize = (12, 9)
-        chart_title = f"FINAL: Team Game Stats"
+        chart_title = "FINAL: Team Game Stats"
         chart_title_y = 0.94
         chart_subtitle = f"{pref_team_name}: {pref_team_score} / {other_team_name}: {other_team_score}"
         chart_subtitle_y = 0.9
@@ -286,7 +289,7 @@ def teamstats_chart(context: GameContext, team_game_stats: dict, ingame: bool = 
     else:
         chart_file_prefix = "pregame"
         chart_figsize = (12, 6)
-        chart_title = f"Pre-Game: Team Season Stats"
+        chart_title = "Pre-Game: Team Season Stats"
         chart_title_y = 0.96
         chart_subtitle = f"{game_date_string} @ {venue}"
         chart_subtitle_y = 0.9
@@ -359,7 +362,7 @@ def teamstats_chart(context: GameContext, team_game_stats: dict, ingame: bool = 
 
     # Annotate raw values with rank information
     for i, (preferred, other, total) in enumerate(
-        zip(preferred_percentages, other_percentages, team_game_stats)
+        zip(preferred_percentages, other_percentages, team_game_stats, strict=False)
     ):
         preferred_value = total["homeValue"] if pref_homeaway == "home" else total["awayValue"]
         other_value = total["awayValue"] if pref_homeaway == "home" else total["homeValue"]

@@ -1,22 +1,19 @@
-from datetime import datetime, timezone
 import logging
 import time
-
-import requests
+from datetime import UTC, datetime
 
 from core import schedule
 from core.models.game_context import GameContext
-from utils.others import categorize_broadcasts, clock_emoji, convert_utc_to_localteam
-from utils.team_details import TEAM_DETAILS
 from core.schedule import fetch_schedule
+from utils.others import categorize_broadcasts, clock_emoji, convert_utc_to_localteam
 
 
 def sleep_until_game_start(start_time_utc):
     """
     Sleep until the game starts based on the provided UTC start time.
     """
-    now = datetime.now(timezone.utc)
-    start_time = datetime.strptime(start_time_utc, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+    now = datetime.now(UTC)
+    start_time = datetime.strptime(start_time_utc, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=UTC)
     time_diff = (start_time - now).total_seconds()
 
     if time_diff > 0:
@@ -44,7 +41,7 @@ def preview_sleep_calculator(context: GameContext):
     if context.game_time_countdown < 0:
         logging.warning(
             "Game start time is in the past (%s seconds ago), but not live yet - sleep for 30s.",
-            abs(context.game_time_countdown)
+            abs(context.game_time_countdown),
         )
         time.sleep(30)
         return
@@ -59,12 +56,11 @@ def preview_sleep_calculator(context: GameContext):
             logging.info(
                 "All pre-game messages sent. Game starts in %s seconds - sleeping for minimum %s seconds to avoid API spam.",
                 int(context.game_time_countdown),
-                MIN_SLEEP_TIME
+                MIN_SLEEP_TIME,
             )
         else:
             logging.info(
-                "All pre-game messages sent. Sleeping until game time (~%s minutes).",
-                preview_sleep_mins
+                "All pre-game messages sent. Sleeping until game time (~%s minutes).", preview_sleep_mins
             )
 
         time.sleep(actual_sleep_time)
@@ -79,12 +75,12 @@ def preview_sleep_calculator(context: GameContext):
             logging.info(
                 "Not all pre-game messages sent, but game starts in %s seconds - sleeping for minimum %s seconds to avoid API spam.",
                 int(context.game_time_countdown),
-                MIN_SLEEP_TIME
+                MIN_SLEEP_TIME,
             )
         else:
             logging.info(
                 "Preview sleep time is greater than game countdown - sleeping until game time (~%s seconds).",
-                int(context.game_time_countdown)
+                int(context.game_time_countdown),
             )
 
         time.sleep(actual_sleep_time)
@@ -92,8 +88,7 @@ def preview_sleep_calculator(context: GameContext):
 
     # Scenario 4: FALLBACK - Not all pre-game messages sent and we have time
     logging.info(
-        "Not all pre-game messages are sent, sleeping for %s minutes & will try again.",
-        preview_sleep_mins
+        "Not all pre-game messages are sent, sleeping for %s minutes & will try again.", preview_sleep_mins
     )
     time.sleep(preview_sleep_time)
 
@@ -233,12 +228,11 @@ def format_season_series_post(
             f"against the {context.other_team.full_name}.\n\n"
             f"{context.preferred_team.hashtag} | {context.game_hashtag}"
         )
-    else:
-        return (
-            f"This season, the {context.preferred_team.full_name} are {record} "
-            f"against the {context.other_team.full_name}.\n\n"
-            f"{context.preferred_team.hashtag} | {context.game_hashtag}"
-        )
+    return (
+        f"This season, the {context.preferred_team.full_name} are {record} "
+        f"against the {context.other_team.full_name}.\n\n"
+        f"{context.preferred_team.hashtag} | {context.game_hashtag}"
+    )
 
 
 def generate_referees_post(context: GameContext):

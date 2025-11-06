@@ -1,6 +1,11 @@
 from __future__ import annotations
+
+import base64
+import mimetypes
+import time
 from pathlib import Path
-import base64, time, mimetypes, requests
+
+import requests
 
 
 def _ct(name: str) -> str:
@@ -17,7 +22,7 @@ def upload_b2(cfg: dict, path: Path) -> str:
         aws_secret_access_key=cfg["secret_access_key"],
         endpoint_url=f"https://s3.{cfg['region']}.backblazeb2.com",
     )
-    key = f"{cfg.get('prefix','').strip('/')}/{int(time.time())}_{path.name}".strip("/")
+    key = f"{cfg.get('prefix', '').strip('/')}/{int(time.time())}_{path.name}".strip("/")
     extra = {"ContentType": _ct(path.name), "ACL": "public-read"}
     s3.upload_file(str(path), cfg["bucket"], key, ExtraArgs=extra)
     return f"https://s3.{cfg['region']}.backblazeb2.com/{cfg['bucket']}/{key}"

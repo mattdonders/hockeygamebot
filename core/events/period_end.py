@@ -1,4 +1,5 @@
 from core import charts, schedule
+
 from .base import Cache, Event
 
 
@@ -20,9 +21,9 @@ class PeriodEndEvent(Event):
         if period_type == "REG":
             message = f"The {period_ordinal} period has ended."
         elif period_type == "OT":
-            message = f"Overtime has ended."
+            message = "Overtime has ended."
         elif period_type == "SO":
-            message = f"The shootout has ended."
+            message = "The shootout has ended."
         else:
             message = f"The {period_ordinal} period of type '{period_type}' has ended."
 

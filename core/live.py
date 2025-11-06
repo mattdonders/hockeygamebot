@@ -1,11 +1,8 @@
 import logging
-import time
-import requests
 
 from core import schedule
 from core.events.factory import EventFactory
 from core.models.game_context import GameContext
-from core.play_by_play import parse_play_by_play_with_names
 from utils.others import safe_remove
 
 
@@ -70,7 +67,7 @@ def parse_live_game(context: GameContext):
     new_plays = num_new_events != 0
     #  logging.info("Number of *NEW* Events Retrieved from PBP: %s", num_new_events)
 
-    if not new_plays == 0:
+    if num_new_events == 0:
         logging.info(
             "No new plays detected. This game event loop will catch any missed events & "
             "and also check for any scoring changes on existing goals."

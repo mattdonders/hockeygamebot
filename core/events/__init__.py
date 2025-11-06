@@ -1,4 +1,4 @@
-from .factory import EventFactory
 from .base import Event
+from .factory import EventFactory
 
-__all__ = ["event_factory", "Event", "EventFactory"]
+__all__ = ["Event", "EventFactory", "event_factory"]

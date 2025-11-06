@@ -1,7 +1,9 @@
 import logging
-from .base import Cache, Event
+
 from utils.others import get_player_name
 from utils.team_details import get_team_name_by_id
+
+from .base import Cache, Event
 
 
 class PenaltyEvent(Event):

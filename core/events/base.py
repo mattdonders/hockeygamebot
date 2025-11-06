@@ -1,5 +1,3 @@
-from typing import List, Optional, Union
-
 from core.models.game_context import GameContext
 from utils.others import ordinal
 
@@ -117,10 +115,10 @@ class Event:
     def post_message(
         self,
         message: str,
-        link: Optional[str] = None,
+        link: str | None = None,
         add_hashtags: bool = True,
         add_score: bool = True,
-        media: Optional[Union[str, List[str]]] = None,
+        media: str | list[str] | None = None,
         alt_text: str = "",
     ) -> None:
         """
@@ -133,7 +131,7 @@ class Event:
         add_hashtags = False if getattr(self.context, "debugsocial", False) else add_hashtags
 
         # Footer (hashtags + score)
-        footer_parts: List[str] = []
+        footer_parts: list[str] = []
         if add_hashtags:
             try:
                 hashtag = getattr(self.context.preferred_team, "hashtag", "")

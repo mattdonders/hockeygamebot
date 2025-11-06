@@ -22,7 +22,7 @@ import logging
 from datetime import datetime
 from pathlib import Path
 from threading import Lock
-from typing import Dict, Any, Optional
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -108,7 +108,7 @@ class StatusMonitor:
             "health": {
                 "healthy": True,
                 "issues": [],
-            }
+            },
         }
 
         # Write initial status
@@ -234,9 +234,15 @@ class StatusMonitor:
             # Update social tracking
             if preview_socials_data:
                 self.status["socials"]["preview_posts"]["core_sent"] = preview_socials_data['core_sent']
-                self.status["socials"]["preview_posts"]["season_series_sent"] = preview_socials_data['season_series_sent']
-                self.status["socials"]["preview_posts"]["team_stats_sent"] = preview_socials_data['team_stats_sent']
-                self.status["socials"]["preview_posts"]["officials_sent"] = preview_socials_data['officials_sent']
+                self.status["socials"]["preview_posts"]["season_series_sent"] = preview_socials_data[
+                    'season_series_sent'
+                ]
+                self.status["socials"]["preview_posts"]["team_stats_sent"] = preview_socials_data[
+                    'team_stats_sent'
+                ]
+                self.status["socials"]["preview_posts"]["officials_sent"] = preview_socials_data[
+                    'officials_sent'
+                ]
 
             self._check_health()
             self._write_status()
@@ -335,7 +341,7 @@ class StatusMonitor:
                     last_update_time = datetime.fromisoformat(last_update)
                     seconds_since_update = (datetime.now() - last_update_time).total_seconds()
                     if seconds_since_update > 300:  # No update in 5 minutes
-                        issues.append(f"No recent updates ({int(seconds_since_update/60)} minutes)")
+                        issues.append(f"No recent updates ({int(seconds_since_update / 60)} minutes)")
                 except ValueError:
                     pass
 
@@ -372,16 +378,14 @@ class StatusMonitor:
 
         except OSError as e:
             self._consecutive_write_failures += 1
-            logger.error(
-                f"OS error writing status file (failure {self._consecutive_write_failures}): {e}"
-            )
+            logger.error(f"OS error writing status file (failure {self._consecutive_write_failures}): {e}")
             self._check_disable_monitoring()
 
         except Exception as e:
             self._consecutive_write_failures += 1
             logger.error(
                 f"Unexpected error writing status file (failure {self._consecutive_write_failures}): {e}",
-                exc_info=True
+                exc_info=True,
             )
             self._check_disable_monitoring()
 
@@ -393,11 +397,9 @@ class StatusMonitor:
                 f"Monitoring disabled after {self._max_consecutive_failures} consecutive write failures. "
                 "Bot will continue running but dashboard will show stale data."
             )
-            logger.critical(
-                "To re-enable, fix the status.json write issue and restart the bot."
-            )
+            logger.critical("To re-enable, fix the status.json write issue and restart the bot.")
 
-    def get_status(self) -> Dict[str, Any]:
+    def get_status(self) -> dict[str, Any]:
         """Get current status as dictionary."""
         with self.lock:
             return self.status.copy()

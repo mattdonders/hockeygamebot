@@ -1,12 +1,13 @@
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Optional, List, Dict, Any
+from typing import Any
 
 import pytz
+
 from core.models.clock import Clock
 from core.models.team import Team
 from socials.bluesky import BlueskyClient
-from socials.social_state import StartOfGameSocial, EndOfGameSocial
+from socials.social_state import EndOfGameSocial, StartOfGameSocial
 
 
 @dataclass
@@ -64,41 +65,41 @@ class GameContext:
     """
 
     # Configuration and Client
-    config: Dict[str, Any]
+    config: dict[str, Any]
     bluesky_client: BlueskyClient
     nosocial: bool = False
     debugsocial: bool = False
 
     # Game Details
-    game: Optional[Dict] = None
-    game_id: Optional[str] = None
-    game_type: Optional[str] = None
-    game_shortid: Optional[str] = None
-    game_state: Optional[str] = None
-    season_id: Optional[str] = None
-    game_time: Optional[datetime] = None
-    game_time_local: Optional[datetime] = None
-    game_time_local_str: Optional[str] = None
-    venue: Optional[str] = None
+    game: dict | None = None
+    game_id: str | None = None
+    game_type: str | None = None
+    game_shortid: str | None = None
+    game_state: str | None = None
+    season_id: str | None = None
+    game_time: datetime | None = None
+    game_time_local: datetime | None = None
+    game_time_local_str: str | None = None
+    venue: str | None = None
     clock: Clock = field(default_factory=Clock)
 
     # Team Details
-    preferred_team: Optional[Team] = None
-    other_team: Optional[Team] = None
-    home_team: Optional[Team] = None
-    away_team: Optional[Team] = None
-    preferred_homeaway: Optional[str] = None
+    preferred_team: Team | None = None
+    other_team: Team | None = None
+    home_team: Team | None = None
+    away_team: Team | None = None
+    preferred_homeaway: str | None = None
 
     # Roster and Hashtag Details
-    combined_roster: Optional[Dict] = None
+    combined_roster: dict | None = None
     gametime_rosters_set: bool = False
-    game_hashtag: Optional[str] = None
-    preferred_team_hashtag: Optional[str] = None
+    game_hashtag: str | None = None
+    preferred_team_hashtag: str | None = None
 
     # Event Tracking
     last_sort_order: int = 0
-    all_goals: List = field(default_factory=list)
-    events: List = field(default_factory=list)
+    all_goals: list = field(default_factory=list)
+    events: list = field(default_factory=list)
     live_loop_counter: int = 0
 
     # Social Media Trackers

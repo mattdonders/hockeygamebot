@@ -1,7 +1,8 @@
 # socials/types.py
 from __future__ import annotations
+
 from dataclasses import dataclass
-from typing import Any, Dict, Optional
+from typing import Any
 
 
 @dataclass
@@ -19,7 +20,7 @@ class PostRef:
 
     platform: str
     id: str
-    uri: Optional[str] = None
-    cid: Optional[str] = None
+    uri: str | None = None
+    cid: str | None = None
     published: bool = True
-    raw: Optional[Dict[str, Any]] = None
+    raw: dict[str, Any] | None = None

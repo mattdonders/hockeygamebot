@@ -7,13 +7,15 @@ POC: Post to Bluesky + Threads.
 """
 
 from __future__ import annotations
+
 import argparse
 import base64
 import mimetypes
-import time
-from pathlib import Path
 import sys
+import time
 import warnings
+from pathlib import Path
+
 import requests
 import yaml
 
@@ -32,7 +34,7 @@ CONFIG_PATH = ROOT / "config.yaml"
 def load_config() -> dict:
     if not CONFIG_PATH.exists():
         sys.exit(f"❌ config.yaml not found at {CONFIG_PATH}")
-    with open(CONFIG_PATH, "r", encoding="utf-8") as f:
+    with open(CONFIG_PATH, encoding="utf-8") as f:
         return yaml.safe_load(f)
 
 
@@ -128,9 +130,10 @@ def get_public_url(cfg: dict, local_path: str) -> str:
 
 # ---------- Bluesky ----------
 def post_bluesky(cfg: dict, text: str | None, image_path: str | None) -> None:
+    from pathlib import Path
+
     from atproto import Client, client_utils, models
     from PIL import Image
-    from pathlib import Path
 
     md = (cfg.get("script", {}).get("mode", "prod")).lower()
     c = cfg["bluesky"][md]
@@ -281,7 +284,7 @@ def main():
     md = mode_of(cfg)
     socials = cfg.get("socials", {}) or {}
     print(
-        f"Mode: {md.upper()} | Text: {bool(args.text)} | Image(local): {bool(args.image and not args.image.startswith(('http://','https://')))}"
+        f"Mode: {md.upper()} | Text: {bool(args.text)} | Image(local): {bool(args.image and not args.image.startswith(('http://', 'https://')))}"
     )
 
     # Bluesky

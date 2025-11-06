@@ -13,8 +13,9 @@ Usage:
 
 import logging
 import time
+from collections.abc import Callable
 from functools import wraps
-from typing import Callable, Tuple, Type, Any
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -23,8 +24,8 @@ def retry(
     max_attempts: int = 3,
     delay: float = 1.0,
     backoff: float = 2.0,
-    exceptions: Tuple[Type[Exception], ...] = (Exception,),
-    logger_name: str = None
+    exceptions: tuple[type[Exception], ...] = (Exception,),
+    logger_name: str = None,
 ) -> Callable:
     """
     Decorator to retry a function with exponential backoff.
@@ -46,6 +47,7 @@ def retry(
             response.raise_for_status()
             return response.json()
     """
+
     def decorator(func: Callable) -> Callable:
         @wraps(func)
         def wrapper(*args, **kwargs) -> Any:
@@ -66,8 +68,7 @@ def retry(
 
                     if attempt >= max_attempts:
                         log.error(
-                            f"Function {func.__name__} failed after {max_attempts} attempts. "
-                            f"Last error: {e}"
+                            f"Function {func.__name__} failed after {max_attempts} attempts. Last error: {e}"
                         )
                         raise
 
@@ -84,6 +85,7 @@ def retry(
                 raise last_exception
 
         return wrapper
+
     return decorator
 
 
@@ -92,7 +94,7 @@ def retry_with_fallback(
     delay: float = 1.0,
     backoff: float = 2.0,
     fallback_value: Any = None,
-    exceptions: Tuple[Type[Exception], ...] = (Exception,),
+    exceptions: tuple[type[Exception], ...] = (Exception,),
 ) -> Callable:
     """
     Retry decorator that returns a fallback value instead of raising on failure.
@@ -114,6 +116,7 @@ def retry_with_fallback(
             response = requests.get('https://api.example.com/optional-endpoint')
             return response.json()
     """
+
     def decorator(func: Callable) -> Callable:
         @wraps(func)
         def wrapper(*args, **kwargs) -> Any:
@@ -145,6 +148,7 @@ def retry_with_fallback(
             return fallback_value
 
         return wrapper
+
     return decorator
 
 

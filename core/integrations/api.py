@@ -1,4 +1,5 @@
 import logging
+
 from bs4 import BeautifulSoup
 from requests.adapters import HTTPAdapter
 from requests.exceptions import HTTPError, RequestException

@@ -109,15 +109,14 @@ def start_dashboard_server(port=8000, max_retries=5):
                 current_port += 1
                 retry_count += 1
                 continue
-            else:
-                # Other OS error, log and retry after delay
-                logging.error(f"Dashboard server error: {e}", exc_info=True)
-                retry_count += 1
-                if retry_count < max_retries:
-                    import time
+            # Other OS error, log and retry after delay
+            logging.error(f"Dashboard server error: {e}", exc_info=True)
+            retry_count += 1
+            if retry_count < max_retries:
+                import time
 
-                    time.sleep(10)
-                continue
+                time.sleep(10)
+            continue
 
         except Exception as e:
             # Unexpected error, log and retry

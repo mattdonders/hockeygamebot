@@ -10,9 +10,11 @@ These tests protect against NHL API changes by:
 Run with: pytest tests/test_schedule.py -v
 """
 
+from unittest.mock import Mock, patch
+
 import pytest
 import requests
-from unittest.mock import Mock, patch, MagicMock
+
 from core import schedule
 
 
@@ -29,13 +31,7 @@ class TestScheduleFetch:
         # ARRANGE
         mock_response = Mock()
         mock_response.json.return_value = {
-            "games": [
-                {
-                    "id": 2025020176,
-                    "gameDate": "2025-10-30",
-                    "gameState": "OFF"
-                }
-            ]
+            "games": [{"id": 2025020176, "gameDate": "2025-10-30", "gameState": "OFF"}]
         }
         mock_response.raise_for_status = Mock()
         mock_get.return_value = mock_response
@@ -119,9 +115,7 @@ class TestPlayByPlayFetch:
         mock_response.json.return_value = {
             "id": 2025020176,
             "gameState": "LIVE",
-            "plays": [
-                {"eventId": 123, "typeDescKey": "goal"}
-            ]
+            "plays": [{"eventId": 123, "typeDescKey": "goal"}],
         }
         mock_response.raise_for_status = Mock()
         mock_get.return_value = mock_response
@@ -147,7 +141,7 @@ class TestPlayByPlayFetch:
         mock_response.json.return_value = {
             "id": 2025020176,
             "gameState": "LIVE",
-            "plays": []  # No events yet
+            "plays": [],  # No events yet
         }
         mock_response.raise_for_status = Mock()
         mock_get.return_value = mock_response
@@ -200,7 +194,7 @@ class TestLandingFetch:
                 "threeStars": [
                     {"star": 1, "playerId": 8478407},
                     {"star": 2, "playerId": 8477933},
-                    {"star": 3, "playerId": 8476878}
+                    {"star": 3, "playerId": 8476878},
                 ]
             }
         }
@@ -251,9 +245,7 @@ class TestSeasonIDFetch:
         """
         # ARRANGE
         mock_response = Mock()
-        mock_response.json.return_value = {
-            "currentSeason": 20252026
-        }
+        mock_response.json.return_value = {"currentSeason": 20252026}
         mock_response.raise_for_status = Mock()
         mock_get.return_value = mock_response
 
@@ -291,9 +283,7 @@ class TestGameStateFetch:
         """Test fetching LIVE game state"""
         # ARRANGE
         mock_response = Mock()
-        mock_response.json.return_value = {
-            "gameState": "LIVE"
-        }
+        mock_response.json.return_value = {"gameState": "LIVE"}
         mock_response.raise_for_status = Mock()
         mock_get.return_value = mock_response
 
@@ -308,9 +298,7 @@ class TestGameStateFetch:
         """Test fetching FINAL game state"""
         # ARRANGE
         mock_response = Mock()
-        mock_response.json.return_value = {
-            "gameState": "FINAL"
-        }
+        mock_response.json.return_value = {"gameState": "FINAL"}
         mock_response.raise_for_status = Mock()
         mock_get.return_value = mock_response
 
@@ -353,7 +341,7 @@ class TestClockFetch:
                 "timeRemaining": "12:34",
                 "secondsRemaining": 754,
                 "running": True,
-                "inIntermission": False
+                "inIntermission": False,
             }
         }
         mock_response.raise_for_status = Mock()
@@ -372,11 +360,7 @@ class TestClockFetch:
         """Test clock data during intermission"""
         # ARRANGE
         mock_response = Mock()
-        mock_response.json.return_value = {
-            "clock": {
-                "inIntermission": True
-            }
-        }
+        mock_response.json.return_value = {"clock": {"inIntermission": True}}
         mock_response.raise_for_status = Mock()
         mock_get.return_value = mock_response
 
@@ -393,15 +377,7 @@ class TestHelperFunctions:
     def test_is_game_on_date_found(self):
         """Test finding a game on specific date"""
         # ARRANGE
-        schedule_data = {
-            "games": [
-                {
-                    "id": 2025020176,
-                    "gameDate": "2025-10-30",
-                    "gameState": "OFF"
-                }
-            ]
-        }
+        schedule_data = {"games": [{"id": 2025020176, "gameDate": "2025-10-30", "gameState": "OFF"}]}
 
         # ACT
         game, game_id = schedule.is_game_on_date(schedule_data, "2025-10-30")
@@ -413,14 +389,7 @@ class TestHelperFunctions:
     def test_is_game_on_date_not_found(self):
         """Test when no game on specified date"""
         # ARRANGE
-        schedule_data = {
-            "games": [
-                {
-                    "id": 2025020176,
-                    "gameDate": "2025-10-30"
-                }
-            ]
-        }
+        schedule_data = {"games": [{"id": 2025020176, "gameDate": "2025-10-30"}]}
 
         # ACT
         game, game_id = schedule.is_game_on_date(schedule_data, "2025-11-01")
@@ -448,7 +417,7 @@ class TestHelperFunctions:
             "games": [
                 {"id": 1, "gameState": "OFF", "gameDate": "2025-10-30"},
                 {"id": 2, "gameState": "FUT", "gameDate": "2025-11-01"},  # This one!
-                {"id": 3, "gameState": "FUT", "gameDate": "2025-11-03"}
+                {"id": 3, "gameState": "FUT", "gameDate": "2025-11-03"},
             ]
         }
 
@@ -463,12 +432,7 @@ class TestHelperFunctions:
     def test_fetch_next_game_not_found(self):
         """Test when no future games exist"""
         # ARRANGE
-        schedule_data = {
-            "games": [
-                {"id": 1, "gameState": "OFF"},
-                {"id": 2, "gameState": "FINAL"}
-            ]
-        }
+        schedule_data = {"games": [{"id": 1, "gameState": "OFF"}, {"id": 2, "gameState": "FINAL"}]}
 
         # ACT
         result = schedule.fetch_next_game(schedule_data)
@@ -553,7 +517,7 @@ class TestAPIStructureValidation:
                     "startTimeUTC": "2025-10-30T23:00:00Z",
                     "gameState": "OFF",
                     "awayTeam": {"abbrev": "SJS", "score": 3},
-                    "homeTeam": {"abbrev": "NJD", "score": 5}
+                    "homeTeam": {"abbrev": "NJD", "score": 5},
                 }
             ]
         }
@@ -591,9 +555,9 @@ class TestAPIStructureValidation:
                     "typeDescKey": "goal",
                     "sortOrder": 100,
                     "periodDescriptor": {"number": 1},
-                    "timeInPeriod": "12:34"
+                    "timeInPeriod": "12:34",
                 }
-            ]
+            ],
         }
         mock_response.raise_for_status = Mock()
         mock_get.return_value = mock_response
@@ -614,6 +578,7 @@ class TestAPIStructureValidation:
 
 
 # ==================== Integration Tests ====================
+
 
 @pytest.mark.integration
 class TestAPIIntegration:
@@ -648,6 +613,7 @@ class TestAPIIntegration:
 
         # Save this response to compare against future calls
         import json
+
         with open("/tmp/nhl_api_snapshot.json", "w") as f:
             json.dump(result, f, indent=2)
 

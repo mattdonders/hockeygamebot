@@ -4,8 +4,8 @@ Tests for game finalization logic
 These tests verify Bug #1 fix (three stars None handling)
 """
 
-import pytest
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import Mock, patch
+
 from core import final
 
 
@@ -39,7 +39,7 @@ class TestThreeStarsHandling:
                 "threeStars": [
                     {"star": 1, "playerId": 8478407, "teamAbbrev": "NJD"},
                     {"star": 2, "playerId": 8477933, "teamAbbrev": "SJS"},
-                    {"star": 3, "playerId": 8476878, "teamAbbrev": "NJD"}
+                    {"star": 3, "playerId": 8476878, "teamAbbrev": "NJD"},
                 ]
             }
         }
@@ -89,22 +89,15 @@ class TestFinalScoreLogic:
         """Test that final score generates correct message"""
         # Setup
         mock_fetch.return_value = {
-            "awayTeam": {
-                "abbrev": "SJS",
-                "score": 3
-            },
-            "homeTeam": {
-                "abbrev": "NJD",
-                "score": 5
-            },
-            "periodDescriptor": {
-                "number": 3,
-                "periodType": "REG"
-            }
+            "awayTeam": {"abbrev": "SJS", "score": 3},
+            "homeTeam": {"abbrev": "NJD", "score": 5},
+            "periodDescriptor": {"number": 3, "periodType": "REG"},
         }
 
         # Mock next_game to return a simple string (avoid API calls)
-        mock_next_game.return_value = "Next Game: Friday November 01 @ 07:00PM vs. New York Rangers (at Prudential Center)!"
+        mock_next_game.return_value = (
+            "Next Game: Friday November 01 @ 07:00PM vs. New York Rangers (at Prudential Center)!"
+        )
 
         mock_context = Mock()
         mock_context.game_id = "2025020176"
@@ -143,14 +136,14 @@ class TestNextGameLogic:
             "awayTeam": {
                 "abbrev": "NYR",
                 "placeName": {"default": "New York"},
-                "commonName": {"default": "Rangers"}
+                "commonName": {"default": "Rangers"},
             },
             "homeTeam": {
                 "abbrev": "NJD",
                 "placeName": {"default": "New Jersey"},
-                "commonName": {"default": "Devils"}
+                "commonName": {"default": "Devils"},
             },
-            "venue": {"default": "Prudential Center"}
+            "venue": {"default": "Prudential Center"},
         }
 
         # Mock the time conversion
@@ -205,7 +198,9 @@ class TestThreeStarsIntegration:
         client = BlueskyClient(account="test", password="test", nosocial=True)
 
         # Simulate three_stars() returning valid message
-        three_stars_post = "⭐️ Three Stars ⭐️\n1st: Nico Hischier (NJD)\n2nd: Tomas Hertl (SJS)\n3rd: Dougie Hamilton (NJD)"
+        three_stars_post = (
+            "⭐️ Three Stars ⭐️\n1st: Nico Hischier (NJD)\n2nd: Tomas Hertl (SJS)\n3rd: Dougie Hamilton (NJD)"
+        )
 
         # This should work
         if three_stars_post:

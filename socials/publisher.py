@@ -1,13 +1,16 @@
 # socials/publisher.py
 from __future__ import annotations
 
-from pathlib import Path
-from typing import Optional, Iterable, Union, Dict, Any
-import logging
 import inspect
+import logging
+from collections.abc import Iterable
+from pathlib import Path
+from typing import Any
+
 import yaml
 
 from socials.types import PostRef
+
 from .base import SocialPost
 from .bluesky_client import BlueskyClient, BlueskyConfig
 from .threads_client import ThreadsClient, ThreadsConfig
@@ -26,14 +29,14 @@ class SocialPublisher:
 
     def __init__(
         self,
-        config: Union[dict, str, Path],  # accept dict or path to YAML
-        mode: Optional[str] = None,  # "prod" | "debug" (overrides YAML)
-        nosocial: Optional[bool] = None,  # override YAML script.nosocial
-        monitor: Optional[object] = None,  # optional status monitor
+        config: dict | str | Path,  # accept dict or path to YAML
+        mode: str | None = None,  # "prod" | "debug" (overrides YAML)
+        nosocial: bool | None = None,  # override YAML script.nosocial
+        monitor: object | None = None,  # optional status monitor
     ):
         # Load config if a path/str was provided
         if isinstance(config, (str, Path)):
-            with open(config, "r", encoding="utf-8") as f:
+            with open(config, encoding="utf-8") as f:
                 self.cfg: dict = yaml.safe_load(f)
         else:
             self.cfg = dict(config)
@@ -78,7 +81,7 @@ class SocialPublisher:
             self._platforms["threads"] = self._thr
 
         # Per-platform “last reply anchor”
-        self._last: Dict[str, PostRef] = {}
+        self._last: dict[str, PostRef] = {}
 
     # ---------- lifecycle ----------
     def login_all(self) -> None:
@@ -113,7 +116,7 @@ class SocialPublisher:
         targets = self._resolve_targets(platforms)
         results: dict[str, PostRef] = {}
 
-        media_path: Optional[str] = None
+        media_path: str | None = None
         if isinstance(media, list):
             media_path = media[0] if media else None
         elif isinstance(media, str):
@@ -229,7 +232,7 @@ class SocialPublisher:
         """
         for platform, ref in results.items():
             # prefer a helper if present
-            if hasattr(state, "set_root") and callable(getattr(state, "set_root")):
+            if hasattr(state, "set_root") and callable(state.set_root):
                 try:
                     state.set_root(platform, ref)
                     continue

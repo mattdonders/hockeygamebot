@@ -14,10 +14,9 @@ Run with: pytest tests/test_mock_game.py -v -s
 The -s flag shows print statements so you can watch the "game" unfold!
 """
 
+from unittest.mock import Mock, patch
+
 import pytest
-from unittest.mock import Mock, patch, MagicMock, call
-from datetime import datetime
-import json
 
 
 class TestMockGame:
@@ -31,13 +30,7 @@ class TestMockGame:
     @patch('core.schedule.fetch_schedule')
     @patch('core.schedule.fetch_season_id')
     @patch('core.live.EventFactory.create_event')
-    def test_full_game_simulation(
-        self,
-        mock_create_event,
-        mock_season_id,
-        mock_schedule,
-        mock_playbyplay
-    ):
+    def test_full_game_simulation(self, mock_create_event, mock_season_id, mock_schedule, mock_playbyplay):
         """
         Simulate a complete game: NJD vs SJS
 
@@ -53,9 +46,9 @@ class TestMockGame:
 
         This tests the ENTIRE bot flow!
         """
-        print("\n" + "="*60)
+        print("\n" + "=" * 60)
         print("🏒 MOCK GAME SIMULATION: New Jersey Devils vs San Jose Sharks")
-        print("="*60)
+        print("=" * 60)
 
         # ==================== ARRANGE ====================
 
@@ -69,16 +62,8 @@ class TestMockGame:
                     "gameDate": "2025-10-30",
                     "startTimeUTC": "2025-10-30T23:00:00Z",
                     "gameState": "FUT",  # Starts as future
-                    "awayTeam": {
-                        "id": 28,
-                        "abbrev": "SJS",
-                        "commonName": {"default": "Sharks"}
-                    },
-                    "homeTeam": {
-                        "id": 1,
-                        "abbrev": "NJD",
-                        "commonName": {"default": "Devils"}
-                    }
+                    "awayTeam": {"id": 28, "abbrev": "SJS", "commonName": {"default": "Sharks"}},
+                    "homeTeam": {"id": 1, "abbrev": "NJD", "commonName": {"default": "Devils"}},
                 }
             ]
         }
@@ -92,10 +77,7 @@ class TestMockGame:
             "id": 2025020176,
             "gameState": "LIVE",
             "periodDescriptor": {"number": 1, "periodType": "REG"},
-            "clock": {
-                "timeRemaining": "20:00",
-                "inIntermission": False
-            },
+            "clock": {"timeRemaining": "20:00", "inIntermission": False},
             "awayTeam": {"abbrev": "SJS", "score": 0},
             "homeTeam": {"abbrev": "NJD", "score": 0},
             "plays": [
@@ -104,19 +86,20 @@ class TestMockGame:
                     "typeDescKey": "period-start",
                     "sortOrder": 1,
                     "periodDescriptor": {"number": 1},
-                    "timeInPeriod": "00:00"
+                    "timeInPeriod": "00:00",
                 },
                 {
                     "eventId": 2,
                     "typeDescKey": "faceoff",
                     "sortOrder": 2,
                     "periodDescriptor": {"number": 1},
-                    "timeInPeriod": "00:00"
-                }
-            ]
+                    "timeInPeriod": "00:00",
+                },
+            ],
         }
 
         from core.live import parse_live_game
+
         mock_context = self._create_mock_context("2025020176", 0)
 
         parse_live_game(mock_context)
@@ -143,14 +126,14 @@ class TestMockGame:
                     "typeDescKey": "period-start",
                     "sortOrder": 1,
                     "periodDescriptor": {"number": 1},
-                    "timeInPeriod": "00:00"
+                    "timeInPeriod": "00:00",
                 },
                 {
                     "eventId": 2,
                     "typeDescKey": "faceoff",
                     "sortOrder": 2,
                     "periodDescriptor": {"number": 1},
-                    "timeInPeriod": "00:00"
+                    "timeInPeriod": "00:00",
                 },
                 {
                     "eventId": 50,
@@ -165,10 +148,10 @@ class TestMockGame:
                         "scoringPlayerTotal": 8,
                         "homeScore": 1,
                         "awayScore": 0,
-                        "shotType": "Wrist Shot"
-                    }
-                }
-            ]
+                        "shotType": "Wrist Shot",
+                    },
+                },
+            ],
         }
 
         parse_live_game(mock_context)
@@ -179,19 +162,21 @@ class TestMockGame:
 
         print("\n⚠️  PENALTY! Sharks get 2 minutes")
 
-        mock_playbyplay.return_value["plays"].append({
-            "eventId": 75,
-            "typeDescKey": "penalty",
-            "sortOrder": 75,
-            "periodDescriptor": {"number": 1},
-            "timeInPeriod": "08:30",
-            "details": {
-                "eventOwnerTeamId": 28,
-                "committedByPlayerId": 8477933,
-                "duration": 2,
-                "descKey": "tripping"
+        mock_playbyplay.return_value["plays"].append(
+            {
+                "eventId": 75,
+                "typeDescKey": "penalty",
+                "sortOrder": 75,
+                "periodDescriptor": {"number": 1},
+                "timeInPeriod": "08:30",
+                "details": {
+                    "eventOwnerTeamId": 28,
+                    "committedByPlayerId": 8477933,
+                    "duration": 2,
+                    "descKey": "tripping",
+                },
             }
-        })
+        )
 
         parse_live_game(mock_context)
         mock_context.last_sort_order = 75
@@ -202,25 +187,27 @@ class TestMockGame:
         print("\n🚨 POWER PLAY GOAL! Devils capitalize!")
 
         mock_playbyplay.return_value["homeTeam"]["score"] = 2
-        mock_playbyplay.return_value["plays"].append({
-            "eventId": 90,
-            "typeDescKey": "goal",
-            "sortOrder": 90,
-            "periodDescriptor": {"number": 1},
-            "timeInPeriod": "10:15",
-            "details": {
-                "eventOwnerTeamId": 1,
-                "scoringPlayerId": 8479318,
-                "scoringPlayerName": "Jack Hughes",
-                "scoringPlayerTotal": 12,
-                "assist1PlayerId": 8476878,
-                "assist1PlayerName": "Dougie Hamilton",
-                "assist1PlayerTotal": 15,
-                "homeScore": 2,
-                "awayScore": 0,
-                "shotType": "Snap Shot"
+        mock_playbyplay.return_value["plays"].append(
+            {
+                "eventId": 90,
+                "typeDescKey": "goal",
+                "sortOrder": 90,
+                "periodDescriptor": {"number": 1},
+                "timeInPeriod": "10:15",
+                "details": {
+                    "eventOwnerTeamId": 1,
+                    "scoringPlayerId": 8479318,
+                    "scoringPlayerName": "Jack Hughes",
+                    "scoringPlayerTotal": 12,
+                    "assist1PlayerId": 8476878,
+                    "assist1PlayerName": "Dougie Hamilton",
+                    "assist1PlayerTotal": 15,
+                    "homeScore": 2,
+                    "awayScore": 0,
+                    "shotType": "Snap Shot",
+                },
             }
-        })
+        )
 
         parse_live_game(mock_context)
         mock_context.last_sort_order = 90
@@ -230,13 +217,15 @@ class TestMockGame:
 
         print("\n⏸️  END OF PERIOD 1")
 
-        mock_playbyplay.return_value["plays"].append({
-            "eventId": 200,
-            "typeDescKey": "period-end",
-            "sortOrder": 200,
-            "periodDescriptor": {"number": 1},
-            "timeInPeriod": "20:00"
-        })
+        mock_playbyplay.return_value["plays"].append(
+            {
+                "eventId": 200,
+                "typeDescKey": "period-end",
+                "sortOrder": 200,
+                "periodDescriptor": {"number": 1},
+                "timeInPeriod": "20:00",
+            }
+        )
         mock_playbyplay.return_value["clock"]["inIntermission"] = True
 
         parse_live_game(mock_context)
@@ -250,13 +239,15 @@ class TestMockGame:
         mock_playbyplay.return_value["periodDescriptor"]["number"] = 2
         mock_playbyplay.return_value["clock"]["inIntermission"] = False
         mock_playbyplay.return_value["clock"]["timeRemaining"] = "20:00"
-        mock_playbyplay.return_value["plays"].append({
-            "eventId": 201,
-            "typeDescKey": "period-start",
-            "sortOrder": 201,
-            "periodDescriptor": {"number": 2},
-            "timeInPeriod": "00:00"
-        })
+        mock_playbyplay.return_value["plays"].append(
+            {
+                "eventId": 201,
+                "typeDescKey": "period-start",
+                "sortOrder": 201,
+                "periodDescriptor": {"number": 2},
+                "timeInPeriod": "00:00",
+            }
+        )
 
         parse_live_game(mock_context)
         mock_context.last_sort_order = 201
@@ -267,22 +258,24 @@ class TestMockGame:
         print("\n👎 Goal - Sharks get on the board")
 
         mock_playbyplay.return_value["awayTeam"]["score"] = 1
-        mock_playbyplay.return_value["plays"].append({
-            "eventId": 250,
-            "typeDescKey": "goal",
-            "sortOrder": 250,
-            "periodDescriptor": {"number": 2},
-            "timeInPeriod": "07:22",
-            "details": {
-                "eventOwnerTeamId": 28,
-                "scoringPlayerId": 8477933,
-                "scoringPlayerName": "Tomas Hertl",
-                "scoringPlayerTotal": 9,
-                "homeScore": 2,
-                "awayScore": 1,
-                "shotType": "Backhand"
+        mock_playbyplay.return_value["plays"].append(
+            {
+                "eventId": 250,
+                "typeDescKey": "goal",
+                "sortOrder": 250,
+                "periodDescriptor": {"number": 2},
+                "timeInPeriod": "07:22",
+                "details": {
+                    "eventOwnerTeamId": 28,
+                    "scoringPlayerId": 8477933,
+                    "scoringPlayerName": "Tomas Hertl",
+                    "scoringPlayerTotal": 9,
+                    "homeScore": 2,
+                    "awayScore": 1,
+                    "shotType": "Backhand",
+                },
             }
-        })
+        )
 
         parse_live_game(mock_context)
         mock_context.last_sort_order = 250
@@ -293,28 +286,30 @@ class TestMockGame:
         print("\n🚨 GOAL! Devils respond quickly!")
 
         mock_playbyplay.return_value["homeTeam"]["score"] = 3
-        mock_playbyplay.return_value["plays"].append({
-            "eventId": 275,
-            "typeDescKey": "goal",
-            "sortOrder": 275,
-            "periodDescriptor": {"number": 2},
-            "timeInPeriod": "09:45",
-            "details": {
-                "eventOwnerTeamId": 1,
-                "scoringPlayerId": 8478407,
-                "scoringPlayerName": "Nico Hischier",
-                "scoringPlayerTotal": 9,
-                "assist1PlayerId": 8479318,
-                "assist1PlayerName": "Jack Hughes",
-                "assist1PlayerTotal": 20,
-                "assist2PlayerId": 8476878,
-                "assist2PlayerName": "Dougie Hamilton",
-                "assist2PlayerTotal": 16,
-                "homeScore": 3,
-                "awayScore": 1,
-                "shotType": "Wrist Shot"
+        mock_playbyplay.return_value["plays"].append(
+            {
+                "eventId": 275,
+                "typeDescKey": "goal",
+                "sortOrder": 275,
+                "periodDescriptor": {"number": 2},
+                "timeInPeriod": "09:45",
+                "details": {
+                    "eventOwnerTeamId": 1,
+                    "scoringPlayerId": 8478407,
+                    "scoringPlayerName": "Nico Hischier",
+                    "scoringPlayerTotal": 9,
+                    "assist1PlayerId": 8479318,
+                    "assist1PlayerName": "Jack Hughes",
+                    "assist1PlayerTotal": 20,
+                    "assist2PlayerId": 8476878,
+                    "assist2PlayerName": "Dougie Hamilton",
+                    "assist2PlayerTotal": 16,
+                    "homeScore": 3,
+                    "awayScore": 1,
+                    "shotType": "Wrist Shot",
+                },
             }
-        })
+        )
 
         parse_live_game(mock_context)
         mock_context.last_sort_order = 275
@@ -324,13 +319,15 @@ class TestMockGame:
 
         print("\n⏸️  END OF PERIOD 2")
 
-        mock_playbyplay.return_value["plays"].append({
-            "eventId": 400,
-            "typeDescKey": "period-end",
-            "sortOrder": 400,
-            "periodDescriptor": {"number": 2},
-            "timeInPeriod": "20:00"
-        })
+        mock_playbyplay.return_value["plays"].append(
+            {
+                "eventId": 400,
+                "typeDescKey": "period-end",
+                "sortOrder": 400,
+                "periodDescriptor": {"number": 2},
+                "timeInPeriod": "20:00",
+            }
+        )
         mock_playbyplay.return_value["clock"]["inIntermission"] = True
 
         parse_live_game(mock_context)
@@ -343,13 +340,15 @@ class TestMockGame:
 
         mock_playbyplay.return_value["periodDescriptor"]["number"] = 3
         mock_playbyplay.return_value["clock"]["inIntermission"] = False
-        mock_playbyplay.return_value["plays"].append({
-            "eventId": 401,
-            "typeDescKey": "period-start",
-            "sortOrder": 401,
-            "periodDescriptor": {"number": 3},
-            "timeInPeriod": "00:00"
-        })
+        mock_playbyplay.return_value["plays"].append(
+            {
+                "eventId": 401,
+                "typeDescKey": "period-start",
+                "sortOrder": 401,
+                "periodDescriptor": {"number": 3},
+                "timeInPeriod": "00:00",
+            }
+        )
 
         parse_live_game(mock_context)
         mock_context.last_sort_order = 401
@@ -360,23 +359,25 @@ class TestMockGame:
         print("\n🚨 EMPTY NET GOAL! Devils seal it!")
 
         mock_playbyplay.return_value["homeTeam"]["score"] = 4
-        mock_playbyplay.return_value["plays"].append({
-            "eventId": 550,
-            "typeDescKey": "goal",
-            "sortOrder": 550,
-            "periodDescriptor": {"number": 3},
-            "timeInPeriod": "18:45",
-            "details": {
-                "eventOwnerTeamId": 1,
-                "scoringPlayerId": 8479318,
-                "scoringPlayerName": "Jack Hughes",
-                "scoringPlayerTotal": 13,
-                "goalieInNetId": None,  # Empty net!
-                "homeScore": 4,
-                "awayScore": 1,
-                "shotType": "Wrist Shot"
+        mock_playbyplay.return_value["plays"].append(
+            {
+                "eventId": 550,
+                "typeDescKey": "goal",
+                "sortOrder": 550,
+                "periodDescriptor": {"number": 3},
+                "timeInPeriod": "18:45",
+                "details": {
+                    "eventOwnerTeamId": 1,
+                    "scoringPlayerId": 8479318,
+                    "scoringPlayerName": "Jack Hughes",
+                    "scoringPlayerTotal": 13,
+                    "goalieInNetId": None,  # Empty net!
+                    "homeScore": 4,
+                    "awayScore": 1,
+                    "shotType": "Wrist Shot",
+                },
             }
-        })
+        )
 
         parse_live_game(mock_context)
         mock_context.last_sort_order = 550
@@ -387,22 +388,24 @@ class TestMockGame:
         print("\n🏁 GAME OVER!")
 
         mock_playbyplay.return_value["gameState"] = "FINAL"
-        mock_playbyplay.return_value["plays"].append({
-            "eventId": 600,
-            "typeDescKey": "game-end",
-            "sortOrder": 600,
-            "periodDescriptor": {"number": 3},
-            "timeInPeriod": "20:00"
-        })
+        mock_playbyplay.return_value["plays"].append(
+            {
+                "eventId": 600,
+                "typeDescKey": "game-end",
+                "sortOrder": 600,
+                "periodDescriptor": {"number": 3},
+                "timeInPeriod": "20:00",
+            }
+        )
 
         parse_live_game(mock_context)
         print("✅ FINAL: NJD 4 - SJS 1")
 
         # ==================== ASSERT ====================
 
-        print("\n" + "="*60)
+        print("\n" + "=" * 60)
         print("📊 GAME STATISTICS")
-        print("="*60)
+        print("=" * 60)
 
         # Verify all events were processed
         total_events_processed = mock_create_event.call_count
@@ -416,7 +419,7 @@ class TestMockGame:
         print("✅ Game ended properly")
 
         print("\n🎉 MOCK GAME SIMULATION COMPLETE!")
-        print("="*60 + "\n")
+        print("=" * 60 + "\n")
 
     def _create_mock_context(self, game_id, last_sort_order):
         """Helper to create a mock game context"""
@@ -424,16 +427,8 @@ class TestMockGame:
         mock_context.game_id = game_id
         mock_context.last_sort_order = last_sort_order
         mock_context.all_goals = []
-        mock_context.preferred_team = Mock(
-            team_id=1,
-            abbreviation="NJD",
-            full_name="New Jersey Devils"
-        )
-        mock_context.other_team = Mock(
-            team_id=28,
-            abbreviation="SJS",
-            full_name="San Jose Sharks"
-        )
+        mock_context.preferred_team = Mock(team_id=1, abbreviation="NJD", full_name="New Jersey Devils")
+        mock_context.other_team = Mock(team_id=28, abbreviation="SJS", full_name="San Jose Sharks")
         return mock_context
 
 
@@ -448,9 +443,9 @@ class TestMockGameScenarios:
 
         3-3 after regulation, OT goal to win.
         """
-        print("\n" + "="*60)
+        print("\n" + "=" * 60)
         print("🏒 OVERTIME SCENARIO")
-        print("="*60)
+        print("=" * 60)
 
         # Setup - Tied at end of regulation
         mock_playbyplay.return_value = {
@@ -466,12 +461,13 @@ class TestMockGameScenarios:
                     "typeDescKey": "period-start",
                     "sortOrder": 700,
                     "periodDescriptor": {"number": 4, "periodType": "OT"},
-                    "timeInPeriod": "00:00"
+                    "timeInPeriod": "00:00",
                 }
-            ]
+            ],
         }
 
         from core.live import parse_live_game
+
         mock_context = Mock()
         mock_context.game_id = "2025020177"
         mock_context.last_sort_order = 600
@@ -482,19 +478,16 @@ class TestMockGameScenarios:
 
         # OT winner!
         mock_playbyplay.return_value["homeTeam"]["score"] = 4
-        mock_playbyplay.return_value["plays"].append({
-            "eventId": 750,
-            "typeDescKey": "goal",
-            "sortOrder": 750,
-            "periodDescriptor": {"number": 4, "periodType": "OT"},
-            "timeInPeriod": "02:34",
-            "details": {
-                "eventOwnerTeamId": 1,
-                "homeScore": 4,
-                "awayScore": 3,
-                "shotType": "Snap Shot"
+        mock_playbyplay.return_value["plays"].append(
+            {
+                "eventId": 750,
+                "typeDescKey": "goal",
+                "sortOrder": 750,
+                "periodDescriptor": {"number": 4, "periodType": "OT"},
+                "timeInPeriod": "02:34",
+                "details": {"eventOwnerTeamId": 1, "homeScore": 4, "awayScore": 3, "shotType": "Snap Shot"},
             }
-        })
+        )
 
         mock_playbyplay.return_value["gameState"] = "OFF"
 
@@ -502,7 +495,7 @@ class TestMockGameScenarios:
         print("🎉 OT WINNER! Devils win 4-3 in overtime!")
 
         assert mock_create_event.call_count >= 2
-        print("="*60 + "\n")
+        print("=" * 60 + "\n")
 
     @patch('core.schedule.fetch_playbyplay')
     @patch('core.live.EventFactory.create_event')
@@ -512,9 +505,9 @@ class TestMockGameScenarios:
 
         Still tied after OT, decided in shootout.
         """
-        print("\n" + "="*60)
+        print("\n" + "=" * 60)
         print("🏒 SHOOTOUT SCENARIO")
-        print("="*60)
+        print("=" * 60)
 
         # Shootout period
         mock_playbyplay.return_value = {
@@ -528,12 +521,13 @@ class TestMockGameScenarios:
                     "eventId": 800,
                     "typeDescKey": "shootout-complete",
                     "sortOrder": 800,
-                    "periodDescriptor": {"number": 5, "periodType": "SO"}
+                    "periodDescriptor": {"number": 5, "periodType": "SO"},
                 }
-            ]
+            ],
         }
 
         from core.live import parse_live_game
+
         mock_context = Mock()
         mock_context.game_id = "2025020178"
         mock_context.last_sort_order = 750
@@ -541,25 +535,20 @@ class TestMockGameScenarios:
 
         parse_live_game(mock_context)
         print("✅ Shootout complete - Devils win 4-3 (SO)")
-        print("="*60 + "\n")
+        print("=" * 60 + "\n")
 
     @patch('core.schedule.fetch_playbyplay')
     @patch('core.live.EventFactory.create_event')
     @patch('core.live.process_removed_goal')
-    def test_goal_challenge_scenario(
-        self,
-        mock_process_removed,
-        mock_create_event,
-        mock_playbyplay
-    ):
+    def test_goal_challenge_scenario(self, mock_process_removed, mock_create_event, mock_playbyplay):
         """
         Test a challenged goal that gets overturned.
 
         Goal is scored, challenged, then removed from feed.
         """
-        print("\n" + "="*60)
+        print("\n" + "=" * 60)
         print("🏒 GOAL CHALLENGE SCENARIO")
-        print("="*60)
+        print("=" * 60)
 
         # Goal scored
         mock_playbyplay.return_value = {
@@ -578,13 +567,14 @@ class TestMockGameScenarios:
                         "eventOwnerTeamId": 1,
                         "homeScore": 2,
                         "awayScore": 1,
-                        "shotType": "Wrist Shot"
-                    }
+                        "shotType": "Wrist Shot",
+                    },
                 }
-            ]
+            ],
         }
 
-        from core.live import parse_live_game, detect_removed_goals
+        from core.live import detect_removed_goals, parse_live_game
+
         mock_context = Mock()
         mock_context.game_id = "2025020179"
         mock_context.last_sort_order = 250
@@ -609,7 +599,7 @@ class TestMockGameScenarios:
         detect_removed_goals(mock_context, [])
 
         print("❌ Goal overturned! Score now 1-1")
-        print("="*60 + "\n")
+        print("=" * 60 + "\n")
 
 
 class TestMockGameEdgeCases:
@@ -623,9 +613,11 @@ class TestMockGameEdgeCases:
         Should handle gracefully without crashing bot.
         """
         import requests
+
         mock_playbyplay.side_effect = requests.RequestException("API timeout")
 
         from core.live import parse_live_game
+
         mock_context = Mock()
         mock_context.game_id = "2025020180"
 
@@ -641,9 +633,9 @@ class TestMockGameEdgeCases:
 
         Tests sortOrder tracking with rapid events.
         """
-        print("\n" + "="*60)
+        print("\n" + "=" * 60)
         print("🏒 RAPID GOALS SCENARIO")
-        print("="*60)
+        print("=" * 60)
 
         # Two goals 10 seconds apart!
         mock_playbyplay.return_value = {
@@ -659,7 +651,7 @@ class TestMockGameEdgeCases:
                     "sortOrder": 100,
                     "periodDescriptor": {"number": 1},
                     "timeInPeriod": "10:00",
-                    "details": {"eventOwnerTeamId": 1, "shotType": "Wrist Shot"}
+                    "details": {"eventOwnerTeamId": 1, "shotType": "Wrist Shot"},
                 },
                 {
                     "eventId": 101,
@@ -667,12 +659,13 @@ class TestMockGameEdgeCases:
                     "sortOrder": 101,
                     "periodDescriptor": {"number": 1},
                     "timeInPeriod": "09:50",  # 10 seconds later!
-                    "details": {"eventOwnerTeamId": 1, "shotType": "Snap Shot"}
-                }
-            ]
+                    "details": {"eventOwnerTeamId": 1, "shotType": "Snap Shot"},
+                },
+            ],
         }
 
         from core.live import parse_live_game
+
         mock_context = Mock()
         mock_context.game_id = "2025020181"
         mock_context.last_sort_order = 50
@@ -683,7 +676,7 @@ class TestMockGameEdgeCases:
         print("🚨🚨 TWO QUICK GOALS!")
         print("✅ Both goals processed correctly")
         assert mock_create_event.call_count == 2
-        print("="*60 + "\n")
+        print("=" * 60 + "\n")
 
 
 if __name__ == "__main__":

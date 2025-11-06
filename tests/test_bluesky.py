@@ -7,8 +7,10 @@ These tests verify the bug fixes we applied, especially:
 - Error handling
 """
 
+from unittest.mock import Mock
+
 import pytest
-from unittest.mock import Mock, patch, MagicMock
+
 from socials.bluesky import BlueskyClient
 
 

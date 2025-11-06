@@ -7,11 +7,13 @@ These tests verify the bug fixes we applied, especially:
 - File writing
 """
 
-import pytest
 import json
 import tempfile
 from pathlib import Path
-from unittest.mock import Mock, patch
+from unittest.mock import Mock
+
+import pytest
+
 from utils.status_monitor import StatusMonitor
 
 
@@ -95,8 +97,11 @@ class TestStatusMonitorEventHandling:
 
             # Create mock event with unknown type
             context = Mock()
-            context.game = {"homeTeam": {"score": 0}, "awayTeam": {"score": 0},
-                          "periodDescriptor": {"number": 1, "periodType": "REG"}}
+            context.game = {
+                "homeTeam": {"score": 0},
+                "awayTeam": {"score": 0},
+                "periodDescriptor": {"number": 1, "periodType": "REG"},
+            }
             context.game_id = "2025020999"
             context.game_state = "LIVE"
             context.venue = "Test Arena"
@@ -126,7 +131,7 @@ class TestStatusMonitorEventHandling:
         context.game = {
             "homeTeam": {"score": 3},
             "awayTeam": {"score": 2},
-            "periodDescriptor": {"number": 2, "periodType": "REG"}
+            "periodDescriptor": {"number": 2, "periodType": "REG"},
         }
         context.game_id = "2025020176"
         context.game_state = "LIVE"
@@ -156,7 +161,7 @@ class TestStatusMonitorEventHandling:
         context.game = {
             "homeTeam": {"score": 1},
             "awayTeam": {"score": 0},
-            "periodDescriptor": {"number": 1, "periodType": "REG"}
+            "periodDescriptor": {"number": 1, "periodType": "REG"},
         }
         context.game_id = "2025020177"
         context.game_state = "LIVE"
@@ -166,10 +171,7 @@ class TestStatusMonitorEventHandling:
         context.clock = Mock(time_remaining="15:00", in_intermission=False)
 
         # Dict events (old format)
-        context.events = [
-            {"typeDescKey": "goal"},
-            {"typeDescKey": "faceoff"}
-        ]
+        context.events = [{"typeDescKey": "goal"}, {"typeDescKey": "faceoff"}]
         context.live_loop_counter = 2
 
         return context
@@ -180,7 +182,7 @@ class TestStatusMonitorEventHandling:
         context.game = {
             "homeTeam": {"score": 2},
             "awayTeam": {"score": 1},
-            "periodDescriptor": {"number": 2, "periodType": "REG"}
+            "periodDescriptor": {"number": 2, "periodType": "REG"},
         }
         context.game_id = "2025020178"
         context.game_state = "LIVE"
@@ -195,12 +197,7 @@ class TestStatusMonitorEventHandling:
 
         dict_event = {"typeDescKey": "penalty"}
 
-        context.events = [
-            object_event,
-            dict_event,
-            {"typeDescKey": "hit"},
-            Mock(event_type="shot-on-goal")
-        ]
+        context.events = [object_event, dict_event, {"typeDescKey": "hit"}, Mock(event_type="shot-on-goal")]
         context.live_loop_counter = 3
 
         return context

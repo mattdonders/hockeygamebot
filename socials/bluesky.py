@@ -1,7 +1,6 @@
 import logging
-from pathlib import Path
 import re
-import typing as t
+from pathlib import Path
 
 import httpx
 from atproto import Client, client_utils, models
@@ -11,7 +10,7 @@ _META_PATTERN = re.compile(r'<meta property="og:.*?>')
 _CONTENT_PATTERN = re.compile(r'<meta[^>]+content="([^"]+)"')
 
 
-def _find_tag(og_tags: t.List[str], search_tag: str) -> t.Optional[str]:
+def _find_tag(og_tags: list[str], search_tag: str) -> str | None:
     for tag in og_tags:
         if search_tag in tag:
             return tag
@@ -19,7 +18,7 @@ def _find_tag(og_tags: t.List[str], search_tag: str) -> t.Optional[str]:
     return None
 
 
-def _get_tag_content(tag: str) -> t.Optional[str]:
+def _get_tag_content(tag: str) -> str | None:
     match = _CONTENT_PATTERN.match(tag)
     if match:
         return match.group(1)
@@ -27,7 +26,7 @@ def _get_tag_content(tag: str) -> t.Optional[str]:
     return None
 
 
-def _get_og_tag_value(og_tags: t.List[str], tag_name: str) -> t.Optional[str]:
+def _get_og_tag_value(og_tags: list[str], tag_name: str) -> str | None:
     tag = _find_tag(og_tags, tag_name)
     if tag:
         return _get_tag_content(tag)
@@ -35,7 +34,7 @@ def _get_og_tag_value(og_tags: t.List[str], tag_name: str) -> t.Optional[str]:
     return None
 
 
-def get_og_tags(url: str) -> t.Tuple[t.Optional[str], t.Optional[str], t.Optional[str]]:
+def get_og_tags(url: str) -> tuple[str | None, str | None, str | None]:
     response = httpx.get(url)
     response.raise_for_status()
 
@@ -182,7 +181,7 @@ class BlueskyClient:
             # Track social post in monitor (even in nosocial mode for testing)
             if hasattr(self, 'monitor') and self.monitor:
                 self.monitor.record_social_post()
-            return
+            return None
 
         # Initialize TextBuilder & External Embed
         text_builder = client_utils.TextBuilder()

@@ -1,10 +1,10 @@
-from datetime import datetime
 import logging
-from typing import Tuple
+from datetime import datetime
+
+import core.charts as charts
+import utils.others as otherutils
 from core import schedule
 from core.models.game_context import GameContext
-import utils.others as otherutils
-import core.charts as charts
 
 
 def final_score(context: GameContext):
@@ -103,7 +103,7 @@ def three_stars(context: GameContext):
     return three_stars_msg
 
 
-def team_stats_chart(context: GameContext) -> Tuple[str, str]:
+def team_stats_chart(context: GameContext) -> tuple[str, str]:
     """
     Sends the final team stats chart when the game is over.
     """

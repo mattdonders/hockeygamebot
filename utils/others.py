@@ -1,11 +1,11 @@
 import logging
-from datetime import datetime, timezone
 import os
+from datetime import UTC, datetime
 
 import pytz
-from definitions import LOGS_DIR
-
 from pytz import timezone as pytz_timezone
+
+from definitions import LOGS_DIR
 
 
 def setup_logging(config, console=False, debug=False):
@@ -106,7 +106,7 @@ def convert_utc_to_eastern(utc_time):
     """
     Convert a UTC time string to Eastern Time.
     """
-    utc = datetime.strptime(utc_time, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+    utc = datetime.strptime(utc_time, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=UTC)
     eastern = utc.astimezone(pytz_timezone("US/Eastern"))
     return eastern.strftime("%I:%M %p")  # Format as 12-hour time with AM/PM
 

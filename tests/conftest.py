@@ -5,15 +5,16 @@ This file contains fixtures that can be used across all test files.
 Pytest automatically discovers this file and makes fixtures available.
 """
 
-import pytest
-import tempfile
 import json
+import tempfile
+from datetime import datetime
 from pathlib import Path
 from unittest.mock import Mock
-from datetime import datetime
 
+import pytest
 
 # ==================== Mock Objects ====================
+
 
 @pytest.fixture
 def mock_game_context():
@@ -30,16 +31,13 @@ def mock_game_context():
     context.away_team = Mock(abbreviation="SJS", emoji="🦈")
 
     # Clock
-    context.clock = Mock(
-        time_remaining="12:34",
-        in_intermission=False
-    )
+    context.clock = Mock(time_remaining="12:34", in_intermission=False)
 
     # Game data
     context.game = {
         "homeTeam": {"score": 3, "abbrev": "NJD"},
         "awayTeam": {"score": 2, "abbrev": "SJS"},
-        "periodDescriptor": {"number": 2, "periodType": "REG"}
+        "periodDescriptor": {"number": 2, "periodType": "REG"},
     }
 
     # Events
@@ -48,10 +46,7 @@ def mock_game_context():
 
     # Socials
     context.preview_socials = Mock(
-        core_sent=False,
-        season_series_sent=False,
-        team_stats_sent=False,
-        officials_sent=False
+        core_sent=False, season_series_sent=False, team_stats_sent=False, officials_sent=False
     )
 
     context.final_socials = Mock(
@@ -59,7 +54,7 @@ def mock_game_context():
         three_stars_sent=False,
         team_stats_sent=False,
         bluesky_root=None,
-        bluesky_parent=None
+        bluesky_parent=None,
     )
 
     return context
@@ -69,6 +64,7 @@ def mock_game_context():
 def mock_bluesky_client():
     """Create a mock BlueskyClient for testing"""
     from socials.bluesky import BlueskyClient
+
     return BlueskyClient(nosocial=True)
 
 
@@ -92,11 +88,12 @@ def mock_event_dict():
         "typeDescKey": "goal",
         "periodDescriptor": {"number": 2},
         "timeInPeriod": "12:34",
-        "sortOrder": 100
+        "sortOrder": 100,
     }
 
 
 # ==================== File System Fixtures ====================
+
 
 @pytest.fixture
 def temp_dir():
@@ -131,6 +128,7 @@ def temp_log_file():
 
 # ==================== API Response Fixtures ====================
 
+
 @pytest.fixture
 def mock_schedule_response():
     """Mock NHL API schedule response"""
@@ -142,18 +140,10 @@ def mock_schedule_response():
                 "gameType": 2,
                 "gameDate": "2025-10-30",
                 "startTimeUTC": "2025-10-30T23:00:00Z",
-                "awayTeam": {
-                    "id": 28,
-                    "abbrev": "SJS",
-                    "score": 3
-                },
-                "homeTeam": {
-                    "id": 1,
-                    "abbrev": "NJD",
-                    "score": 5
-                },
+                "awayTeam": {"id": 28, "abbrev": "SJS", "score": 3},
+                "homeTeam": {"id": 1, "abbrev": "NJD", "score": 5},
                 "gameState": "OFF",
-                "gameScheduleState": "OK"
+                "gameScheduleState": "OK",
             }
         ]
     }
@@ -173,9 +163,9 @@ def mock_playbyplay_response():
                 "typeDescKey": "goal",
                 "periodDescriptor": {"number": 1},
                 "timeInPeriod": "05:23",
-                "sortOrder": 100
+                "sortOrder": 100,
             }
-        ]
+        ],
     }
 
 
@@ -187,7 +177,7 @@ def mock_landing_with_three_stars():
             "threeStars": [
                 {"star": 1, "playerId": 8478407, "teamAbbrev": "NJD"},
                 {"star": 2, "playerId": 8477933, "teamAbbrev": "SJS"},
-                {"star": 3, "playerId": 8476878, "teamAbbrev": "NJD"}
+                {"star": 3, "playerId": 8476878, "teamAbbrev": "NJD"},
             ]
         }
     }
@@ -202,6 +192,7 @@ def mock_landing_without_three_stars():
 
 
 # ==================== Time Fixtures ====================
+
 
 @pytest.fixture
 def frozen_time():
@@ -218,30 +209,25 @@ def frozen_time():
 
 # ==================== Pytest Configuration ====================
 
+
 def pytest_configure(config):
     """Configure pytest with custom markers"""
-    config.addinivalue_line(
-        "markers", "unit: mark test as a unit test"
-    )
-    config.addinivalue_line(
-        "markers", "integration: mark test as an integration test"
-    )
-    config.addinivalue_line(
-        "markers", "slow: mark test as slow"
-    )
-    config.addinivalue_line(
-        "markers", "api: mark test as requiring API access"
-    )
+    config.addinivalue_line("markers", "unit: mark test as a unit test")
+    config.addinivalue_line("markers", "integration: mark test as an integration test")
+    config.addinivalue_line("markers", "slow: mark test as slow")
+    config.addinivalue_line("markers", "api: mark test as requiring API access")
 
 
 # ==================== Helper Functions ====================
 
+
 @pytest.fixture
 def assert_valid_json():
     """Fixture that provides a helper to validate JSON files"""
+
     def _assert_valid_json(file_path):
         """Validate that a file contains valid JSON"""
-        with open(file_path, 'r') as f:
+        with open(file_path) as f:
             data = json.load(f)  # Will raise if invalid
         return data
 
@@ -251,6 +237,7 @@ def assert_valid_json():
 @pytest.fixture
 def create_mock_context_with_events():
     """Factory fixture to create mock contexts with events"""
+
     def _create(num_events=3, event_types=None):
         """
         Create a mock context with specified events
@@ -266,7 +253,7 @@ def create_mock_context_with_events():
         context.game = {
             "homeTeam": {"score": 3},
             "awayTeam": {"score": 2},
-            "periodDescriptor": {"number": 2, "periodType": "REG"}
+            "periodDescriptor": {"number": 2, "periodType": "REG"},
         }
         context.game_id = "2025020176"
         context.game_state = "LIVE"

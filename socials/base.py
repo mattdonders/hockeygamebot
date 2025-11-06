@@ -1,8 +1,9 @@
 # socials/base.py
 from __future__ import annotations
+
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional, Protocol
+from typing import Protocol
 
 from socials.types import PostRef
 
@@ -17,10 +18,10 @@ class SocialPost:
       as `reply_to_ref` (do NOT put platform IDs in here).
     """
 
-    text: Optional[str] = None
-    local_image: Optional[Path] = None  # local file path (e.g., "./charts/shotmap.png")
-    image_url: Optional[str] = None  # already-hosted URL (e.g., B2/GitHub CDN)
-    alt_text: Optional[str] = None  # image alt/description (if any)
+    text: str | None = None
+    local_image: Path | None = None  # local file path (e.g., "./charts/shotmap.png")
+    image_url: str | None = None  # already-hosted URL (e.g., B2/GitHub CDN)
+    alt_text: str | None = None  # image alt/description (if any)
 
 
 class SocialClient(Protocol):
@@ -33,4 +34,4 @@ class SocialClient(Protocol):
       - Return a PostRef that uniquely identifies the created post
     """
 
-    def post(self, post: SocialPost, reply_to_ref: Optional[PostRef] = None) -> PostRef: ...
+    def post(self, post: SocialPost, reply_to_ref: PostRef | None = None) -> PostRef: ...

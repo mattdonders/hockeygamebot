@@ -26,7 +26,7 @@ CONFIG_PATH = Path(__file__).resolve().parents[1] / "config.yaml"
 def load_config():
     if not CONFIG_PATH.exists():
         sys.exit(f"❌ config.yaml not found at: {CONFIG_PATH}")
-    with open(CONFIG_PATH, "r", encoding="utf-8") as f:
+    with open(CONFIG_PATH, encoding="utf-8") as f:
         return yaml.safe_load(f)
 
 
@@ -186,7 +186,7 @@ def main():
                 dest_rel = f"{subdir}/{base_name}" if subdir else base_name
                 if not args.only_url:
                     log(
-                        f"[GitHub] Committing to {ghcfg['owner']}/{ghcfg['repo']}:{ghcfg.get('branch','main')}/{dest_rel} …"
+                        f"[GitHub] Committing to {ghcfg['owner']}/{ghcfg['repo']}:{ghcfg.get('branch', 'main')}/{dest_rel} …"
                     )
                 url = upload_to_github_raw(ghcfg, img_path, dest_rel)
                 urls.append(url)
