@@ -8,14 +8,12 @@ import threading
 import time
 import warnings
 from datetime import datetime, timedelta
+from pathlib import Path
 
 from matplotlib import font_manager
 
-import core.preview as preview
-import core.rosters as rosters
-import core.schedule as schedule
 import utils.others as otherutils
-from core import charts, final
+from core import charts, final, preview, rosters, schedule
 from core.charts import teamstats_chart
 from core.integrations import nst
 from core.live import parse_live_game
@@ -39,8 +37,7 @@ class SilentHTTPHandler(http.server.SimpleHTTPRequestHandler):
 
 
 def start_dashboard_server(port=8000, max_retries=5):
-    """
-    Start the dashboard web server with error recovery and port file.
+    """Start the dashboard web server with error recovery and port file.
 
     Creates .dashboard_port file containing:
     - Port number
@@ -50,11 +47,13 @@ def start_dashboard_server(port=8000, max_retries=5):
     Args:
         port: Initial port to try (will increment if in use)
         max_retries: Maximum number of restart attempts
+
     """
     import errno
     import socket
 
-    os.chdir(os.path.dirname(os.path.abspath(__file__)))
+    # Use pathlib.Path to get the script directory
+    os.chdir(Path(__file__).resolve().parent)
     Handler = SilentHTTPHandler
 
     retry_count = 0
@@ -77,7 +76,7 @@ def start_dashboard_server(port=8000, max_retries=5):
                     s.close()
 
                     # Write port and IP to file
-                    with open(".dashboard_port", "w") as f:
+                    with Path(".dashboard_port").open("w") as f:
                         f.write(f"{current_port}\n")
                         f.write(f"{local_ip}\n")
                         f.write(f"http://localhost:{current_port}/dashboard.html\n")
@@ -136,8 +135,7 @@ def start_dashboard_server(port=8000, max_retries=5):
 
 
 def start_game_loop(context: GameContext):
-    """
-    Manages the main game loop for real-time updates.
+    """Manages the main game loop for real-time updates.
 
     This function handles various game states, including pre-game, live and post-game.
     It processes live events, manages game intermissions, posts
@@ -146,6 +144,7 @@ def start_game_loop(context: GameContext):
     Args:
         context (GameContext): The shared context containing game details, configuration,
             and state management.
+
     """
     # ------------------------------------------------------------------------------
     # START THE MAIN LOOP
@@ -180,6 +179,9 @@ def start_game_loop(context: GameContext):
                 try:
                     # Handles posting + seeding thread roots automatically
                     context.social.post_and_seed(
+                        message=game_time_post,
+                        platforms="enabled",
+                        state=context.preview_socials,
                         message=game_time_post,
                         platforms="enabled",
                         state=context.preview_socials,
@@ -321,7 +323,6 @@ def start_game_loop(context: GameContext):
                     context.gametime_rosters_set = True
 
                 # Extract game ID and build the play-by-play URL
-                game_id = context.game_id
                 # play_by_play_data = schedule.fetch_playbyplay(game_id)
                 # events = play_by_play_data.get("plays", [])
 
@@ -335,7 +336,6 @@ def start_game_loop(context: GameContext):
 
             while final_attempt < max_final_attempts:
                 final_attempt += 1
-                all_content_posted = True
 
                 logging.info(
                     f"Final content check - attempt {final_attempt}/{max_final_attempts}"
@@ -346,7 +346,7 @@ def start_game_loop(context: GameContext):
                     try:
                         final_score_post = final.final_score(context)
                         if final_score_post:  # Validate not None
-                            results = context.social.post_and_seed(
+                            context.social.post_and_seed(
                                 message=final_score_post,
                                 platforms="enabled",
                                 state=context.final_socials,
@@ -367,7 +367,7 @@ def start_game_loop(context: GameContext):
                     try:
                         three_stars_post = final.three_stars(context)
                         if three_stars_post:
-                            res = context.social.reply(
+                            context.social.reply(
                                 message=three_stars_post,
                                 platforms="enabled",
                                 state=context.final_socials,  # uses seeded roots/parents
@@ -376,7 +376,6 @@ def start_game_loop(context: GameContext):
                             logging.info("Posted three stars reply successfully.")
                         else:
                             logging.info("⏳ Three stars not available yet, will retry")
-                            all_content_posted = False
                     except Exception as e:
                         logging.error(f"Error posting three stars: {e}", exc_info=True)
                         if hasattr(context, "monitor"):
@@ -394,8 +393,11 @@ def start_game_loop(context: GameContext):
                                 context, team_stats_data, ingame=True
                             )
                             if chart_path:  # ✅ Validate chart was created
-                                chart_message = f"Final team stats for tonight's game.\n\n{context.preferred_team.hashtag} | {context.game_hashtag}"
-                                res = context.social.reply(
+                                chart_message = (
+                                    f"Final team stats for tonight's game.\n\n"
+                                    f"{context.preferred_team.hashtag} | {context.game_hashtag}"
+                                )
+                                context.social.reply(
                                     message=chart_message,
                                     media=chart_path,
                                     platforms="enabled",
@@ -455,13 +457,11 @@ def start_game_loop(context: GameContext):
 
         else:
             logging.error(f"Unknown game state: {context.game_state}")
-            print(context.game_state)
             sys.exit()
 
 
 def end_game_loop(context: GameContext):
-    """
-    Finalizes the game loop and logs the end of the game.
+    """Finalizes the game loop and logs the end of the game.
 
     This function logs the final game summary, including scores, timestamps, and any
     final details. It is the logical endpoint for the script.
@@ -469,8 +469,8 @@ def end_game_loop(context: GameContext):
     Args:
         context (GameContext): The shared context containing game details, configuration,
             and state management.
-    """
 
+    """
     logging.info("#" * 80)
     logging.info(
         "End of the '%s' Hockey Game Bot game.", context.preferred_team.full_name
@@ -487,11 +487,8 @@ def end_game_loop(context: GameContext):
     sys.exit()
 
 
-def handle_is_game_today(
-    game, target_date, preferred_team, season_id, context: GameContext
-):
-    """
-    Handles pre-game setup and initialization for games occurring today.
+def handle_is_game_today(game, target_date, preferred_team, season_id, context: GameContext):
+    """Handles pre-game setup and initialization for games occurring today.
 
     This function sets up team objects, rosters, hashtags, and game metadata in the
     context. It prepares the application for real-time updates during the game.
@@ -503,12 +500,12 @@ def handle_is_game_today(
         season_id (int): The current NHL season identifier.
         context (GameContext): The shared context containing game details, configuration,
             and state management.
-    """
 
+    """
     logging.info(f"Game found today ({target_date}):")
     logging.info(
         f"  {game['awayTeam']['placeName']['default']} ({game['awayTeam']['abbrev']}) "
-        f"@ {game['homeTeam']['placeName']['default']} ({game['homeTeam']['abbrev']})"
+        f"@ {game['homeTeam']['placeName']['default']} ({game['homeTeam']['abbrev']})",
     )
     logging.info(f"  Venue: {game['venue']['default']}")
     logging.info(f"  Start Time (UTC): {game['startTimeUTC']}")
@@ -566,8 +563,7 @@ def handle_is_game_today(
 
 
 def handle_was_game_yesterday(game, yesterday, preferred_team: Team, context: GameContext):
-    """
-    Handles logic for games that occurred yesterday.
+    """Handles logic for games that occurred yesterday.
 
     Posts a summary message and logs placeholder actions for past games without
     parsing play-by-play events.
@@ -577,8 +573,8 @@ def handle_was_game_yesterday(game, yesterday, preferred_team: Team, context: Ga
         yesterday (str): The date of yesterday (format: YYYY-MM-DD).
         context (GameContext): The shared context containing game details, configuration,
             and state management.
-    """
 
+    """
     # Log placeholder action for yesterday's game
     logging.debug("No play-by-play parsing performed for yesterday's game.")
 
@@ -613,12 +609,16 @@ def handle_was_game_yesterday(game, yesterday, preferred_team: Team, context: Ga
     logging.info(f"Game found yesterday ({yesterday}):")
     logging.info(
         f"  {game['awayTeam']['placeName']['default']} ({game['awayTeam']['abbrev']}) "
-        f"@ {game['homeTeam']['placeName']['default']} ({game['homeTeam']['abbrev']})"
+        f"@ {game['homeTeam']['placeName']['default']} ({game['homeTeam']['abbrev']})",
     )
     logging.info(f"  Venue: {game['venue']['default']}")
     logging.info(f"  Start Time (UTC): {game['startTimeUTC']}")
     logging.info(
-        f"  Final Score - {context.preferred_team.abbreviation}: {pref_score} / {context.other_team.abbreviation}: {other_score}"
+        "  Final Score - %s: %s / %s: %s",
+        context.preferred_team.abbreviation,
+        pref_score,
+        context.other_team.abbreviation,
+        other_score,
     )
 
     logging.info("Getting Game Recap & Description")
@@ -689,15 +689,13 @@ def handle_was_game_yesterday(game, yesterday, preferred_team: Team, context: Ga
 
 
 def main():
-    """
-    Entry point for the NHL game-checking script.
+    """Entry point for the NHL game-checking script.
 
     This function parses command-line arguments, initializes configuration and logging,
     sets up the preferred team and Bluesky client, fetches the game schedule, and
     determines whether there are games today or yesterday. It invokes the appropriate
     handling functions for these scenarios.
     """
-
     # fmt: off
     parser = argparse.ArgumentParser(description="Check NHL games for a specific date.")
     parser.add_argument("--config", type=str, default="config.yaml", help="Path to the configuration file (default: config.yaml).")
@@ -764,7 +762,10 @@ def main():
     debug_social_flag = social_mode == "debug"
 
     logging.info(
-        "Social mode resolved -> %s [from: ENV=%r, YAML=%r]", social_mode, env_mode or None, config_mode or None
+        "Social mode resolved -> %s [from: ENV=%r, YAML=%r]",
+        social_mode,
+        env_mode or None,
+        config_mode or None,
     )
 
     # Instantiate publisher; let it read script.nosocial from the YAML
@@ -779,10 +780,10 @@ def main():
         publisher.nosocial,  # authoritative
         yaml_nosocial,  # helpful for debugging config vs runtime
     )
-
     # Load Custom Fonts for Charts
-    inter_font_path = os.path.join(RESOURCES_DIR, "Inter-Regular.ttf")
+    inter_font_path = str(Path(RESOURCES_DIR) / "Inter-Regular.ttf")
     inter_font = font_manager.FontProperties(fname=inter_font_path)
+    # rcParams["font.family"] = inter_font.get_name()
     # rcParams["font.family"] = inter_font.get_name()
 
     # Create the GameContext
