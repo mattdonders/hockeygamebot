@@ -11,12 +11,6 @@ from datetime import datetime, timedelta
 
 from matplotlib import font_manager
 
-warnings.filterwarnings(
-    "ignore",
-    message="The 'default' attribute.*`Field\\(\\)`",
-    category=UserWarning,
-)
-
 import core.preview as preview
 import core.rosters as rosters
 import core.schedule as schedule
@@ -30,8 +24,13 @@ from core.models.team import Team
 from definitions import RESOURCES_DIR
 from socials.publisher import SocialPublisher
 from utils.config import load_config
-from utils.status_monitor import StatusMonitor
 from utils.team_details import TEAM_DETAILS
+
+warnings.filterwarnings(
+    "ignore",
+    message="The 'default' attribute.*`Field\\(\\)`",
+    category=UserWarning,
+)
 
 
 class SilentHTTPHandler(http.server.SimpleHTTPRequestHandler):
@@ -164,6 +163,12 @@ def start_game_loop(context: GameContext):
         if hasattr(context, "monitor"):
             context.monitor.update_game_state(context)
 
+        # Type-Narrowing Game Context
+        game = context.game
+        if game is None:
+            # pick your behavior: early return/continue, or raise to hit the outer try/except
+            raise RuntimeError("No game data set on context.")
+
         # If we enter this function on the day of a game (before the game starts), gameState = "FUT"
         # We should send preview posts & then sleep until game time.
         if context.game_state in ["PRE", "FUT"]:
@@ -186,16 +191,10 @@ def start_game_loop(context: GameContext):
 
             if not context.preview_socials.season_series_sent:
                 try:
-                    team_schedule = schedule.fetch_schedule(
-                        context.preferred_team.abbreviation, context.season_id
-                    )
-                    home_team = context.game["homeTeam"]["abbrev"]
-                    away_team = context.game["awayTeam"]["abbrev"]
-                    opposing_team = (
-                        away_team
-                        if home_team == context.preferred_team.abbreviation
-                        else home_team
-                    )
+                    team_schedule = schedule.fetch_schedule(context.preferred_team.abbreviation, context.season_id)
+                    home_team = game["homeTeam"]["abbrev"]
+                    away_team = game["awayTeam"]["abbrev"]
+                    opposing_team = away_team if home_team == context.preferred_team.abbreviation else home_team
 
                     season_series_post = preview.format_season_series_post(
                         team_schedule,
@@ -274,14 +273,9 @@ def start_game_loop(context: GameContext):
 
             if not context.gametime_rosters_set:
                 # Get Game-Time Rosters and Combine w/ Pre-Game Rosters
-                logging.info(
-                    "Getting game-time rosters and adding them to existing combined rosters."
-                )
-                game_time_rosters = rosters.load_game_rosters(context)
-                final_combined_rosters = {
-                    **context.combined_roster,
-                    **game_time_rosters,
-                }
+                logging.info("Getting game-time rosters and adding them to existing combined rosters.")
+                game_time_rosters = rosters.load_game_rosters(context) or {}
+                final_combined_rosters = {**context.combined_roster, **game_time_rosters}
                 context.combined_roster = final_combined_rosters
                 context.gametime_rosters_set = True
 
@@ -290,10 +284,7 @@ def start_game_loop(context: GameContext):
 
             if context.clock.in_intermission:
                 intermission_sleep_time = context.clock.seconds_remaining
-                logging.info(
-                    "Game is in intermission - sleep for the remaining time (%ss).",
-                    intermission_sleep_time,
-                )
+                logging.info("Game is in intermission - sleep for the remaining time (%ss).", intermission_sleep_time)
                 if hasattr(context, "monitor"):
                     context.monitor.set_status("SLEEPING")
                 time.sleep(intermission_sleep_time)
@@ -308,9 +299,7 @@ def start_game_loop(context: GameContext):
                 time.sleep(live_sleep_time)
 
         elif context.game_state in ["OFF", "FINAL"]:
-            logging.info(
-                "Game is now over and / or 'Official' - run end of game functions with increased sleep time."
-            )
+            logging.info("Game is now over and / or 'Official' - run end of game functions with increased sleep time.")
 
             # Set status to RUNNING for final game processing
             if hasattr(context, "monitor"):
@@ -325,14 +314,9 @@ def start_game_loop(context: GameContext):
 
                 if not context.gametime_rosters_set:
                     # Get Game-Time Rosters and Combine w/ Pre-Game Rosters
-                    logging.info(
-                        "Getting game-time rosters and adding them to existing combined rosters."
-                    )
-                    game_time_rosters = rosters.load_game_rosters(context)
-                    final_combined_rosters = {
-                        **context.combined_roster,
-                        **game_time_rosters,
-                    }
+                    logging.info("Getting game-time rosters and adding them to existing combined rosters.")
+                    game_time_rosters = rosters.load_game_rosters(context) or {}
+                    final_combined_rosters = {**context.combined_roster, **game_time_rosters}
                     context.combined_roster = final_combined_rosters
                     context.gametime_rosters_set = True
 
@@ -461,9 +445,7 @@ def start_game_loop(context: GameContext):
                 missing_content.append("team stats")
 
             if missing_content:
-                logging.warning(
-                    f"⚠️  Max final attempts reached. Missing content: {', '.join(missing_content)}"
-                )
+                logging.warning(f"⚠️  Max final attempts reached. Missing content: {', '.join(missing_content)}")
                 if hasattr(context, "monitor"):
                     context.monitor.record_error(
                         f"Incomplete final content: {', '.join(missing_content)}"
@@ -540,11 +522,11 @@ def handle_is_game_today(
     other_team = Team(other_team_name)
 
     # Add All Teams to GameContext
-    context.preferred_team = preferred_team
-    context.other_team = other_team
-    context.home_team = preferred_team if is_preferred_home else other_team
-    context.away_team = other_team if is_preferred_home else preferred_team
-    context.preferred_homeaway = "home" if is_preferred_home else "away"
+    context.set_teams(
+        preferred=preferred_team,
+        other=other_team,
+        preferred_homeaway="home" if is_preferred_home else "away",
+    )
 
     # Set hashtags into game context
     context.game_hashtag = (
@@ -554,18 +536,14 @@ def handle_is_game_today(
     # Get Game ID / Type & Store it in the GameContext
     game_id = game["id"]
     game_type = game["gameType"]
-    context.game_id = game_id
+    context.set_game_ids(game_id=game_id, season_id=season_id)
     context.game_type = game_type
     context.game_shortid = str(game_id)[-4:]
 
     # Set Game Time & Game Time (in local TZ)
     context.game_time = game["startTimeUTC"]
-    game_time_local = otherutils.convert_utc_to_localteam_dt(
-        context.game_time, context.preferred_team.timezone
-    )
-    game_time_local_str = otherutils.convert_utc_to_localteam(
-        context.game_time, context.preferred_team.timezone
-    )
+    game_time_local = otherutils.convert_utc_to_localteam_dt(context.game_time, context.preferred_team.timezone)
+    game_time_local_str = otherutils.convert_utc_to_localteam(context.game_time, context.preferred_team.timezone)
     context.game_time_local = game_time_local
     context.game_time_local_str = game_time_local_str
 
@@ -587,7 +565,7 @@ def handle_is_game_today(
     start_game_loop(context)
 
 
-def handle_was_game_yesterday(game, yesterday, context: GameContext):
+def handle_was_game_yesterday(game, yesterday, preferred_team: Team, context: GameContext):
     """
     Handles logic for games that occurred yesterday.
 
@@ -605,22 +583,19 @@ def handle_was_game_yesterday(game, yesterday, context: GameContext):
     logging.debug("No play-by-play parsing performed for yesterday's game.")
 
     # Setup Other Team Object & Other Related Team Functions
-    is_preferred_home = (
-        game["homeTeam"]["abbrev"] == context.preferred_team.abbreviation
-    )
-    other_team_abbreviation = (
-        game["awayTeam"]["abbrev"] if is_preferred_home else game["homeTeam"]["abbrev"]
-    )
+    is_preferred_home = game["homeTeam"]["abbrev"] == preferred_team.abbreviation
+    other_team_abbreviation = game["awayTeam"]["abbrev"] if is_preferred_home else game["homeTeam"]["abbrev"]
     other_team_name = TEAM_DETAILS[other_team_abbreviation]["full_name"]
     other_team = Team(other_team_name)
-    context.other_team = other_team
 
-    context.home_team = context.preferred_team if is_preferred_home else other_team
-    context.away_team = other_team if is_preferred_home else context.preferred_team
+    context.set_teams(
+        preferred=preferred_team,
+        other=other_team,
+        preferred_homeaway="home" if is_preferred_home else "away",
+    )
 
     # Add Game ID to Context (For Consistency)
-    game_id = game["id"]
-    context.game_id = game_id
+    context.set_game_ids(game_id=game["id"], season_id=game["season"])
 
     # Get Final Score & Setup the "Result String"
     pref_score = (
@@ -774,9 +749,7 @@ def main():
     # Transitional: if the old flag is still present, warn that it's ignored.
     try:
         if getattr(args, "debugsocial", False):
-            logging.warning(
-                "Flag --debugsocial is set but ignored. Social mode no longer supports CLI debug override."
-            )
+            logging.warning("Flag --debugsocial is set but ignored. Social mode no longer supports CLI debug override.")
     except NameError:
         # args may not exist in some contexts; ignore.
         pass
@@ -791,10 +764,7 @@ def main():
     debug_social_flag = social_mode == "debug"
 
     logging.info(
-        "Social mode resolved -> %s [from: ENV=%r, YAML=%r]",
-        social_mode,
-        env_mode or None,
-        config_mode or None,
+        "Social mode resolved -> %s [from: ENV=%r, YAML=%r]", social_mode, env_mode or None, config_mode or None
     )
 
     # Instantiate publisher; let it read script.nosocial from the YAML
@@ -823,21 +793,17 @@ def main():
         debugsocial=debug_social_flag,
     )
 
-    # After creating monitor
-    monitor = StatusMonitor()
-    context.monitor = monitor
-
     # Attach the Monitor to BlueSky Client & Schedule Modules
     # bluesky_client.monitor = monitor
-    publisher.monitor = monitor
-    schedule.set_monitor(monitor)
+    publisher.monitor = context.monitor
+    schedule.set_monitor(context.monitor)
 
     # Add Preferred Team to GameContext
-    context.preferred_team = preferred_team
+    # context.preferred_team = preferred_team
 
     # Fetch season ID
     season_id = schedule.fetch_season_id(preferred_team.abbreviation)
-    context.season_id = season_id
+    # context.season_id = season_id
 
     # Determine dates to check
     target_date = args.date if args.date else datetime.now().strftime("%Y-%m-%d")
@@ -861,7 +827,7 @@ def main():
         # Check for a game yesterday
         game_yesterday, _ = schedule.is_game_on_date(team_schedule, yesterday)
         if game_yesterday:
-            handle_was_game_yesterday(game_yesterday, yesterday, context)
+            handle_was_game_yesterday(game_yesterday, yesterday, preferred_team, context)
             return
 
         # No games found
