@@ -1,5 +1,4 @@
-"""
-Mock Game Simulation Tests
+"""Mock Game Simulation Tests
 
 This file contains comprehensive tests that simulate an entire hockey game
 from start to finish. This is INCREDIBLY useful for:
@@ -20,19 +19,17 @@ import pytest
 
 
 class TestMockGame:
-    """
-    Full game simulation tests.
+    """Full game simulation tests.
 
     These simulate a complete NHL game from pregame to final.
     """
 
-    @patch('core.schedule.fetch_playbyplay')
-    @patch('core.schedule.fetch_schedule')
-    @patch('core.schedule.fetch_season_id')
-    @patch('core.live.EventFactory.create_event')
+    @patch("core.schedule.fetch_playbyplay")
+    @patch("core.schedule.fetch_schedule")
+    @patch("core.schedule.fetch_season_id")
+    @patch("core.live.EventFactory.create_event")
     def test_full_game_simulation(self, mock_create_event, mock_season_id, mock_schedule, mock_playbyplay):
-        """
-        Simulate a complete game: NJD vs SJS
+        """Simulate a complete game: NJD vs SJS
 
         Game Flow:
         1. Pregame (FUT state)
@@ -64,8 +61,8 @@ class TestMockGame:
                     "gameState": "FUT",  # Starts as future
                     "awayTeam": {"id": 28, "abbrev": "SJS", "commonName": {"default": "Sharks"}},
                     "homeTeam": {"id": 1, "abbrev": "NJD", "commonName": {"default": "Devils"}},
-                }
-            ]
+                },
+            ],
         }
 
         # ==================== ACT: PERIOD 1 ====================
@@ -175,7 +172,7 @@ class TestMockGame:
                     "duration": 2,
                     "descKey": "tripping",
                 },
-            }
+            },
         )
 
         parse_live_game(mock_context)
@@ -206,7 +203,7 @@ class TestMockGame:
                     "awayScore": 0,
                     "shotType": "Snap Shot",
                 },
-            }
+            },
         )
 
         parse_live_game(mock_context)
@@ -224,7 +221,7 @@ class TestMockGame:
                 "sortOrder": 200,
                 "periodDescriptor": {"number": 1},
                 "timeInPeriod": "20:00",
-            }
+            },
         )
         mock_playbyplay.return_value["clock"]["inIntermission"] = True
 
@@ -246,7 +243,7 @@ class TestMockGame:
                 "sortOrder": 201,
                 "periodDescriptor": {"number": 2},
                 "timeInPeriod": "00:00",
-            }
+            },
         )
 
         parse_live_game(mock_context)
@@ -274,7 +271,7 @@ class TestMockGame:
                     "awayScore": 1,
                     "shotType": "Backhand",
                 },
-            }
+            },
         )
 
         parse_live_game(mock_context)
@@ -308,7 +305,7 @@ class TestMockGame:
                     "awayScore": 1,
                     "shotType": "Wrist Shot",
                 },
-            }
+            },
         )
 
         parse_live_game(mock_context)
@@ -326,7 +323,7 @@ class TestMockGame:
                 "sortOrder": 400,
                 "periodDescriptor": {"number": 2},
                 "timeInPeriod": "20:00",
-            }
+            },
         )
         mock_playbyplay.return_value["clock"]["inIntermission"] = True
 
@@ -347,7 +344,7 @@ class TestMockGame:
                 "sortOrder": 401,
                 "periodDescriptor": {"number": 3},
                 "timeInPeriod": "00:00",
-            }
+            },
         )
 
         parse_live_game(mock_context)
@@ -376,7 +373,7 @@ class TestMockGame:
                     "awayScore": 1,
                     "shotType": "Wrist Shot",
                 },
-            }
+            },
         )
 
         parse_live_game(mock_context)
@@ -395,7 +392,7 @@ class TestMockGame:
                 "sortOrder": 600,
                 "periodDescriptor": {"number": 3},
                 "timeInPeriod": "20:00",
-            }
+            },
         )
 
         parse_live_game(mock_context)
@@ -435,11 +432,10 @@ class TestMockGame:
 class TestMockGameScenarios:
     """Test specific game scenarios"""
 
-    @patch('core.schedule.fetch_playbyplay')
-    @patch('core.live.EventFactory.create_event')
+    @patch("core.schedule.fetch_playbyplay")
+    @patch("core.live.EventFactory.create_event")
     def test_overtime_game(self, mock_create_event, mock_playbyplay):
-        """
-        Test a game that goes to overtime.
+        """Test a game that goes to overtime.
 
         3-3 after regulation, OT goal to win.
         """
@@ -462,7 +458,7 @@ class TestMockGameScenarios:
                     "sortOrder": 700,
                     "periodDescriptor": {"number": 4, "periodType": "OT"},
                     "timeInPeriod": "00:00",
-                }
+                },
             ],
         }
 
@@ -486,7 +482,7 @@ class TestMockGameScenarios:
                 "periodDescriptor": {"number": 4, "periodType": "OT"},
                 "timeInPeriod": "02:34",
                 "details": {"eventOwnerTeamId": 1, "homeScore": 4, "awayScore": 3, "shotType": "Snap Shot"},
-            }
+            },
         )
 
         mock_playbyplay.return_value["gameState"] = "OFF"
@@ -497,11 +493,10 @@ class TestMockGameScenarios:
         assert mock_create_event.call_count >= 2
         print("=" * 60 + "\n")
 
-    @patch('core.schedule.fetch_playbyplay')
-    @patch('core.live.EventFactory.create_event')
+    @patch("core.schedule.fetch_playbyplay")
+    @patch("core.live.EventFactory.create_event")
     def test_shootout_game(self, mock_create_event, mock_playbyplay):
-        """
-        Test a game that goes to shootout.
+        """Test a game that goes to shootout.
 
         Still tied after OT, decided in shootout.
         """
@@ -522,7 +517,7 @@ class TestMockGameScenarios:
                     "typeDescKey": "shootout-complete",
                     "sortOrder": 800,
                     "periodDescriptor": {"number": 5, "periodType": "SO"},
-                }
+                },
             ],
         }
 
@@ -537,12 +532,11 @@ class TestMockGameScenarios:
         print("✅ Shootout complete - Devils win 4-3 (SO)")
         print("=" * 60 + "\n")
 
-    @patch('core.schedule.fetch_playbyplay')
-    @patch('core.live.EventFactory.create_event')
-    @patch('core.live.process_removed_goal')
+    @patch("core.schedule.fetch_playbyplay")
+    @patch("core.live.EventFactory.create_event")
+    @patch("core.live.process_removed_goal")
     def test_goal_challenge_scenario(self, mock_process_removed, mock_create_event, mock_playbyplay):
-        """
-        Test a challenged goal that gets overturned.
+        """Test a challenged goal that gets overturned.
 
         Goal is scored, challenged, then removed from feed.
         """
@@ -569,7 +563,7 @@ class TestMockGameScenarios:
                         "awayScore": 1,
                         "shotType": "Wrist Shot",
                     },
-                }
+                },
             ],
         }
 
@@ -605,10 +599,9 @@ class TestMockGameScenarios:
 class TestMockGameEdgeCases:
     """Test edge cases and unusual situations"""
 
-    @patch('core.schedule.fetch_playbyplay')
+    @patch("core.schedule.fetch_playbyplay")
     def test_api_failure_during_game(self, mock_playbyplay):
-        """
-        Test handling of API failure mid-game.
+        """Test handling of API failure mid-game.
 
         Should handle gracefully without crashing bot.
         """
@@ -625,11 +618,10 @@ class TestMockGameEdgeCases:
         with pytest.raises(requests.RequestException):
             parse_live_game(mock_context)
 
-    @patch('core.schedule.fetch_playbyplay')
-    @patch('core.live.EventFactory.create_event')
+    @patch("core.schedule.fetch_playbyplay")
+    @patch("core.live.EventFactory.create_event")
     def test_rapid_goal_succession(self, mock_create_event, mock_playbyplay):
-        """
-        Test multiple goals scored in quick succession.
+        """Test multiple goals scored in quick succession.
 
         Tests sortOrder tracking with rapid events.
         """

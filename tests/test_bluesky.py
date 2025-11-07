@@ -1,5 +1,4 @@
-"""
-Tests for Bluesky social media client
+"""Tests for Bluesky social media client
 
 These tests verify the bug fixes we applied, especially:
 - Input validation (None/empty messages)
@@ -10,7 +9,6 @@ These tests verify the bug fixes we applied, especially:
 from unittest.mock import Mock
 
 import pytest
-
 from socials.bluesky import BlueskyClient
 
 
@@ -125,13 +123,11 @@ class TestBlueskyRealAPI:
         """Test actual authentication to Bluesky"""
         # This would test with real credentials
         # Only run this manually when you want to verify API connectivity
-        pass
 
     def test_real_post(self):
         """Test actual posting to Bluesky"""
         # This would make a real post
         # Only run manually with test account
-        pass
 
 
 # Pytest fixtures (reusable test setup)

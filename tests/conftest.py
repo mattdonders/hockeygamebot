@@ -1,5 +1,4 @@
-"""
-Shared pytest fixtures and configuration
+"""Shared pytest fixtures and configuration
 
 This file contains fixtures that can be used across all test files.
 Pytest automatically discovers this file and makes fixtures available.
@@ -46,7 +45,10 @@ def mock_game_context():
 
     # Socials
     context.preview_socials = Mock(
-        core_sent=False, season_series_sent=False, team_stats_sent=False, officials_sent=False
+        core_sent=False,
+        season_series_sent=False,
+        team_stats_sent=False,
+        officials_sent=False,
     )
 
     context.final_socials = Mock(
@@ -105,7 +107,7 @@ def temp_dir():
 @pytest.fixture
 def temp_status_file():
     """Create a temporary status.json file"""
-    with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
         temp_file = Path(f.name)
 
     yield temp_file
@@ -117,7 +119,7 @@ def temp_status_file():
 @pytest.fixture
 def temp_log_file():
     """Create a temporary log file"""
-    with tempfile.NamedTemporaryFile(mode='w', suffix='.log', delete=False) as f:
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".log", delete=False) as f:
         temp_file = Path(f.name)
 
     yield temp_file
@@ -144,8 +146,8 @@ def mock_schedule_response():
                 "homeTeam": {"id": 1, "abbrev": "NJD", "score": 5},
                 "gameState": "OFF",
                 "gameScheduleState": "OK",
-            }
-        ]
+            },
+        ],
     }
 
 
@@ -164,7 +166,7 @@ def mock_playbyplay_response():
                 "periodDescriptor": {"number": 1},
                 "timeInPeriod": "05:23",
                 "sortOrder": 100,
-            }
+            },
         ],
     }
 
@@ -178,8 +180,8 @@ def mock_landing_with_three_stars():
                 {"star": 1, "playerId": 8478407, "teamAbbrev": "NJD"},
                 {"star": 2, "playerId": 8477933, "teamAbbrev": "SJS"},
                 {"star": 3, "playerId": 8476878, "teamAbbrev": "NJD"},
-            ]
-        }
+            ],
+        },
     }
 
 
@@ -187,7 +189,7 @@ def mock_landing_with_three_stars():
 def mock_landing_without_three_stars():
     """Mock NHL API landing response WITHOUT three stars (Bug #1 scenario)"""
     return {
-        "summary": {}  # Missing threeStars key
+        "summary": {},  # Missing threeStars key
     }
 
 
@@ -228,8 +230,7 @@ def assert_valid_json():
     def _assert_valid_json(file_path):
         """Validate that a file contains valid JSON"""
         with open(file_path) as f:
-            data = json.load(f)  # Will raise if invalid
-        return data
+            return json.load(f)  # Will raise if invalid
 
     return _assert_valid_json
 
@@ -239,12 +240,12 @@ def create_mock_context_with_events():
     """Factory fixture to create mock contexts with events"""
 
     def _create(num_events=3, event_types=None):
-        """
-        Create a mock context with specified events
+        """Create a mock context with specified events
 
         Args:
             num_events: Number of events to create
             event_types: List of event types, defaults to ["goal", "penalty", "shot-on-goal"]
+
         """
         if event_types is None:
             event_types = ["goal", "penalty", "shot-on-goal"]

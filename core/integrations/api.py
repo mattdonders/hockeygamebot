@@ -17,6 +17,7 @@ def thirdparty_request(url, headers=None):
 
     Returns:
         response: Response from the website (requests.get)
+
     """
     sf = SessionFactory()
     session = sf.get()
@@ -32,7 +33,7 @@ def thirdparty_request(url, headers=None):
 
     # Default User-Agent
     ua_header = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/70.0.3538.77 Safari/537.36"
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/70.0.3538.77 Safari/537.36",
     }
     headers = {**headers, **ua_header} if headers else ua_header
 
@@ -42,9 +43,9 @@ def thirdparty_request(url, headers=None):
         response.raise_for_status()
         return response
     except HTTPError as http_err:
-        logging.error(f"HTTP error occurred: {http_err}")
+        logging.exception(f"HTTP error occurred: {http_err}")
     except RequestException as req_err:
-        logging.error(f"Request error occurred: {req_err}")
+        logging.exception(f"Request error occurred: {req_err}")
     return None
 
 
@@ -57,9 +58,10 @@ def bs4_parse(content):
 
     Returns:
         A souped response
+
     """
     try:
         return BeautifulSoup(content, "lxml")
     except TypeError as e:
-        logging.error(e)
+        logging.exception(e)
         return None

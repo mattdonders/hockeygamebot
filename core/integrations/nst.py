@@ -13,8 +13,7 @@ from utils.team_details import get_team_details_by_name
 
 
 def get_nst_report_url(context: GameContext, full: bool = False) -> str | None:
-    """
-    Generate the Natural Stat Trick (NST) report URL for a given NHL game.
+    """Generate the Natural Stat Trick (NST) report URL for a given NHL game.
 
     Args:
         game: An NHL Game object containing relevant game details. Expected attributes:
@@ -25,8 +24,8 @@ def get_nst_report_url(context: GameContext, full: bool = False) -> str | None:
 
     Returns:
         Optional[str]: The NST report URL for the game, or None if the URL cannot be constructed.
-    """
 
+    """
     base_url = "https://www.naturalstattrick.com"
 
     # Validate the `game` object has the required attributes
@@ -43,26 +42,22 @@ def get_nst_report_url(context: GameContext, full: bool = False) -> str | None:
             "game": f"{context.game_type}{context.game_shortid}",
         }
         # Generate the full URL
-        nst_rpt_url = f"{base_url}/game.php?{urlencode(query_params)}"
-        return nst_rpt_url
+        return f"{base_url}/game.php?{urlencode(query_params)}"
     except Exception as e:
-        logging.error(f"Failed to construct NST URL: {e}")
+        logging.exception(f"Failed to construct NST URL: {e}")
         return None
 
 
 def team_season_rank(df: pd.DataFrame, stat, team_name):
     """Takes a dataframe, a stat & a team name and finds the "rank" of that team in the DataFrame."""
-
     # Sort the dataframe and find the team index
     # Add 1 because a Dataframe is 0-index
     sorted_df = df.sort_values(stat, ascending=False).reset_index(drop=True)
-    rank = sorted_df.index[sorted_df["Team"] == team_name].tolist()[0] + 1
-    return rank
+    return sorted_df.index[sorted_df["Team"] == team_name].tolist()[0] + 1
 
 
 def generate_team_season_charts(team_name, situation, lastgames=None):
-    """
-    Generate team season charts using data from Natural Stat Trick.
+    """Generate team season charts using data from Natural Stat Trick.
 
     Args:
         team_name (str): The name of the team to generate charts for.
@@ -71,8 +66,8 @@ def generate_team_season_charts(team_name, situation, lastgames=None):
 
     Returns:
         pd.DataFrame: DataFrame containing the team and league-average statistics.
-    """
 
+    """
     # Set the custom font (you'll need the font file)
     # rcParams["font.family"] = "sans-serif"
     # rcParams["font.sans-serif"] = ["Inter", "Arial", "sans-serif"]
@@ -139,7 +134,7 @@ def generate_team_season_charts(team_name, situation, lastgames=None):
 
     # For each index value of the dataframe, add the rank to that index
     # We transpose twice because volumns are easier to work with
-    ranked_columns = list()
+    ranked_columns = []
     pref_df_T = pref_df_T.T
     for col in pref_df_T.columns:
         stat_rank = otherutils.ordinal(team_season_rank(df_rank, col, team_name))
@@ -148,7 +143,7 @@ def generate_team_season_charts(team_name, situation, lastgames=None):
     pref_df_T.columns = ranked_columns
     pref_df_T = pref_df_T.T
 
-    ranked_columns = list()
+    ranked_columns = []
     pref_df_no_against = pref_df_no_against.T
     for col in pref_df_no_against.columns:
         stat_rank = otherutils.ordinal(team_season_rank(df_rank, col, team_name))
@@ -224,12 +219,19 @@ def generate_team_season_charts(team_name, situation, lastgames=None):
 
     for i, v in enumerate(pref_df_T["AGAINST"].values):
         ax2.text(
-            100 - 2, i, str(round(v, 2)), va="center", ha="right", color=team_color_text, fontweight="bold"
+            100 - 2,
+            i,
+            str(round(v, 2)),
+            va="center",
+            ha="right",
+            color=team_color_text,
+            fontweight="bold",
         )
 
     last_games_file = "" if not lastgames else f"-last{lastgames}"
     overview_fig_path = os.path.join(
-        IMAGES_DIR, f"allcharts-yesterday-team-season-{situation}{last_games_file}.png"
+        IMAGES_DIR,
+        f"allcharts-yesterday-team-season-{situation}{last_games_file}.png",
     )
     overview_fig.savefig(overview_fig_path, bbox_inches="tight")
     return overview_fig_path

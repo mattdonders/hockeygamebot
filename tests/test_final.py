@@ -1,5 +1,4 @@
-"""
-Tests for game finalization logic
+"""Tests for game finalization logic
 
 These tests verify Bug #1 fix (three stars None handling)
 """
@@ -12,12 +11,12 @@ from core import final
 class TestThreeStarsHandling:
     """Test the three stars logic that caused Bug #1"""
 
-    @patch('core.final.schedule.fetch_landing')
+    @patch("core.final.schedule.fetch_landing")
     def test_three_stars_returns_none_when_unavailable(self, mock_fetch):
         """Test that three_stars() returns None when data not available"""
         # Setup - API returns landing data without three stars
         mock_fetch.return_value = {
-            "summary": {}  # No threeStars key
+            "summary": {},  # No threeStars key
         }
 
         mock_context = Mock()
@@ -29,8 +28,8 @@ class TestThreeStarsHandling:
         # Assert
         assert result is None, "Should return None when three stars not available"
 
-    @patch('core.final.schedule.fetch_landing')
-    @patch('core.final.otherutils.get_player_name')
+    @patch("core.final.schedule.fetch_landing")
+    @patch("core.final.otherutils.get_player_name")
     def test_three_stars_returns_message_when_available(self, mock_get_name, mock_fetch):
         """Test that three_stars() returns formatted message when available"""
         # Setup - API returns complete three stars data
@@ -40,8 +39,8 @@ class TestThreeStarsHandling:
                     {"star": 1, "playerId": 8478407, "teamAbbrev": "NJD"},
                     {"star": 2, "playerId": 8477933, "teamAbbrev": "SJS"},
                     {"star": 3, "playerId": 8476878, "teamAbbrev": "NJD"},
-                ]
-            }
+                ],
+            },
         }
 
         # Mock player name lookups
@@ -59,14 +58,14 @@ class TestThreeStarsHandling:
         assert "Nico Hischier" in result
         assert "(NJD)" in result
 
-    @patch('core.final.schedule.fetch_landing')
+    @patch("core.final.schedule.fetch_landing")
     def test_three_stars_handles_empty_array(self, mock_fetch):
         """Test that three_stars() handles empty threeStars array"""
         # Setup
         mock_fetch.return_value = {
             "summary": {
-                "threeStars": []  # Empty array
-            }
+                "threeStars": [],  # Empty array
+            },
         }
 
         mock_context = Mock()
@@ -83,8 +82,8 @@ class TestThreeStarsHandling:
 class TestFinalScoreLogic:
     """Test final score generation"""
 
-    @patch('core.final.next_game')  # Add this line
-    @patch('core.final.schedule.fetch_playbyplay')
+    @patch("core.final.next_game")  # Add this line
+    @patch("core.final.schedule.fetch_playbyplay")
     def test_final_score_message_generation(self, mock_fetch, mock_next_game):
         """Test that final score generates correct message"""
         # Setup
@@ -121,9 +120,9 @@ class TestFinalScoreLogic:
 class TestNextGameLogic:
     """Test next game information"""
 
-    @patch('core.final.schedule.fetch_schedule')
-    @patch('core.final.schedule.fetch_next_game')
-    @patch('core.final.otherutils.convert_utc_to_localteam_dt')
+    @patch("core.final.schedule.fetch_schedule")
+    @patch("core.final.schedule.fetch_next_game")
+    @patch("core.final.otherutils.convert_utc_to_localteam_dt")
     def test_next_game_message(self, mock_convert, mock_next, mock_schedule):
         """Test that next game generates correct message"""
         # Setup
@@ -168,8 +167,7 @@ class TestThreeStarsIntegration:
     """Integration test for the three stars posting flow"""
 
     def test_three_stars_none_doesnt_crash_post(self):
-        """
-        Integration test: Verify that when three_stars() returns None,
+        """Integration test: Verify that when three_stars() returns None,
         we don't crash when trying to post it.
 
         This simulates the exact bug scenario from the NJD@SAS game.

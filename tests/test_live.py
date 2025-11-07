@@ -1,5 +1,4 @@
-"""
-Tests for core/live.py - Live game monitoring and event detection
+"""Tests for core/live.py - Live game monitoring and event detection
 
 These tests cover:
 1. Event parsing and detection
@@ -20,11 +19,10 @@ from core import live
 class TestParseLiveGame:
     """Test the main parse_live_game function"""
 
-    @patch('core.live.schedule.fetch_playbyplay')
-    @patch('core.live.EventFactory.create_event')
+    @patch("core.live.schedule.fetch_playbyplay")
+    @patch("core.live.EventFactory.create_event")
     def test_parse_live_game_with_new_events(self, mock_create_event, mock_fetch):
-        """
-        Test parsing game with new events detected.
+        """Test parsing game with new events detected.
 
         This is the normal flow during a live game when new plays happen.
         """
@@ -39,7 +37,7 @@ class TestParseLiveGame:
                 {"eventId": 101, "typeDescKey": "faceoff", "sortOrder": 101},
                 {"eventId": 102, "typeDescKey": "goal", "sortOrder": 102},
                 {"eventId": 103, "typeDescKey": "penalty", "sortOrder": 103},
-            ]
+            ],
         }
 
         # ACT
@@ -56,11 +54,10 @@ class TestParseLiveGame:
         # All events should be processed
         assert len(calls) == 3
 
-    @patch('core.live.schedule.fetch_playbyplay')
-    @patch('core.live.EventFactory.create_event')
+    @patch("core.live.schedule.fetch_playbyplay")
+    @patch("core.live.EventFactory.create_event")
     def test_parse_live_game_no_new_events(self, mock_create_event, mock_fetch):
-        """
-        Test parsing game when no new events detected.
+        """Test parsing game when no new events detected.
 
         This happens when we poll API but nothing new has occurred.
         Still need to process all events to check for changes (score corrections, etc).
@@ -74,7 +71,7 @@ class TestParseLiveGame:
             "plays": [
                 {"eventId": 101, "typeDescKey": "goal", "sortOrder": 101},
                 {"eventId": 102, "typeDescKey": "goal", "sortOrder": 102},
-            ]
+            ],
         }
 
         # ACT
@@ -84,11 +81,10 @@ class TestParseLiveGame:
         # Should still process all events (looking for changes)
         assert mock_create_event.call_count == 2
 
-    @patch('core.live.schedule.fetch_playbyplay')
-    @patch('core.live.EventFactory.create_event')
+    @patch("core.live.schedule.fetch_playbyplay")
+    @patch("core.live.EventFactory.create_event")
     def test_parse_live_game_empty_plays(self, mock_create_event, mock_fetch):
-        """
-        Test parsing game with no plays yet.
+        """Test parsing game with no plays yet.
 
         This happens at the very start of a game before any events.
         """
@@ -98,7 +94,7 @@ class TestParseLiveGame:
         mock_context.last_sort_order = 0
 
         mock_fetch.return_value = {
-            "plays": []  # No events yet
+            "plays": [],  # No events yet
         }
 
         # ACT
@@ -108,11 +104,10 @@ class TestParseLiveGame:
         # No events to process
         mock_create_event.assert_not_called()
 
-    @patch('core.live.schedule.fetch_playbyplay')
-    @patch('core.live.EventFactory.create_event')
+    @patch("core.live.schedule.fetch_playbyplay")
+    @patch("core.live.EventFactory.create_event")
     def test_parse_live_game_goal_detection(self, mock_create_event, mock_fetch):
-        """
-        Test that goals are correctly identified in play-by-play.
+        """Test that goals are correctly identified in play-by-play.
 
         Goals are critical events that we track separately.
         """
@@ -127,7 +122,7 @@ class TestParseLiveGame:
                 {"eventId": 2, "typeDescKey": "goal", "sortOrder": 2},
                 {"eventId": 3, "typeDescKey": "shot-on-goal", "sortOrder": 3},
                 {"eventId": 4, "typeDescKey": "goal", "sortOrder": 4},
-            ]
+            ],
         }
 
         # ACT
@@ -137,10 +132,9 @@ class TestParseLiveGame:
         # All 4 events should be processed
         assert mock_create_event.call_count == 4
 
-    @patch('core.live.schedule.fetch_playbyplay')
+    @patch("core.live.schedule.fetch_playbyplay")
     def test_parse_live_game_api_failure(self, mock_fetch):
-        """
-        Test handling of API failure during game parsing.
+        """Test handling of API failure during game parsing.
 
         API can fail due to network issues, NHL server problems, etc.
         """
@@ -158,16 +152,14 @@ class TestParseLiveGame:
 
 
 class TestRemovedGoalDetection:
-    """
-    Test removed goal detection (for challenges, corrections).
+    """Test removed goal detection (for challenges, corrections).
 
     When a goal is challenged and overturned, or corrected by NHL,
     it disappears from the play-by-play feed. We need to detect this.
     """
 
     def test_detect_removed_goals_no_removals(self):
-        """
-        Test when no goals have been removed.
+        """Test when no goals have been removed.
 
         Normal scenario - all goals still in feed.
         """
@@ -197,8 +189,7 @@ class TestRemovedGoalDetection:
         assert mock_goal2 in mock_context.all_goals
 
     def test_detect_removed_goals_one_removed(self):
-        """
-        Test when one goal has been removed.
+        """Test when one goal has been removed.
 
         This happens when a goal is challenged and overturned.
         """
@@ -221,15 +212,14 @@ class TestRemovedGoalDetection:
         all_plays = [{"eventId": 456, "typeDescKey": "goal"}]
 
         # ACT
-        with patch('core.live.process_removed_goal') as mock_process:
+        with patch("core.live.process_removed_goal") as mock_process:
             live.detect_removed_goals(mock_context, all_plays)
 
             # ASSERT
             mock_process.assert_called_once_with(mock_goal, mock_context)
 
     def test_detect_removed_goals_exception_handling(self):
-        """
-        Test that exceptions during goal removal don't crash the bot.
+        """Test that exceptions during goal removal don't crash the bot.
 
         Important: we can't let the bot crash during a live game.
         """
@@ -253,8 +243,7 @@ class TestProcessRemovedGoal:
     """Test the process_removed_goal function"""
 
     def test_process_removed_goal_preferred_team(self):
-        """
-        Test removing a goal scored by preferred team.
+        """Test removing a goal scored by preferred team.
 
         Goal should be removed from pref_goals list.
         """
@@ -280,8 +269,7 @@ class TestProcessRemovedGoal:
         assert mock_goal not in mock_context.pref_goals
 
     def test_process_removed_goal_other_team(self):
-        """
-        Test removing a goal scored by other team.
+        """Test removing a goal scored by other team.
 
         Goal should be removed from other_goals list.
         """
@@ -308,17 +296,15 @@ class TestProcessRemovedGoal:
 
 
 class TestEventOrdering:
-    """
-    Test event ordering and sortOrder tracking.
+    """Test event ordering and sortOrder tracking.
 
     This is critical for knowing which events are "new" vs already processed.
     """
 
-    @patch('core.live.schedule.fetch_playbyplay')
-    @patch('core.live.EventFactory.create_event')
+    @patch("core.live.schedule.fetch_playbyplay")
+    @patch("core.live.EventFactory.create_event")
     def test_event_ordering_ascending(self, mock_create_event, mock_fetch):
-        """
-        Test that events are processed in sortOrder.
+        """Test that events are processed in sortOrder.
 
         NHL API returns events in order, but we should verify this.
         """
@@ -332,7 +318,7 @@ class TestEventOrdering:
                 {"eventId": 1, "typeDescKey": "faceoff", "sortOrder": 10},
                 {"eventId": 2, "typeDescKey": "goal", "sortOrder": 20},
                 {"eventId": 3, "typeDescKey": "penalty", "sortOrder": 30},
-            ]
+            ],
         }
 
         # ACT
@@ -345,11 +331,10 @@ class TestEventOrdering:
         assert calls[1][0][0]["sortOrder"] == 20
         assert calls[2][0][0]["sortOrder"] == 30
 
-    @patch('core.live.schedule.fetch_playbyplay')
-    @patch('core.live.EventFactory.create_event')
+    @patch("core.live.schedule.fetch_playbyplay")
+    @patch("core.live.EventFactory.create_event")
     def test_event_tracking_with_last_sort_order(self, mock_create_event, mock_fetch):
-        """
-        Test that last_sort_order correctly identifies new events.
+        """Test that last_sort_order correctly identifies new events.
 
         Only events with sortOrder > last_sort_order are "new".
         """
@@ -363,7 +348,7 @@ class TestEventOrdering:
                 {"eventId": 1, "typeDescKey": "faceoff", "sortOrder": 10},  # Old
                 {"eventId": 2, "typeDescKey": "goal", "sortOrder": 20},  # New!
                 {"eventId": 3, "typeDescKey": "penalty", "sortOrder": 30},  # New!
-            ]
+            ],
         }
 
         # ACT
@@ -377,10 +362,9 @@ class TestEventOrdering:
 class TestEventFiltering:
     """Test filtering of specific event types"""
 
-    @patch('core.live.schedule.fetch_playbyplay')
+    @patch("core.live.schedule.fetch_playbyplay")
     def test_goal_event_filtering(self, mock_fetch):
-        """
-        Test that goal events are correctly filtered.
+        """Test that goal events are correctly filtered.
 
         We track goals separately for stats and display.
         """
@@ -396,11 +380,11 @@ class TestEventFiltering:
                 {"eventId": 3, "typeDescKey": "shot-on-goal", "sortOrder": 3},
                 {"eventId": 4, "typeDescKey": "goal", "sortOrder": 4},
                 {"eventId": 5, "typeDescKey": "penalty", "sortOrder": 5},
-            ]
+            ],
         }
 
         # ACT
-        with patch('core.live.EventFactory.create_event'):
+        with patch("core.live.EventFactory.create_event"):
             live.parse_live_game(mock_context)
 
         # ASSERT
@@ -411,11 +395,10 @@ class TestEventFiltering:
 class TestLiveGameIntegration:
     """Integration tests for live game monitoring"""
 
-    @patch('core.live.schedule.fetch_playbyplay')
-    @patch('core.live.EventFactory.create_event')
+    @patch("core.live.schedule.fetch_playbyplay")
+    @patch("core.live.EventFactory.create_event")
     def test_live_game_full_flow(self, mock_create_event, mock_fetch):
-        """
-        Test complete flow of parsing a live game.
+        """Test complete flow of parsing a live game.
 
         Simulates: API call -> event detection -> event processing
         """
@@ -438,7 +421,7 @@ class TestLiveGameIntegration:
                 {"eventId": 50, "typeDescKey": "shot-on-goal", "sortOrder": 50, "timeInPeriod": "18:23"},
                 {"eventId": 100, "typeDescKey": "goal", "sortOrder": 100, "timeInPeriod": "15:42"},
                 {"eventId": 150, "typeDescKey": "penalty", "sortOrder": 150, "timeInPeriod": "12:11"},
-            ]
+            ],
         }
 
         # ACT
@@ -452,11 +435,10 @@ class TestLiveGameIntegration:
         event_ids = [call[0][0]["eventId"] for call in mock_create_event.call_args_list]
         assert event_ids == [1, 10, 50, 100, 150]
 
-    @patch('core.live.schedule.fetch_playbyplay')
-    @patch('core.live.EventFactory.create_event')
+    @patch("core.live.schedule.fetch_playbyplay")
+    @patch("core.live.EventFactory.create_event")
     def test_multiple_parse_calls(self, mock_create_event, mock_fetch):
-        """
-        Test multiple consecutive parse calls (simulating polling loop).
+        """Test multiple consecutive parse calls (simulating polling loop).
 
         This is how the bot actually works - polls API every few seconds.
         """
@@ -470,7 +452,7 @@ class TestLiveGameIntegration:
             "plays": [
                 {"eventId": 1, "typeDescKey": "faceoff", "sortOrder": 10},
                 {"eventId": 2, "typeDescKey": "goal", "sortOrder": 20},
-            ]
+            ],
         }
 
         # ACT - First parse
@@ -485,7 +467,7 @@ class TestLiveGameIntegration:
                 {"eventId": 1, "typeDescKey": "faceoff", "sortOrder": 10},
                 {"eventId": 2, "typeDescKey": "goal", "sortOrder": 20},
                 {"eventId": 3, "typeDescKey": "penalty", "sortOrder": 30},  # New!
-            ]
+            ],
         }
 
         # ACT - Second parse
@@ -499,10 +481,9 @@ class TestLiveGameIntegration:
 class TestEdgeCases:
     """Test edge cases and error conditions"""
 
-    @patch('core.live.schedule.fetch_playbyplay')
+    @patch("core.live.schedule.fetch_playbyplay")
     def test_malformed_event_data(self, mock_fetch):
-        """
-        Test handling of malformed event data.
+        """Test handling of malformed event data.
 
         Currently, the code will raise KeyError if typeDescKey is missing.
         This test verifies that behavior. If you want more robust handling,
@@ -516,8 +497,8 @@ class TestEdgeCases:
         # Event missing required fields
         mock_fetch.return_value = {
             "plays": [
-                {"eventId": 1}  # Missing typeDescKey and sortOrder!
-            ]
+                {"eventId": 1},  # Missing typeDescKey and sortOrder!
+            ],
         }
 
         # ACT & ASSERT
@@ -525,10 +506,9 @@ class TestEdgeCases:
         with pytest.raises(KeyError):
             live.parse_live_game(mock_context)
 
-    @patch('core.live.schedule.fetch_playbyplay')
+    @patch("core.live.schedule.fetch_playbyplay")
     def test_duplicate_event_ids(self, mock_fetch):
-        """
-        Test handling of duplicate event IDs.
+        """Test handling of duplicate event IDs.
 
         Sometimes NHL API has duplicate events (shouldn't happen but does).
         """
@@ -541,11 +521,11 @@ class TestEdgeCases:
             "plays": [
                 {"eventId": 100, "typeDescKey": "goal", "sortOrder": 10},
                 {"eventId": 100, "typeDescKey": "goal", "sortOrder": 10},  # Duplicate!
-            ]
+            ],
         }
 
         # ACT
-        with patch('core.live.EventFactory.create_event'):
+        with patch("core.live.EventFactory.create_event"):
             live.parse_live_game(mock_context)
 
         # ASSERT

@@ -323,16 +323,15 @@ TEAM_DETAILS = {
 
 
 def get_team_details_by_name(team_name):
-    """
-    Get the team set of team details based on the team name.
+    """Get the team set of team details based on the team name.
 
     Args:
         team_name (str): The NHL team name.
 
     Returns:
         dict: The full dictionary of team details.
-    """
 
+    """
     for team_abbr, details in TEAM_DETAILS.items():
         if details.get("full_name") == team_name:
             details["abbreviation"] = team_abbr
@@ -341,48 +340,46 @@ def get_team_details_by_name(team_name):
 
 
 def get_team_details_by_id(team_id):
-    """
-    Re-use existing functions to get the team set of team details based on the team ID.
+    """Re-use existing functions to get the team set of team details based on the team ID.
 
     Args:
         team_id (int): The NHL team ID.
 
     Returns:
         dict: The full dictionary of team details.
-    """
 
+    """
     team_name = get_team_name_by_id(team_id)
-    team_details = get_team_details_by_name(team_name)
-    return team_details
+    return get_team_details_by_name(team_name)
 
 
 def get_abbreviation_by_name(team_name):
-    """
-    Get the team abbreviation based on the team name.
+    """Get the team abbreviation based on the team name.
 
     Args:
         team_name (str): The NHL team name.
 
     Returns:
         str: The abbreviation of the team, or None if not found.
-    """
 
-    for team_abbr, details in TEAM_DETAILS.items():
+    """
+    for _team_abbr, details in TEAM_DETAILS.items():
         if details.get("full_name") == team_name:
             return details.get("full_name")
+    return None
 
 
 def get_team_name_by_id(team_id):
-    """
-    Get the team name based on the team_id.
+    """Get the team name based on the team_id.
 
     Args:
         team_id (int): The NHL team ID.
 
     Returns:
         str: The full name of the team, or None if not found.
+
     """
-    for team_abbr, details in TEAM_DETAILS.items():
+    for _team_abbr, details in TEAM_DETAILS.items():
         if details.get("team_id") == team_id:
             return details.get("full_name")
     return None

@@ -1,5 +1,4 @@
-"""
-Status Monitor for Hockey Game Bot
+"""Status Monitor for Hockey Game Bot
 
 This module provides real-time monitoring and health tracking for the bot.
 It writes status information to status.json which can be viewed via dashboard.html
@@ -30,13 +29,13 @@ logger = logging.getLogger(__name__)
 class StatusMonitor:
     """Monitor and track bot health, statistics, and current state."""
 
-    def __init__(self, status_file: Path = None):
-        """
-        Initialize the StatusMonitor.
+    def __init__(self, status_file: Path | None = None) -> None:
+        """Initialize the StatusMonitor.
 
         Args:
             status_file: Path to the JSON file where status will be written.
                         Defaults to 'status.json' in the current directory.
+
         """
         self.status_file = status_file or Path("status.json")
         self.lock = Lock()
@@ -116,11 +115,11 @@ class StatusMonitor:
         logger.info(f"StatusMonitor initialized, writing to {self.status_file}")
 
     def update_game_state(self, context) -> None:
-        """
-        Update game state from GameContext (thread-safe with snapshots).
+        """Update game state from GameContext (thread-safe with snapshots).
 
         Args:
             context: GameContext object containing current game state
+
         """
         # STEP 1: Create immutable snapshots (fast, no lock needed)
         game_snapshot = None
@@ -165,17 +164,17 @@ class StatusMonitor:
             if context.events:
                 events_snapshot = list(context.events)
 
-            if hasattr(context, 'live_loop_counter'):
+            if hasattr(context, "live_loop_counter"):
                 live_loop_counter = context.live_loop_counter
 
             # Copy social tracking state
             preview_socials_data = None
-            if hasattr(context, 'preview_socials'):
+            if hasattr(context, "preview_socials"):
                 preview_socials_data = {
-                    'core_sent': context.preview_socials.core_sent,
-                    'season_series_sent': context.preview_socials.season_series_sent,
-                    'team_stats_sent': context.preview_socials.team_stats_sent,
-                    'officials_sent': context.preview_socials.officials_sent,
+                    "core_sent": context.preview_socials.core_sent,
+                    "season_series_sent": context.preview_socials.season_series_sent,
+                    "team_stats_sent": context.preview_socials.team_stats_sent,
+                    "officials_sent": context.preview_socials.officials_sent,
                 }
 
         except Exception as e:
@@ -213,7 +212,7 @@ class StatusMonitor:
                     if isinstance(event, dict):
                         event_type = event.get("typeDescKey", "other")
                     else:
-                        event_type = getattr(event, 'event_type', 'other')
+                        event_type = getattr(event, "event_type", "other")
                     event_types[event_type] = event_types.get(event_type, 0) + 1
 
                 # Map to tracking categories
@@ -233,26 +232,22 @@ class StatusMonitor:
 
             # Update social tracking
             if preview_socials_data:
-                self.status["socials"]["preview_posts"]["core_sent"] = preview_socials_data['core_sent']
+                self.status["socials"]["preview_posts"]["core_sent"] = preview_socials_data["core_sent"]
                 self.status["socials"]["preview_posts"]["season_series_sent"] = preview_socials_data[
-                    'season_series_sent'
+                    "season_series_sent"
                 ]
-                self.status["socials"]["preview_posts"]["team_stats_sent"] = preview_socials_data[
-                    'team_stats_sent'
-                ]
-                self.status["socials"]["preview_posts"]["officials_sent"] = preview_socials_data[
-                    'officials_sent'
-                ]
+                self.status["socials"]["preview_posts"]["team_stats_sent"] = preview_socials_data["team_stats_sent"]
+                self.status["socials"]["preview_posts"]["officials_sent"] = preview_socials_data["officials_sent"]
 
             self._check_health()
             self._write_status()
 
     def increment_event(self, event_type: str) -> None:
-        """
-        Increment counter for a specific event type.
+        """Increment counter for a specific event type.
 
         Args:
             event_type: Type of event (goal, penalty, shot, etc.)
+
         """
         with self.lock:
             self.status["events"]["total"] += 1
@@ -266,11 +261,11 @@ class StatusMonitor:
             self._write_status()
 
     def record_api_call(self, success: bool = True) -> None:
-        """
-        Record an API call and its result.
+        """Record an API call and its result.
 
         Args:
             success: Whether the API call was successful
+
         """
         with self.lock:
             self.status["performance"]["api_calls"]["total"] += 1
@@ -283,11 +278,11 @@ class StatusMonitor:
             self._write_status()
 
     def record_error(self, error_message: str) -> None:
-        """
-        Record an error occurrence.
+        """Record an error occurrence.
 
         Args:
             error_message: Description of the error
+
         """
         with self.lock:
             self.status["errors"]["count"] += 1
@@ -307,11 +302,11 @@ class StatusMonitor:
             self._write_status()
 
     def set_status(self, status: str) -> None:
-        """
-        Set the bot's current status.
+        """Set the bot's current status.
 
         Args:
             status: Status string (STARTING, RUNNING, SLEEPING, ERROR, STOPPED)
+
         """
         with self.lock:
             self.status["bot"]["status"] = status
@@ -361,8 +356,8 @@ class StatusMonitor:
             self.status["bot"]["uptime_seconds"] = int((now - self.start_time).total_seconds())
 
             # Write to file atomically
-            temp_file = self.status_file.with_suffix('.tmp')
-            with open(temp_file, 'w') as f:
+            temp_file = self.status_file.with_suffix(".tmp")
+            with temp_file.open("w") as f:
                 json.dump(self.status, f, indent=2)
             temp_file.replace(self.status_file)
 
@@ -371,9 +366,7 @@ class StatusMonitor:
 
         except PermissionError as e:
             self._consecutive_write_failures += 1
-            logger.error(
-                f"Permission denied writing status file (failure {self._consecutive_write_failures}): {e}"
-            )
+            logger.error(f"Permission denied writing status file (failure {self._consecutive_write_failures}): {e}")
             self._check_disable_monitoring()
 
         except OSError as e:
@@ -395,7 +388,7 @@ class StatusMonitor:
             self._monitoring_enabled = False
             logger.critical(
                 f"Monitoring disabled after {self._max_consecutive_failures} consecutive write failures. "
-                "Bot will continue running but dashboard will show stale data."
+                "Bot will continue running but dashboard will show stale data.",
             )
             logger.critical("To re-enable, fix the status.json write issue and restart the bot.")
 
@@ -414,13 +407,13 @@ class StatusMonitor:
 
 # Convenience function for easy import
 def create_status_monitor(status_file: str = "status.json") -> StatusMonitor:
-    """
-    Create and return a StatusMonitor instance.
+    """Create and return a StatusMonitor instance.
 
     Args:
         status_file: Path to status JSON file
 
     Returns:
         StatusMonitor instance
+
     """
     return StatusMonitor(Path(status_file))

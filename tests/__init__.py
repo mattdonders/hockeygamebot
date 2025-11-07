@@ -1,5 +1,4 @@
-"""
-Tests package for Hockey Game Bot
+"""Tests package for Hockey Game Bot
 
 This package contains all unit and integration tests.
 

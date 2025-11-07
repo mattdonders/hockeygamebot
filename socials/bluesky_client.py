@@ -1,4 +1,5 @@
-# socials/bluesky_client.py
+# pyright: reportAttributeAccessIssue=false
+
 from __future__ import annotations
 
 import io
@@ -7,6 +8,7 @@ import logging
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
+from typing import Any
 
 from atproto import Client, client_utils
 from atproto import models as at_models
@@ -27,9 +29,8 @@ class BlueskyConfig:
 
 
 def _parse_at_uri(uri: str) -> tuple[str, str, str]:
-    """
-    Parse an at:// URI:
-      at://did:plc:XXXX/app.bsky.feed.post/3m4abc... -> (repo_did, collection, rkey)
+    """Parse an at:// URI:
+    at://did:plc:XXXX/app.bsky.feed.post/3m4abc... -> (repo_did, collection, rkey)
     """
     if not uri.startswith("at://"):
         raise ValueError(f"Not an at:// uri: {uri}")
@@ -43,16 +44,15 @@ def _parse_at_uri(uri: str) -> tuple[str, str, str]:
 
 
 def _strong_ref(uri: str, cid: str) -> atc_models.ComAtprotoRepoStrongRef.Main:
-    return atc_models.ComAtprotoRepoStrongRef.Main(uri=uri, cid=cid)
+    return atc_models.ComAtprotoRepoStrongRef.Main(uri=uri, cid=cid or "")
 
 
 class BlueskyClient(SocialClient):
-    """
-    Minimal, resilient Bluesky client:
-      - Restores/saves session.
-      - Auto-detects facets (links, mentions, hashtags) via client_utils.RichText.
-      - Handles image uploads.
-      - Replies using a robust ReplyRef builder (prefers CID; falls back if needed).
+    """Minimal, resilient Bluesky client:
+    - Restores/saves session.
+    - Auto-detects facets (links, mentions, hashtags) via client_utils.RichText.
+    - Handles image uploads.
+    - Replies using a robust ReplyRef builder (prefers CID; falls back if needed).
     """
 
     def __init__(self, cfg: BlueskyConfig):
@@ -101,8 +101,7 @@ class BlueskyClient(SocialClient):
     # ---------------- Posting helpers ----------------
 
     def _facets_for_text(self, text: str) -> tuple[str, list | None]:
-        """
-        Build clickable facets for hashtags and URLs using client_utils.RichText when available.
+        """Build clickable facets for hashtags and URLs using client_utils.RichText when available.
         Falls back silently to plain text on any error.
         """
         try:
@@ -117,31 +116,24 @@ class BlueskyClient(SocialClient):
             return text, None
 
     def _upload_image(self, image_path_or_list, alt_text: str | list[str] | None):
-        """
-        Build an embed for Bluesky images.
+        """Build an embed for Bluesky images.
 
         - Single path -> returns AppBskyEmbedImages.Main with correct aspect ratio.
         - List/Tuple (max 4) -> returns AppBskyEmbedImages.Main containing all images.
         (We still return an embed so the caller can use `send_post(..., embed=...)`.)
         """
-        # Normalize paths
-        if isinstance(image_path_or_list, (list, tuple)):
-            paths = list(image_path_or_list)[:4]
-        else:
-            paths = [image_path_or_list]
+        # Normalize paths (≤ 4)
+        paths = list(image_path_or_list)[:4] if isinstance(image_path_or_list, (list, tuple)) else [image_path_or_list]
 
         # Normalize alt text(s)
-        if isinstance(alt_text, list):
-            alts = (alt_text + ["", "", "", ""])[: len(paths)]
-        else:
-            alts = [alt_text or ""] * len(paths)
+        alts = [*alt_text, "", "", "", ""][:len(paths)] if isinstance(alt_text, list) else [alt_text or ""] * len(paths)
 
         images: list[at_models.AppBskyEmbedImages.Image] = []
 
         for i, p in enumerate(paths):
             data = Path(p).read_bytes()
 
-            # Extract dimensions for aspect ratio (falls back if PIL can’t read)
+            # Extract dimensions for aspect ratio (falls back if PIL can't read)
             width = height = None
             try:
                 with Image.open(io.BytesIO(data)) as im:
@@ -162,14 +154,13 @@ class BlueskyClient(SocialClient):
                     image=uploaded.blob,
                     alt=alts[i],
                     aspect_ratio=aspect,
-                )
+                ),
             )
 
         return at_models.AppBskyEmbedImages.Main(images=images)
 
-    def _reply_ref_from_parent_uri(self, parent_uri: str) -> at_models.AppBskyFeedPost.ReplyRef | None:
-        """
-        Build a proper ReplyRef for Bluesky. Parse the at:// first to avoid the SDK
+    def _reply_ref_from_parent_uri(self, parent_uri: str | None) -> at_models.AppBskyFeedPost.ReplyRef | None:
+        """Build a proper ReplyRef for Bluesky. Parse the at:// first to avoid the SDK
         calling getRecord with a full URI as rkey (which causes a 400).
         """
         if not parent_uri:
@@ -177,7 +168,7 @@ class BlueskyClient(SocialClient):
 
         # Preferred path: parse at:// and fetch the record/cid directly
         try:
-            repo_did, collection, rkey = _parse_at_uri(parent_uri)
+            repo_did, _, rkey = _parse_at_uri(parent_uri)
             rec = self.client.app.bsky.feed.post.get(repo_did, rkey)
             cid = getattr(rec, "cid", None)
             if cid:
@@ -189,8 +180,9 @@ class BlueskyClient(SocialClient):
         # Fallback: let the high-level helper try (may log a 400; still harmless)
         try:
             post = self.client.get_post(parent_uri)  # returns object with .cid/.uri on most versions
-            if getattr(post, "cid", None):
-                strong = _strong_ref(parent_uri, post.cid)
+            cid2 = getattr(post, "cid", None)
+            if isinstance(cid2, str) and cid2:
+                strong = _strong_ref(parent_uri, cid2)
                 return at_models.AppBskyFeedPost.ReplyRef(parent=strong, root=strong)
         except Exception:
             pass
@@ -204,8 +196,7 @@ class BlueskyClient(SocialClient):
 
     # ---------------- Public API ----------------
     def post(self, post: SocialPost, reply_to_ref: PostRef | None = None) -> PostRef:
-        """
-        Create a Bluesky post (text and optional image(s)). Returns a PostRef.
+        """Create a Bluesky post (text and optional image(s)). Returns a PostRef.
         - If local_image is a list/tuple -> send as multi-image post via embed.
         - If single image -> send with correct aspect ratio.
         """
@@ -221,8 +212,8 @@ class BlueskyClient(SocialClient):
         local_image = getattr(post, "local_image", None)
         embed = None
         if local_image:
-            # If it’s a list/tuple, we’ll build a multi-image embed.
-            # If it’s a single path, we’ll build a single-image embed with aspect ratio.
+            # If it's a list/tuple, we'll build a multi-image embed.
+            # If it's a single path, we'll build a single-image embed with aspect ratio.
             embed = self._upload_image(local_image, getattr(post, "alt_text", "") or "")
 
         # 4) Send (try helper; fall back to raw createRecord)
@@ -233,10 +224,10 @@ class BlueskyClient(SocialClient):
                 facets=facets,
                 reply_to=reply_ref,
             )
-            uri = str(getattr(created, "uri", "") or created.get("uri"))
-            cid = str(getattr(created, "cid", "") or created.get("cid"))
+            uri = str(getattr(created, "uri", "") or "")
+            cid = str(getattr(created, "cid", "") or "")
         except Exception:
-            record = {
+            record: dict[str, Any] = {
                 "$type": "app.bsky.feed.post",
                 "text": text,
                 "createdAt": datetime.utcnow().isoformat() + "Z",
@@ -249,15 +240,18 @@ class BlueskyClient(SocialClient):
                 record["reply"] = reply_ref
 
             did = getattr(self, "did", None) or getattr(getattr(self.client, "me", None), "did", None)
+            did = str(did)
+
             resp = self.client.com.atproto.repo.create_record(
                 data={
                     "repo": did,
                     "collection": "app.bsky.feed.post",
                     "record": record,
-                }
+                },
             )
-            uri = str(getattr(resp, "uri", "") or resp.get("uri"))
-            cid = str(getattr(resp, "cid", "") or resp.get("cid"))
+
+            uri = str(getattr(resp, "uri", "") or "")
+            cid = str(getattr(resp, "cid", "") or "")
 
         return PostRef(
             platform="bluesky",

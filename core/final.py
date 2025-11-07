@@ -1,16 +1,15 @@
 import logging
 from datetime import datetime
 
-import core.charts as charts
 import utils.others as otherutils
-from core import schedule
+from core import charts, schedule
 from core.models.game_context import GameContext
 
 
 def final_score(context: GameContext):
     logging.info("Starting the core Final Score work now.")
 
-    play_by_play_data = schedule.fetch_playbyplay(context.game_id)
+    schedule.fetch_playbyplay(context.game_id)
 
     pref_home_text = "on the road" if context.preferred_homeaway == "away" else "at home"
 
@@ -46,7 +45,8 @@ def next_game(context: GameContext):
 
     next_game_starttime = next_game["startTimeUTC"]
     next_game_time_local = otherutils.convert_utc_to_localteam_dt(
-        next_game_starttime, context.preferred_team.timezone
+        next_game_starttime,
+        context.preferred_team.timezone,
     )
     next_game_string = datetime.strftime(next_game_time_local, "%A %B %d @ %I:%M%p")
 
@@ -54,17 +54,13 @@ def next_game(context: GameContext):
     away_team_abbrev = away_team["abbrev"]
     away_team_name = away_team["placeName"]["default"] + " " + away_team["commonName"]["default"]
     home_team = next_game["homeTeam"]
-    home_team_abbrev = home_team["abbrev"]
+    home_team["abbrev"]
     home_team_name = home_team["placeName"]["default"] + " " + home_team["commonName"]["default"]
 
-    next_opponent = (
-        home_team_name if away_team_abbrev == context.preferred_team.abbreviation else away_team_name
-    )
+    next_opponent = home_team_name if away_team_abbrev == context.preferred_team.abbreviation else away_team_name
 
     next_game_venue = next_game["venue"]["default"]
-    next_game_text = f"Next Game: {next_game_string} vs. {next_opponent} (at {next_game_venue})!"
-
-    return next_game_text
+    return f"Next Game: {next_game_string} vs. {next_opponent} (at {next_game_venue})!"
 
 
 def three_stars(context: GameContext):
@@ -104,13 +100,11 @@ def three_stars(context: GameContext):
 
 
 def team_stats_chart(context: GameContext) -> tuple[str, str]:
-    """
-    Sends the final team stats chart when the game is over.
-    """
+    """Sends the final team stats chart when the game is over."""
     right_rail_data = schedule.fetch_rightrail(context.game_id)
     team_stats_data = right_rail_data.get("teamGameStats")
     if not team_stats_data:
         return None, None
 
-    chart_path = charts.teamstats_chart(context, team_stats_data, ingame=True)
-    chart_message = "Team Game"
+    charts.teamstats_chart(context, team_stats_data, ingame=True)
+    return None

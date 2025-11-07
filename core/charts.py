@@ -1,5 +1,5 @@
 import logging
-import os
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -14,8 +14,7 @@ from utils.team_details import TEAM_DETAILS
 
 
 def generate_split_barchart(context: GameContext, game_title, stats):
-    """
-    Generate a stacked bar chart to compare team stats.
+    """Generate a stacked bar chart to compare team stats.
 
     Args:
         context: The GameContext object containing team information.
@@ -25,8 +24,8 @@ def generate_split_barchart(context: GameContext, game_title, stats):
 
     Returns:
         The saved file path of the chart.
-    """
 
+    """
     # Extract team details and colors
     preferred_team = context.preferred_team.full_name
     other_team = context.other_team_name
@@ -38,7 +37,7 @@ def generate_split_barchart(context: GameContext, game_title, stats):
 
     # Normalize stats to percentages
     percentage_stats = {}
-    for stat in stats["home"].keys():
+    for stat in stats["home"]:
         home_value = stats["home"][stat]
         away_value = stats["away"][stat]
         total = home_value + away_value
@@ -51,13 +50,8 @@ def generate_split_barchart(context: GameContext, game_title, stats):
             # If total is 0, both percentages are 0
             percentage_stats[stat] = {"home": 0, "away": 0}
 
-    print("Stats:", stats)
-    print("PCT Stats:", percentage_stats)
-
     df_percentage = pd.DataFrame(percentage_stats).T.iloc[::-1]
     df_values = pd.DataFrame(stats).iloc[::-1]
-    print(df_percentage)
-    print(df_values)
 
     # Check if the DataFrame is empty
     if df_percentage.empty:
@@ -175,7 +169,7 @@ def generate_split_barchart(context: GameContext, game_title, stats):
         return file_path
 
     except Exception as e:
-        logging.error(f"generate_percentage_split_barchart: Failed to generate chart. Error: {e}")
+        logging.exception(f"generate_percentage_split_barchart: Failed to generate chart. Error: {e}")
         plt.close(overview_fig)
         return None
 
@@ -197,19 +191,16 @@ def intermission_chart(context: GameContext):
         team_game_stats_formatted["home"][category] = stat["homeValue"]
         team_game_stats_formatted["away"][category] = stat["awayValue"]
 
-    file_path = generate_split_barchart(context, "TBD", team_game_stats_formatted)
+    generate_split_barchart(context, "TBD", team_game_stats_formatted)
 
 
 def teamstats_conversion(team_game_stats: dict):
-    """
-    Converts pre-game team stats data into a in-game format for one function processing.
-    """
-
+    """Converts pre-game team stats data into a in-game format for one function processing."""
     away_team = team_game_stats["awayTeam"]
     home_team = team_game_stats["homeTeam"]
 
     formatted_data = []
-    for key in away_team.keys():
+    for key in away_team:
         if not key.endswith("Rank"):  # Exclude rank keys from main loop
             rank_key = key + "Rank"
             formatted_data.append(
@@ -219,14 +210,13 @@ def teamstats_conversion(team_game_stats: dict):
                     "homeValue": home_team[key],
                     "awayRank": away_team.get(rank_key, None),
                     "homeRank": home_team.get(rank_key, None),
-                }
+                },
             )
     return formatted_data
 
 
 def teamstats_chart(context: GameContext, team_game_stats: dict, ingame: bool = True):
-    """
-    Generate a horizontal stacked bar chart comparing team statistics.
+    """Generate a horizontal stacked bar chart comparing team statistics.
 
     Args:
         context (GameContext): The game context containing team details, including names,
@@ -239,8 +229,8 @@ def teamstats_chart(context: GameContext, team_game_stats: dict, ingame: bool = 
 
     Returns:
         str: The file path to the saved chart image.
-    """
 
+    """
     # Set the custom font (you'll need the font file)
     rcParams["font.family"] = "sans-serif"
     rcParams["font.sans-serif"] = ["Inter", "Arial", "sans-serif"]
@@ -362,7 +352,7 @@ def teamstats_chart(context: GameContext, team_game_stats: dict, ingame: bool = 
 
     # Annotate raw values with rank information
     for i, (preferred, other, total) in enumerate(
-        zip(preferred_percentages, other_percentages, team_game_stats, strict=False)
+        zip(preferred_percentages, other_percentages, team_game_stats, strict=False),
     ):
         preferred_value = total["homeValue"] if pref_homeaway == "home" else total["awayValue"]
         other_value = total["awayValue"] if pref_homeaway == "home" else total["homeValue"]
@@ -482,8 +472,8 @@ def teamstats_chart(context: GameContext, team_game_stats: dict, ingame: bool = 
 
     # Remove grid lines
     ax.grid(False)
-
     # Save the figure
-    chart_path = os.path.join(IMAGES_DIR, f"{chart_file_prefix}-teamstatschart.png")
+    chart_path = Path(IMAGES_DIR) / f"{chart_file_prefix}-teamstatschart.png"
     plt.savefig(chart_path, bbox_inches="tight")
+    return chart_path
     return chart_path

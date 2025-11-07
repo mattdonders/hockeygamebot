@@ -7,8 +7,7 @@ from socials.types import PostRef
 
 
 def seed_roots_from_results(social_state, results: dict[str, PostRef]) -> None:
-    """
-    Seed per-platform thread roots/parents from a platform->PostRef map.
+    """Seed per-platform thread roots/parents from a platform->PostRef map.
     Works for any platform names present in `results`.
     """
     for platform, ref in results.items():
@@ -45,5 +44,4 @@ def sanitize_for_threads(text: str) -> str:
     # 2) Remove stray variation selectors after '#'
     text = re.sub(r"#\ufe0f", "#", text)
     # 3) Collapse accidental spaces between # and tag
-    text = re.sub(r"#\s+([A-Za-z0-9_]+)", r"#\1", text)
-    return text
+    return re.sub(r"#\s+([A-Za-z0-9_]+)", r"#\1", text)

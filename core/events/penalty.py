@@ -46,9 +46,7 @@ class PenaltyEvent(Event):
                 f"The penalty will be served by: {served_by}."
             )
         else:
-            penalty_string = (
-                f"Penalty: {committed_by} is called for {penalty_name} ({penalty_duration} minutes)."
-            )
+            penalty_string = f"Penalty: {committed_by} is called for {penalty_name} ({penalty_duration} minutes)."
 
             # Add drawn by information if it exists
             if drawn_by:

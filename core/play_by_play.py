@@ -4,8 +4,7 @@ from core.events import EventFactory
 
 
 def replace_ids_with_names(details, roster):
-    """
-    Replace fields ending with 'Id' in the details dictionary with their corresponding 'Name' fields,
+    """Replace fields ending with 'Id' in the details dictionary with their corresponding 'Name' fields,
     excluding fields ending in 'TeamId'.
     """
     for key, value in list(details.items()):  # Use list() to avoid runtime modification issues
@@ -16,11 +15,9 @@ def replace_ids_with_names(details, roster):
 
 
 def parse_play_by_play_with_names(events, context):
-    """
-    Parse play-by-play data, dynamically replace player IDs with names,
+    """Parse play-by-play data, dynamically replace player IDs with names,
     and process events using the EventFactory.
     """
-
     parsed_events = []
 
     for event in events:

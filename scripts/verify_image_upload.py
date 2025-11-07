@@ -6,6 +6,7 @@ import sys
 import time
 from pathlib import Path
 
+import requests
 import yaml
 
 # Optional deps (we validate later with nice errors)
@@ -26,7 +27,7 @@ CONFIG_PATH = Path(__file__).resolve().parents[1] / "config.yaml"
 def load_config():
     if not CONFIG_PATH.exists():
         sys.exit(f"❌ config.yaml not found at: {CONFIG_PATH}")
-    with open(CONFIG_PATH, encoding="utf-8") as f:
+    with CONFIG_PATH.open(encoding="utf-8") as f:
         return yaml.safe_load(f)
 
 
@@ -36,9 +37,7 @@ def guess_content_type(filename: str) -> str:
 
 # ---------- Backblaze (S3-compatible) ----------
 def upload_to_backblaze_b2(cfg: dict, local_path: Path, key_name: str) -> str:
-    """
-    Uploads to a *public* B2 bucket via S3-compatible API and returns the HTTPS URL.
-    """
+    """Uploads to a *public* B2 bucket via S3-compatible API and returns the HTTPS URL."""
     if not boto3:
         sys.exit("❌ Missing dependency: boto3 (pip install boto3)")
 
@@ -65,8 +64,7 @@ def upload_to_backblaze_b2(cfg: dict, local_path: Path, key_name: str) -> str:
 
 # ---------- GitHub Raw ----------
 def upload_to_github_raw(cfg: dict, local_path: Path, dest_rel_path: str) -> str:
-    """
-    Uploads a file to a *public* GitHub repo using the Contents API and returns the Raw URL.
+    """Uploads a file to a *public* GitHub repo using the Contents API and returns the Raw URL.
     - Creates the file if it doesn't exist; updates it if it does.
     - Ensures the repo stores binary (not base64 literal).
     """
@@ -81,7 +79,7 @@ def upload_to_github_raw(cfg: dict, local_path: Path, dest_rel_path: str) -> str
         "Accept": "application/vnd.github+json",
     }
 
-    with open(local_path, "rb") as f:
+    with local_path.open("rb") as f:
         b64 = base64.b64encode(f.read()).decode("ascii")
 
     # Check if file exists to get its SHA for update
@@ -107,7 +105,7 @@ def upload_to_github_raw(cfg: dict, local_path: Path, dest_rel_path: str) -> str
 
 def main():
     ap = argparse.ArgumentParser(
-        description="Verify image upload to Backblaze B2 and/or GitHub to obtain a public URL for Threads."
+        description="Verify image upload to Backblaze B2 and/or GitHub to obtain a public URL for Threads.",
     )
     ap.add_argument("--image", required=True, help="Local image path to upload")
     ap.add_argument(
@@ -117,7 +115,8 @@ def main():
         help="Where to upload. `configured` uses image_hosting.provider in config.yaml.",
     )
     ap.add_argument(
-        "--name", help="Override destination filename (default keeps your local filename, timestamped)."
+        "--name",
+        help="Override destination filename (default keeps your local filename, timestamped).",
     )
     ap.add_argument(
         "--only-url",
@@ -142,7 +141,7 @@ def main():
 
     def log(msg: str):
         if not args.only_url:
-            print(msg)
+            pass
 
     # Decide providers to hit
     targets = []
@@ -186,7 +185,8 @@ def main():
                 dest_rel = f"{subdir}/{base_name}" if subdir else base_name
                 if not args.only_url:
                     log(
-                        f"[GitHub] Committing to {ghcfg['owner']}/{ghcfg['repo']}:{ghcfg.get('branch', 'main')}/{dest_rel} …"
+                        f"[GitHub] Committing to {ghcfg['owner']}/{ghcfg['repo']}:"
+                        f"{ghcfg.get('branch', 'main')}/{dest_rel} …",
                     )
                 url = upload_to_github_raw(ghcfg, img_path, dest_rel)
                 urls.append(url)
@@ -197,12 +197,12 @@ def main():
 
     if urls:
         if args.only_url:
-            for u in urls:
-                print(u)
+            for _u in urls:
+                pass
         else:
             log("\nPublic URL(s) ready for Threads media container:")
-            for u in urls:
-                print(u)
+            for _u in urls:
+                pass
         sys.exit(0)
     else:
         sys.exit(1)

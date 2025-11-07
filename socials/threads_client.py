@@ -4,6 +4,7 @@ from __future__ import annotations
 import time
 from dataclasses import dataclass
 from pathlib import Path
+from typing import cast
 
 import requests
 
@@ -22,8 +23,7 @@ class ThreadsConfig:
 
 
 class ThreadsClient(SocialClient):
-    """
-    Threads adapter using Graph Threads API.
+    """Threads adapter using Graph Threads API.
 
     - Text-only posts: /me/threads with media_type=TEXT and auto_publish_text=true
       (no container/publish step; this is fastest & most reliable for text)
@@ -114,8 +114,7 @@ class ThreadsClient(SocialClient):
     # Helpers
     # ---------------------------
     def _ensure_hosted_url(self, path_or_url: str) -> str:
-        """
-        If it's a local path, host it and return the public URL.
+        """If it's a local path, host it and return the public URL.
         Otherwise return the input (already-hosted URL).
         """
         p = Path(path_or_url)
@@ -124,28 +123,34 @@ class ThreadsClient(SocialClient):
         return path_or_url
 
     def _collect_images(self, post: SocialPost) -> list[str]:
-        """
-        Collect all images associated with the post as hosted URLs.
+        """Collect all images associated with the post as hosted URLs.
         Supports:
-          - post.image_url (str), post.images (List[str] of URLs)
-          - post.local_image (str path), post.local_images (List[str] of paths)
+        - post.image_url (str), post.images (list[str] of URLs)
+        - post.local_image (str path), post.local_images (list[str] of paths)
         """
         urls: list[str] = []
-        # Hosted first
-        if getattr(post, "image_url", None):
-            urls.append(str(post.image_url))
-        if getattr(post, "images", None):
-            urls.extend([str(u) for u in post.images])
 
-        # Local(s) -> host & add
-        if getattr(post, "local_image", None):
-            urls.append(self._ensure_hosted_url(str(post.local_image)))
-        if getattr(post, "local_images", None):
-            urls.extend([self._ensure_hosted_url(str(p)) for p in post.local_images])
+        # Hosted single
+        image_url = getattr(post, "image_url", None)
+        if image_url:
+            urls.append(str(image_url))
 
-        # De-dup while keeping order
-        seen = set()
-        deduped = []
+        # Hosted multi (coalesce None -> [])
+        hosted_multi = cast("list[str]", getattr(post, "images", None) or [])
+        urls.extend(str(u) for u in hosted_multi)
+
+        # Local single (host -> url)
+        local_image = getattr(post, "local_image", None)
+        if local_image:
+            urls.append(self._ensure_hosted_url(str(local_image)))
+
+        # Local multi (coalesce None -> [])
+        local_multi = cast("list[str]", getattr(post, "local_images", None) or [])
+        urls.extend(self._ensure_hosted_url(str(p)) for p in local_multi)
+
+        # De-dup while preserving order
+        seen: set[str] = set()
+        deduped: list[str] = []
         for u in urls:
             if u not in seen:
                 seen.add(u)
@@ -156,8 +161,7 @@ class ThreadsClient(SocialClient):
     # SocialClient API
     # ---------------------------
     def post(self, post: SocialPost, reply_to_ref: PostRef | None = None) -> PostRef:
-        """
-        Create a Threads post (text or image[s]). Returns a PostRef.
+        """Create a Threads post (text or image[s]). Returns a PostRef.
         If reply_to_ref is provided (and platform==threads), reply in that thread.
         """
         reply_to_id = reply_to_ref.id if (reply_to_ref and reply_to_ref.platform == "threads") else None
@@ -198,9 +202,7 @@ class ThreadsClient(SocialClient):
 
         # 2) Reply for each additional image; keep threading
         for u in image_urls[1:]:
-            created_child = self._create_image(
-                None, u, getattr(post, "alt_text", None), reply_to_id=last_ref.id
-            )
+            created_child = self._create_image(None, u, getattr(post, "alt_text", None), reply_to_id=last_ref.id)
             pub_child = self._publish_with_retry(created_child["id"])
             child_id = pub_child.get("id") or created_child.get("id")
             last_ref = PostRef(

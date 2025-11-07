@@ -7,8 +7,7 @@ import requests
 
 
 def load_roster(team_abbreviation: str, season_id: int):
-    """
-    Load the roster for the specified team and season.
+    """Load the roster for the specified team and season.
     Check for local file before fetching from the API.
     If the local file exists but is older than 24 hours, fetch a new roster.
     """
@@ -30,7 +29,7 @@ def load_roster(team_abbreviation: str, season_id: int):
             # File is outdated, log and update
             logging.info(
                 f"Roster file for {team_abbreviation} is outdated (last updated: {last_modified_time}). "
-                "Fetching a new roster from the API."
+                "Fetching a new roster from the API.",
             )
 
     # Fetch from the API if the file doesn't exist or is outdated
@@ -60,50 +59,37 @@ def load_game_rosters(context):
         pbp_data = response.json()
         roster_spots = pbp_data.get("rosterSpots")
 
-        roster = {
+        return {
             player["playerId"]: f"{player['firstName']['default']} {player['lastName']['default']}"
             for player in roster_spots
         }
-
-        return roster
+    return None
 
 
 def get_opposing_team_abbreviation(game, team_abbreviation):
-    """
-    Determine the opposing team's abbreviation based on the game data.
-    """
+    """Determine the opposing team's abbreviation based on the game data."""
     if game["awayTeam"]["abbrev"] == team_abbreviation:
         return game["homeTeam"]["abbrev"]
     return game["awayTeam"]["abbrev"]
 
 
 def flatten_roster(roster_data):
-    """
-    Flatten roster data from 'forwards', 'defensemen', and 'goalies' sections into a single list.
+    """Flatten roster data from 'forwards', 'defensemen', and 'goalies' sections into a single list.
     Extract the 'default' key for each player's firstName and lastName.
     """
-    all_players = (
-        roster_data.get("forwards", []) + roster_data.get("defensemen", []) + roster_data.get("goalies", [])
-    )
-    return {
-        player["id"]: f"{player['firstName']['default']} {player['lastName']['default']}"
-        for player in all_players
-    }
+    all_players = roster_data.get("forwards", []) + roster_data.get("defensemen", []) + roster_data.get("goalies", [])
+    return {player["id"]: f"{player['firstName']['default']} {player['lastName']['default']}" for player in all_players}
 
 
 def load_combined_roster(game, preferred_team, other_team, season_id):
-    """
-    Load and combine the rosters for both teams involved in the game.
-    """
+    """Load and combine the rosters for both teams involved in the game."""
     preferred_team_roster_data = load_roster(preferred_team.abbreviation, season_id)
     other_team_roster_data = load_roster(other_team.abbreviation, season_id)
 
     # Flatten and combine rosters
-    combined_roster = {
+    return {
         **flatten_roster(preferred_team_roster_data),
         **flatten_roster(other_team_roster_data),
     }
 
     # print(combined_roster)
-
-    return combined_roster

@@ -4,16 +4,12 @@ from .base import Cache, Event
 
 
 class PeriodEndEvent(Event):
-    """
-    Event for when a period ends.
-    """
+    """Event for when a period ends."""
 
     cache = Cache(__name__)
 
     def parse(self):
-        """
-        Parse the period-end event and return a formatted message.
-        """
+        """Parse the period-end event and return a formatted message."""
         period_number = self.period_number
         period_type = self.event_data.get("periodDescriptor", {}).get("periodType", "unknown")
         period_ordinal = f"{period_number}{'th' if 10 <= period_number % 100 <= 20 else {1: 'st', 2: 'nd', 3: 'rd'}.get(period_number % 10, 'th')}"
@@ -35,9 +31,6 @@ class PeriodEndEvent(Event):
 
         right_rail_data = schedule.fetch_rightrail(self.context.game_id)
         team_stats_data = right_rail_data.get("teamGameStats")
-        if team_stats_data:
-            chart_path = charts.teamstats_chart(self.context, team_stats_data, ingame=True)
-        else:
-            chart_path = None
+        chart_path = charts.teamstats_chart(self.context, team_stats_data, ingame=True) if team_stats_data else None
 
         return chart_path, message

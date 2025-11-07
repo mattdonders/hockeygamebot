@@ -2,8 +2,7 @@ from utils.team_details import get_team_details_by_name
 
 
 class Team:
-    """
-    Represents an NHL team with attributes sourced from a predefined details dictionary.
+    """Represents an NHL team with attributes sourced from a predefined details dictionary.
 
     This class is designed to hold information about a specific NHL team, such as its
     name, hashtag, timezone, team ID, and primary/secondary colors. The team details
@@ -27,6 +26,7 @@ class Team:
     Example:
         home_team = Team("New Jersey Devils")
         print(home_team)  # Outputs: New Jersey Devils (#NJDevils)
+
     """
 
     def __init__(self, team_name):
@@ -55,8 +55,7 @@ class Team:
 
     @staticmethod
     def is_tied(team1, team2):
-        """
-        Static method to check if the scores of two Team objects are tied.
+        """Static method to check if the scores of two Team objects are tied.
 
         Args:
             team1 (Team): The first team object.
@@ -64,5 +63,19 @@ class Team:
 
         Returns:
             bool: True if the scores are tied, False otherwise.
+
         """
         return team1.score == team2.score
+
+
+class Teams:
+    """Container for both sides of a hockey game."""
+
+    def __init__(self, preferred: Team, other: Team, home: Team, away: Team):
+        self.preferred = preferred
+        self.other = other
+        self.home = home
+        self.away = away
+
+    def __iter__(self):
+        return iter((self.preferred, self.other, self.home, self.away))

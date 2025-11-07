@@ -9,13 +9,13 @@ from definitions import LOGS_DIR
 
 
 def setup_logging(config, console=False, debug=False):
-    """
-    Sets up the logging configuration based on provided settings.
+    """Sets up the logging configuration based on provided settings.
 
     Args:
         config (dict): The configuration dictionary containing script settings.
         console (bool): If True, log to console instead of a file.
         debug (bool): If True, set the logging level to DEBUG; otherwise, INFO.
+
     """
     # Generate log file name
     log_file_name_base = config["script"]["log_file_name"]
@@ -53,12 +53,12 @@ def setup_logging(config, console=False, debug=False):
 
 
 def log_startup_info(args, config):
-    """
-    Log startup information, including arguments and configuration details.
+    """Log startup information, including arguments and configuration details.
 
     Args:
         args (Namespace): The parsed arguments.
         config (dict): The configuration dictionary.
+
     """
     logging.info("#" * 80)
     logging.info("New instance of the Hockey Game Bot started.")
@@ -79,8 +79,7 @@ def log_startup_info(args, config):
 
 
 def ordinal(n):
-    """
-    Convert an integer to its ordinal representation.
+    """Convert an integer to its ordinal representation.
     E.g., 1 -> '1st', 2 -> '2nd', etc.
     """
     if 11 <= n % 100 <= 13:
@@ -95,25 +94,20 @@ def ordinal(n):
 
 
 def get_player_name(player_id, roster):
-    """
-    Retrieve a player's name using their ID from the roster.
-    """
+    """Retrieve a player's name using their ID from the roster."""
     # return roster.get(player_id, "Unknown Player")
     return roster.get(player_id)
 
 
 def convert_utc_to_eastern(utc_time):
-    """
-    Convert a UTC time string to Eastern Time.
-    """
+    """Convert a UTC time string to Eastern Time."""
     utc = datetime.strptime(utc_time, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=UTC)
     eastern = utc.astimezone(pytz_timezone("US/Eastern"))
     return eastern.strftime("%I:%M %p")  # Format as 12-hour time with AM/PM
 
 
 def convert_utc_to_localteam(utc_time_str, team_timezone):
-    """
-    Convert a UTC time string to the local time zone of the specified team.
+    """Convert a UTC time string to the local time zone of the specified team.
 
     Args:
         utc_time_str (str): Time in UTC, e.g., "2024-11-20T19:30:00Z".
@@ -121,6 +115,7 @@ def convert_utc_to_localteam(utc_time_str, team_timezone):
 
     Returns:
         str: Local time formatted as "HH:MM AM/PM".
+
     """
     # Convert to the team's local time
     local_time = convert_utc_to_localteam_dt(utc_time_str, team_timezone)
@@ -130,8 +125,7 @@ def convert_utc_to_localteam(utc_time_str, team_timezone):
 
 
 def convert_utc_to_localteam_dt(utc_time_str, team_timezone):
-    """
-    Convert a UTC time string to the local time zone of the specified team.
+    """Convert a UTC time string to the local time zone of the specified team.
 
     Args:
         utc_time_str (str): Time in UTC, e.g., "2024-11-20T19:30:00Z".
@@ -139,22 +133,20 @@ def convert_utc_to_localteam_dt(utc_time_str, team_timezone):
 
     Returns:
         str: Local time formatted as "HH:MM AM/PM".
-    """
 
+    """
     # Parse the UTC time string
     utc_time = datetime.strptime(utc_time_str, "%Y-%m-%dT%H:%M:%SZ")
     utc_time = pytz.utc.localize(utc_time)
 
     # Convert to the team's local time
-    local_time = utc_time.astimezone(pytz.timezone(team_timezone))
+    return utc_time.astimezone(pytz.timezone(team_timezone))
 
     # Format the local time as "HH:MM AM/PM"
-    return local_time
 
 
 def categorize_broadcasts(broadcasts):
-    """
-    Categorize broadcasts into local and national based on the market code.
+    """Categorize broadcasts into local and national based on the market code.
     Local: Market Code = 'H' (Home) or 'A' (Away)
     National: All others
     """
@@ -171,8 +163,7 @@ def categorize_broadcasts(broadcasts):
 
 
 def clock_emoji(time):
-    """
-    Accepts a time in 12-hour or 24-hour format with minutes (:00 or :30)
+    """Accepts a time in 12-hour or 24-hour format with minutes (:00 or :30)
     and returns the corresponding clock emoji.
 
     Args:
@@ -180,8 +171,8 @@ def clock_emoji(time):
 
     Returns:
         str: Clock emoji.
-    """
 
+    """
     # Remove AM/PM if present
     time = time.split(" ")[0]
 
@@ -211,8 +202,7 @@ def clock_emoji(time):
 
 
 def replace_ids_with_names(details, roster):
-    """
-    Replace fields ending with 'Id' in the details dictionary with their corresponding 'Name' fields,
+    """Replace fields ending with 'Id' in the details dictionary with their corresponding 'Name' fields,
     excluding fields ending in 'TeamId'.
     """
     for key, value in list(details.items()):  # Use list() to avoid runtime modification issues
@@ -223,14 +213,14 @@ def replace_ids_with_names(details, roster):
 
 
 def hex_to_rgb(hex_color):
-    """
-    Convert HEX color to RGB.
+    """Convert HEX color to RGB.
 
     Args:
         hex_color (str): Color in HEX format, e.g., "#FF0000".
 
     Returns:
         tuple: RGB color as a tuple of three integers, e.g., (255, 0, 0).
+
     """
     hex_color = hex_color.lstrip("#")  # Remove the '#' character
     return tuple(int(hex_color[i : i + 2], 16) for i in (0, 2, 4))

@@ -1,5 +1,4 @@
-"""
-Retry decorator with exponential backoff for API calls.
+"""Retry decorator with exponential backoff for API calls.
 
 Usage:
     from utils.retry import retry
@@ -11,6 +10,7 @@ Usage:
         return response.json()
 """
 
+import contextlib
 import logging
 import time
 from collections.abc import Callable
@@ -25,10 +25,9 @@ def retry(
     delay: float = 1.0,
     backoff: float = 2.0,
     exceptions: tuple[type[Exception], ...] = (Exception,),
-    logger_name: str = None,
+    logger_name: str | None = None,
 ) -> Callable:
-    """
-    Decorator to retry a function with exponential backoff.
+    """Decorator to retry a function with exponential backoff.
 
     Args:
         max_attempts: Maximum number of retry attempts (default: 3)
@@ -46,6 +45,7 @@ def retry(
             response = requests.get('https://api-web.nhle.com/...')
             response.raise_for_status()
             return response.json()
+
     """
 
     def decorator(func: Callable) -> Callable:
@@ -68,13 +68,13 @@ def retry(
 
                     if attempt >= max_attempts:
                         log.error(
-                            f"Function {func.__name__} failed after {max_attempts} attempts. Last error: {e}"
+                            f"Function {func.__name__} failed after {max_attempts} attempts. Last error: {e}",
                         )
                         raise
 
                     log.warning(
                         f"Attempt {attempt}/{max_attempts} failed for {func.__name__}: {e}. "
-                        f"Retrying in {current_delay:.1f}s..."
+                        f"Retrying in {current_delay:.1f}s...",
                     )
 
                     time.sleep(current_delay)
@@ -83,6 +83,7 @@ def retry(
             # Should never reach here, but just in case
             if last_exception:
                 raise last_exception
+            return None
 
         return wrapper
 
@@ -96,8 +97,7 @@ def retry_with_fallback(
     fallback_value: Any = None,
     exceptions: tuple[type[Exception], ...] = (Exception,),
 ) -> Callable:
-    """
-    Retry decorator that returns a fallback value instead of raising on failure.
+    """Retry decorator that returns a fallback value instead of raising on failure.
 
     Args:
         max_attempts: Maximum number of retry attempts
@@ -115,6 +115,7 @@ def retry_with_fallback(
             # This will return [] if it fails after 2 attempts
             response = requests.get('https://api.example.com/optional-endpoint')
             return response.json()
+
     """
 
     def decorator(func: Callable) -> Callable:
@@ -133,13 +134,13 @@ def retry_with_fallback(
                     if attempt >= max_attempts:
                         logger.error(
                             f"Function {func.__name__} failed after {max_attempts} attempts. "
-                            f"Returning fallback value. Last error: {e}"
+                            f"Returning fallback value. Last error: {e}",
                         )
                         return fallback_value
 
                     logger.warning(
                         f"Attempt {attempt}/{max_attempts} failed for {func.__name__}: {e}. "
-                        f"Retrying in {current_delay:.1f}s..."
+                        f"Retrying in {current_delay:.1f}s...",
                     )
 
                     time.sleep(current_delay)
@@ -174,8 +175,5 @@ if __name__ == "__main__":
         return response.json()
 
     # Test the decorator
-    try:
+    with contextlib.suppress(requests.RequestException):
         result = fetch_schedule("NJD", "20232024")
-        print("✓ Successfully fetched schedule")
-    except requests.RequestException as e:
-        print(f"✗ Failed to fetch schedule: {e}")

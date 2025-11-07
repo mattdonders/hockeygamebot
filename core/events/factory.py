@@ -13,9 +13,7 @@ from core.events.stoppage import StoppageEvent
 
 
 class EventFactory:
-    """
-    A factory to create event objects based on their type.
-    """
+    """A factory to create event objects based on their type."""
 
     @staticmethod
     def create_event(event_data, context, new_plays):
@@ -117,7 +115,7 @@ class EventFactory:
                     )
                     logging.warning(event_data)
             except Exception as error:
-                logging.error(
+                logging.exception(
                     "Error creating %s event (type: %s) for ID: %s / SortOrder: %s.",
                     event_class.__name__,
                     event_type,
@@ -125,8 +123,8 @@ class EventFactory:
                     sort_order,
                 )
                 # logging.error(response)
-                logging.error(error)
-                logging.error(traceback.format_exc())
+                logging.exception(error)
+                logging.exception(traceback.format_exc())
                 return
 
         if sort_order < 9000:

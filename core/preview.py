@@ -9,9 +9,7 @@ from utils.others import categorize_broadcasts, clock_emoji, convert_utc_to_loca
 
 
 def sleep_until_game_start(start_time_utc):
-    """
-    Sleep until the game starts based on the provided UTC start time.
-    """
+    """Sleep until the game starts based on the provided UTC start time."""
     now = datetime.now(UTC)
     start_time = datetime.strptime(start_time_utc, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=UTC)
     time_diff = (start_time - now).total_seconds()
@@ -25,8 +23,7 @@ def sleep_until_game_start(start_time_utc):
 
 
 def preview_sleep_calculator(context: GameContext):
-    """
-    Auto sleep-time calculator for FUT or PRE game states.
+    """Auto sleep-time calculator for FUT or PRE game states.
 
     IMPORTANT: Always sleeps for at least 5 seconds to prevent busy loops
     that can hammer the NHL API and cause rate limit errors.
@@ -60,7 +57,8 @@ def preview_sleep_calculator(context: GameContext):
             )
         else:
             logging.info(
-                "All pre-game messages sent. Sleeping until game time (~%s minutes).", preview_sleep_mins
+                "All pre-game messages sent. Sleeping until game time (~%s minutes).",
+                preview_sleep_mins,
             )
 
         time.sleep(actual_sleep_time)
@@ -88,15 +86,14 @@ def preview_sleep_calculator(context: GameContext):
 
     # Scenario 4: FALLBACK - Not all pre-game messages sent and we have time
     logging.info(
-        "Not all pre-game messages are sent, sleeping for %s minutes & will try again.", preview_sleep_mins
+        "Not all pre-game messages are sent, sleeping for %s minutes & will try again.",
+        preview_sleep_mins,
     )
     time.sleep(preview_sleep_time)
 
 
 def format_future_game_post(game, context: GameContext):
-    """
-    Format a social media post for a future game preview.
-    """
+    """Format a social media post for a future game preview."""
     away_team = f"{game['awayTeam']['placeName']['default']} {game['awayTeam']['commonName']['default']}"
     home_team = f"{game['homeTeam']['placeName']['default']} {game['homeTeam']['commonName']['default']}"
     venue = game["venue"]["default"]
@@ -114,21 +111,22 @@ def format_future_game_post(game, context: GameContext):
 
     # Generate the message
     broadcast_info = ", ".join(local_broadcasts + national_broadcasts)
-    post = (
+    return (
         f"Tune in {context.game_time_of_day} when the {home_team} take on the {away_team} at {venue}.\n\n"
         f"{clock} {game_time_local}\n"
         f"📺 {broadcast_info}\n"
         f"#️⃣ {context.preferred_team.hashtag} | {context.game_hashtag}"
     )
 
-    return post
-
 
 def calculate_season_series(
-    schedule, preferred_team_abbreviation, opposing_team_abbreviation, season_id, last_season=False
+    schedule,
+    preferred_team_abbreviation,
+    opposing_team_abbreviation,
+    season_id,
+    last_season=False,
 ):
-    """
-    Calculate the season series record between the preferred team and the opposing team.
+    """Calculate the season series record between the preferred team and the opposing team.
 
     Args:
         schedule (dict): The full schedule data from the API.
@@ -138,6 +136,7 @@ def calculate_season_series(
 
     Returns:
         str: A formatted season series record string.
+
     """
     season_id = str(season_id)
     preferred_record = {"wins": 0, "losses": 0, "ot": 0}
@@ -195,7 +194,7 @@ def calculate_season_series(
     # Format the record string
     record_str = f"{preferred_record['wins']}-{preferred_record['losses']}-{preferred_record['ot']}"
     logging.info(
-        f"Calculated season series record for {preferred_team_abbreviation} vs {opposing_team_abbreviation}: {record_str}"
+        f"Calculated season series record for {preferred_team_abbreviation} vs {opposing_team_abbreviation}: {record_str}",
     )
 
     # Calculate last season flag on return
@@ -203,10 +202,12 @@ def calculate_season_series(
 
 
 def format_season_series_post(
-    schedule, preferred_team_abbreviation, opposing_team_abbreviation, context: GameContext
+    schedule,
+    preferred_team_abbreviation,
+    opposing_team_abbreviation,
+    context: GameContext,
 ):
-    """
-    Format a social media post with the season series record.
+    """Format a social media post with the season series record.
 
     Args:
         schedule (dict): The full schedule data from the API.
@@ -215,10 +216,14 @@ def format_season_series_post(
 
     Returns:
         str: A formatted post with the season series record.
+
     """
     season_id = context.season_id
     record, last_season = calculate_season_series(
-        schedule, preferred_team_abbreviation, opposing_team_abbreviation, season_id
+        schedule,
+        preferred_team_abbreviation,
+        opposing_team_abbreviation,
+        season_id,
     )
 
     if last_season:
@@ -236,9 +241,7 @@ def format_season_series_post(
 
 
 def generate_referees_post(context: GameContext):
-    """
-    Generate a social media post highlighting the referees for the game.
-    """
+    """Generate a social media post highlighting the referees for the game."""
     logging.info("Attempting to fetch officials from NHL Gamecenter site now to generate preview post.")
 
     right_rail = schedule.fetch_rightrail(context.game_id)
@@ -249,20 +252,14 @@ def generate_referees_post(context: GameContext):
     if referees and linesmen:
         r_string = "\n".join([f"R: {r['default']}" for r in referees])
         l_string = "\n".join([f"R: {l['default']}" for l in linesmen])
-        officials_string = (
-            f"The officials for {context.game_time_of_day}'s game are:\n\n{r_string}\n{l_string}"
-        )
-        return officials_string
+        return f"The officials for {context.game_time_of_day}'s game are:\n\n{r_string}\n{l_string}"
 
     return None
 
 
 def generate_goalies_post(game):
-    """
-    Generate a social media post previewing the starting goalies.
-    """
+    """Generate a social media post previewing the starting goalies."""
     # Implement goalie data logic
-    pass
 
 
 def generate_team_stats_chart(context):

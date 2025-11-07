@@ -3,17 +3,16 @@ from datetime import datetime
 from typing import Any
 
 import pytz
+from socials.bluesky import BlueskyClient
 
 from core.models.clock import Clock
 from core.models.team import Team
-from socials.bluesky import BlueskyClient
 from socials.social_state import EndOfGameSocial, StartOfGameSocial
 
 
 @dataclass
 class GameContext:
-    """
-    Centralized context for managing NHL game-related data and shared resources.
+    """Centralized context for managing NHL game-related data and shared resources.
 
     The `GameContext` class serves as the primary hub for tracking and managing the state
     of an NHL game, including team details, game configuration, rosters, and social media
@@ -62,6 +61,7 @@ class GameContext:
 
     Methods:
         __init__: Initializes the `GameContext` with configuration and shared resources.
+
     """
 
     # Configuration and Client

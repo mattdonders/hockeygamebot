@@ -1,5 +1,4 @@
-"""
-Tests for StatusMonitor
+"""Tests for StatusMonitor
 
 These tests verify the bug fixes we applied, especially:
 - Handling Event objects (not just dicts)
@@ -23,7 +22,7 @@ class TestStatusMonitorEventHandling:
     def test_handles_event_objects(self):
         """Test that StatusMonitor handles Event objects (Bug #2 fix)"""
         # Setup
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
             temp_file = Path(f.name)
 
         try:
@@ -46,7 +45,7 @@ class TestStatusMonitorEventHandling:
     def test_handles_dict_events(self):
         """Test that StatusMonitor still handles dict events (backwards compatibility)"""
         # Setup
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
             temp_file = Path(f.name)
 
         try:
@@ -68,7 +67,7 @@ class TestStatusMonitorEventHandling:
     def test_handles_mixed_event_types(self):
         """Test that StatusMonitor handles both dicts and objects"""
         # Setup
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
             temp_file = Path(f.name)
 
         try:
@@ -89,7 +88,7 @@ class TestStatusMonitorEventHandling:
     def test_handles_events_with_unknown_types(self):
         """Test that unknown event types are counted as 'other'"""
         # Setup
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
             temp_file = Path(f.name)
 
         try:
@@ -209,13 +208,13 @@ class TestStatusMonitorFileOperations:
     def test_creates_status_file(self):
         """Test that StatusMonitor creates the status file"""
         # Setup
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
             temp_file = Path(f.name)
         temp_file.unlink()  # Delete it so monitor creates it
 
         try:
             # Execute
-            monitor = StatusMonitor(status_file=temp_file)
+            StatusMonitor(status_file=temp_file)
 
             # Assert
             assert temp_file.exists()
@@ -233,7 +232,7 @@ class TestStatusMonitorFileOperations:
     def test_status_file_is_valid_json(self):
         """Test that written status file is valid JSON"""
         # Setup
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
             temp_file = Path(f.name)
 
         try:
@@ -253,7 +252,7 @@ class TestStatusMonitorFileOperations:
     def test_atomic_write_operation(self):
         """Test that file writes are atomic (temp file + rename)"""
         # This tests that we never write a partial file
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
             temp_file = Path(f.name)
 
         try:
@@ -277,7 +276,7 @@ class TestStatusMonitorAPITracking:
 
     def test_record_successful_api_call(self):
         """Test recording successful API calls"""
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
             temp_file = Path(f.name)
 
         try:
@@ -297,7 +296,7 @@ class TestStatusMonitorAPITracking:
 
     def test_record_failed_api_call(self):
         """Test recording failed API calls"""
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
             temp_file = Path(f.name)
 
         try:
@@ -320,7 +319,7 @@ class TestStatusMonitorSocialTracking:
 
     def test_record_social_post(self):
         """Test recording social media posts"""
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
             temp_file = Path(f.name)
 
         try:
@@ -343,7 +342,7 @@ class TestStatusMonitorSocialTracking:
 @pytest.fixture
 def temp_status_file():
     """Create a temporary status file for testing"""
-    with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
         temp_file = Path(f.name)
 
     yield temp_file

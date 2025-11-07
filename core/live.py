@@ -1,4 +1,5 @@
 import logging
+from typing import cast
 
 from core import schedule
 from core.events.factory import EventFactory
@@ -23,8 +24,7 @@ def process_removed_goal(goal, context):
 
 
 def detect_removed_goals(context, all_plays):
-    """
-    Detect and handle goals that are no longer in the live feed.
+    """Detect and handle goals that are no longer in the live feed.
     Iterates through all goals, checks their status using `was_goal_removed`,
     and removes them if necessary.
     """
@@ -43,16 +43,18 @@ def detect_removed_goals(context, all_plays):
                 )
     except Exception as e:
         # Log any unexpected exceptions
-        logging.error("Encountered an exception while detecting removed goals.")
+        logging.exception("Encountered an exception while detecting removed goals.")
         logging.exception(e)
 
 
 def parse_live_game(context: GameContext):
-    """
-    Parse live game events via Event Factory.
-    """
+    """Parse live game events via Event Factory."""
+    if not getattr(context, "game_id", None):
+        logging.warning("parse_live_game: context.game_id is not set; skipping PBP fetch.")
+        return  # or `return []` if the caller expects a value
 
-    play_by_play_data = schedule.fetch_playbyplay(context.game_id)
+    game_id = cast("str", context.game_id)
+    play_by_play_data = schedule.fetch_playbyplay(game_id)
     all_events = play_by_play_data.get("plays", [])
 
     logging.debug("Number of *TOTAL* Events Retrieved from PBP: %s", len(all_events))
@@ -70,7 +72,7 @@ def parse_live_game(context: GameContext):
     if num_new_events == 0:
         logging.info(
             "No new plays detected. This game event loop will catch any missed events & "
-            "and also check for any scoring changes on existing goals."
+            "and also check for any scoring changes on existing goals.",
         )
     else:
         logging.info("%s new event(s) detected - looping through them now.", num_new_events)

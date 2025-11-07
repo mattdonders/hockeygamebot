@@ -7,8 +7,7 @@ from typing import Any
 
 @dataclass
 class PostRef:
-    """
-    Normalized reference to a published (or staged) social post across platforms.
+    """Normalized reference to a published (or staged) social post across platforms.
 
     platform:  "bluesky" | "threads" | "x" | "unknown"
     id:        canonical id for the platform (e.g., Threads post/creation id, Bluesky URI)

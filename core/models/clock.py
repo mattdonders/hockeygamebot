@@ -1,6 +1,5 @@
 class Clock:
-    """
-    Represents the game clock for tracking time during an NHL game.
+    """Represents the game clock for tracking time during an NHL game.
 
     The `Clock` class manages the current state of the game clock, including the
     time remaining in the period, the total seconds remaining, and whether the
@@ -33,6 +32,7 @@ class Clock:
 
         print(clock.time_remaining)  # Outputs: "15:30"
         print(clock.running)         # Outputs: True
+
     """
 
     def __init__(self):

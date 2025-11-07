@@ -5,8 +5,6 @@ class GenericEvent(Event):
     cache = Cache(__name__)
 
     def parse(self):
-        """
-        Generic parsing logic for events not explicitly mapped.
-        """
+        """Generic parsing logic for events not explicitly mapped."""
         # logging.info(f"Received unmapped event: {self.event_type} at sort order {self.sort_order}.")
         return  # No message to post by default

@@ -10,8 +10,7 @@ from socials.types import PostRef
 
 @dataclass
 class StartOfGameSocial:
-    """
-    Tracks start-of-game (preview) posting state, content, and threading refs.
+    """Tracks start-of-game (preview) posting state, content, and threading refs.
     Keep per-platform root/parent so you can thread independently.
     """
 
@@ -103,8 +102,7 @@ class StartOfGameSocial:
 
     @property
     def all_pregame_sent(self) -> bool:
-        """
-        Returns True when the core preview set is posted.
+        """Returns True when the core preview set is posted.
         Tweak the checklist as you see fit.
         """
         pregame_checks = ("core_sent", "season_series_sent", "officials_sent")
@@ -116,9 +114,7 @@ class StartOfGameSocial:
 
 @dataclass
 class EndOfGameSocial:
-    """
-    Tracks end-of-game (final) posting state, content, and threading refs.
-    """
+    """Tracks end-of-game (final) posting state, content, and threading refs."""
 
     # --- Per-platform thread anchors ---
     bluesky_root: PostRef | None = None

@@ -1,5 +1,4 @@
-"""
-Tests for core/events/ - Event handler classes
+"""Tests for core/events/ - Event handler classes
 
 These tests cover:
 1. Goal event parsing and formatting
@@ -23,8 +22,7 @@ class TestGoalEventParsing:
     """Test goal event parsing and message generation"""
 
     def test_goal_parse_preferred_team_no_assists(self):
-        """
-        Test goal by preferred team with no assists.
+        """Test goal by preferred team with no assists.
 
         This is a simple goal - just the scorer, no helpers.
         """
@@ -69,8 +67,7 @@ class TestGoalEventParsing:
         assert "🍏" not in message
 
     def test_goal_parse_with_one_assist(self):
-        """
-        Test goal with one assist.
+        """Test goal with one assist.
 
         Common scenario - goal plus one apple.
         """
@@ -110,8 +107,7 @@ class TestGoalEventParsing:
         assert "🍏" not in message  # No second assist
 
     def test_goal_parse_with_two_assists(self):
-        """
-        Test goal with two assists.
+        """Test goal with two assists.
 
         Full credit - scorer plus two apples.
         """
@@ -154,8 +150,7 @@ class TestGoalEventParsing:
         assert "🍏 Jack Hughes (15)" in message
 
     def test_goal_parse_other_team(self):
-        """
-        Test goal by opponent.
+        """Test goal by opponent.
 
         Should have different emoji and messaging.
         """
@@ -194,8 +189,7 @@ class TestGoalEventParsing:
         assert "San Jose Sharks: 1" in message
 
     def test_goal_parse_missing_shot_type(self):
-        """
-        Test goal with missing shot type data.
+        """Test goal with missing shot type data.
 
         Bug Prevention: Missing data should cause parse to return False
         so we can retry on next loop.
@@ -234,8 +228,7 @@ class TestGoalEventScoring:
     """Test goal event score tracking and updates"""
 
     def test_goal_updates_context_scores(self):
-        """
-        Test that goal parsing updates team scores in context.
+        """Test that goal parsing updates team scores in context.
 
         Important: Other events need to access current scores.
         """
@@ -263,8 +256,7 @@ class TestGoalEventScoring:
         assert mock_context.other_team.score == 0
 
     def test_goal_away_team_scoring(self):
-        """
-        Test goal scoring when preferred team is away.
+        """Test goal scoring when preferred team is away.
 
         Score assignment should swap for away games.
         """
@@ -298,16 +290,14 @@ class TestGoalEventScoring:
 
 
 class TestGoalEventRemoval:
-    """
-    Test removed goal detection (for challenges).
+    """Test removed goal detection (for challenges).
 
     When a goal is challenged and overturned, it disappears from
     the play-by-play feed. We need to detect this.
     """
 
     def test_goal_not_removed_when_present(self):
-        """
-        Test that goal is not marked as removed when still in feed.
+        """Test that goal is not marked as removed when still in feed.
 
         Normal case - goal is valid and present.
         """
@@ -341,8 +331,7 @@ class TestGoalEventRemoval:
         assert goal.event_removal_counter == 0
 
     def test_goal_removed_after_threshold(self):
-        """
-        Test that goal is marked as removed after missing multiple checks.
+        """Test that goal is marked as removed after missing multiple checks.
 
         Threshold prevents false positives from API delays.
         """
@@ -380,8 +369,7 @@ class TestGoalEventRemoval:
                 assert goal.event_removal_counter == GoalEvent.REMOVAL_THRESHOLD
 
     def test_goal_removal_counter_resets(self):
-        """
-        Test that removal counter resets when goal reappears.
+        """Test that removal counter resets when goal reappears.
 
         Handles case where goal temporarily missing from API.
         """
@@ -404,7 +392,7 @@ class TestGoalEventRemoval:
 
         # Goal reappears in feed
         all_plays = [
-            {"eventId": 132, "typeDescKey": "goal"}  # Goal is back!
+            {"eventId": 132, "typeDescKey": "goal"},  # Goal is back!
         ]
 
         # ACT
@@ -419,8 +407,7 @@ class TestGoalEventHighlights:
     """Test highlight clip handling for goals"""
 
     def test_check_and_add_highlight_valid_url(self):
-        """
-        Test adding a valid highlight clip URL.
+        """Test adding a valid highlight clip URL.
 
         NHL provides video highlights that we post.
         """
@@ -460,8 +447,7 @@ class TestGoalEventHighlights:
         goal.post_message.assert_called_once()
 
     def test_check_and_add_highlight_invalid_url(self):
-        """
-        Test handling of invalid highlight URL.
+        """Test handling of invalid highlight URL.
 
         Sometimes NHL returns placeholder URLs that aren't real.
         """
@@ -485,7 +471,7 @@ class TestGoalEventHighlights:
         updated_event_data = {
             "eventId": 134,
             "details": {
-                "highlightClipSharingUrl": "https://www.nhl.com/video/"  # Invalid!
+                "highlightClipSharingUrl": "https://www.nhl.com/video/",  # Invalid!
             },
         }
 
@@ -497,8 +483,7 @@ class TestGoalEventHighlights:
         goal.post_message.assert_not_called()
 
     def test_check_and_add_highlight_missing(self):
-        """
-        Test handling when no highlight URL provided.
+        """Test handling when no highlight URL provided.
 
         Highlights aren't always available immediately.
         """
@@ -535,8 +520,7 @@ class TestGoalEventEdgeCases:
     """Test edge cases and error conditions"""
 
     def test_goal_with_none_assist_names(self):
-        """
-        Test goal where assist player names are None.
+        """Test goal where assist player names are None.
 
         Sometimes API doesn't provide names immediately.
         """
@@ -575,8 +559,7 @@ class TestGoalEventEdgeCases:
         assert "🍎" not in message
 
     def test_goal_with_zero_totals(self):
-        """
-        Test first career goal (totals = 1).
+        """Test first career goal (totals = 1).
 
         Special milestone!
         """
@@ -614,10 +597,9 @@ class TestGoalEventEdgeCases:
 class TestGoalEventIntegration:
     """Integration tests for goal events"""
 
-    @patch('core.events.goal.get_team_details_by_id')
+    @patch("core.events.goal.get_team_details_by_id")
     def test_goal_full_flow_with_post(self, mock_team_details):
-        """
-        Test complete goal event flow from parse to post.
+        """Test complete goal event flow from parse to post.
 
         This simulates the entire lifecycle of a goal event.
         """

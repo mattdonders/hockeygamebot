@@ -1,5 +1,4 @@
-"""
-Tests for core/schedule.py - NHL API interaction functions
+"""Tests for core/schedule.py - NHL API interaction functions
 
 These tests protect against NHL API changes by:
 1. Validating API response structure
@@ -21,17 +20,16 @@ from core import schedule
 class TestScheduleFetch:
     """Test schedule fetching functions"""
 
-    @patch('core.schedule.requests.get')
+    @patch("core.schedule.requests.get")
     def test_fetch_schedule_success(self, mock_get):
-        """
-        Test successful schedule fetch with valid response.
+        """Test successful schedule fetch with valid response.
 
         This is the happy path - API returns expected data structure.
         """
         # ARRANGE
         mock_response = Mock()
         mock_response.json.return_value = {
-            "games": [{"id": 2025020176, "gameDate": "2025-10-30", "gameState": "OFF"}]
+            "games": [{"id": 2025020176, "gameDate": "2025-10-30", "gameState": "OFF"}],
         }
         mock_response.raise_for_status = Mock()
         mock_get.return_value = mock_response
@@ -45,10 +43,9 @@ class TestScheduleFetch:
         assert len(result["games"]) > 0
         mock_get.assert_called_once()
 
-    @patch('core.schedule.requests.get')
+    @patch("core.schedule.requests.get")
     def test_fetch_schedule_timeout(self, mock_get):
-        """
-        Test schedule fetch handles timeout gracefully.
+        """Test schedule fetch handles timeout gracefully.
 
         NHL API sometimes times out during high traffic.
         With retry decorator, this should retry 3 times before failing.
@@ -63,10 +60,9 @@ class TestScheduleFetch:
         # Verify it retried 3 times
         assert mock_get.call_count == 3
 
-    @patch('core.schedule.requests.get')
+    @patch("core.schedule.requests.get")
     def test_fetch_schedule_404(self, mock_get):
-        """
-        Test schedule fetch handles 404 Not Found.
+        """Test schedule fetch handles 404 Not Found.
 
         This can happen with invalid team abbreviation or season ID.
         """
@@ -79,10 +75,9 @@ class TestScheduleFetch:
         with pytest.raises(requests.HTTPError):
             schedule.fetch_schedule("INVALID", "20252026")
 
-    @patch('core.schedule.requests.get')
+    @patch("core.schedule.requests.get")
     def test_fetch_schedule_500(self, mock_get):
-        """
-        Test schedule fetch handles 500 Internal Server Error.
+        """Test schedule fetch handles 500 Internal Server Error.
 
         NHL API occasionally has server errors.
         Should retry and eventually fail gracefully.
@@ -103,10 +98,9 @@ class TestScheduleFetch:
 class TestPlayByPlayFetch:
     """Test play-by-play data fetching"""
 
-    @patch('core.schedule.requests.get')
+    @patch("core.schedule.requests.get")
     def test_fetch_playbyplay_success(self, mock_get):
-        """
-        Test successful play-by-play fetch.
+        """Test successful play-by-play fetch.
 
         This is critical - we call this constantly during live games.
         """
@@ -129,10 +123,9 @@ class TestPlayByPlayFetch:
         assert "gameState" in result
         assert result["id"] == 2025020176
 
-    @patch('core.schedule.requests.get')
+    @patch("core.schedule.requests.get")
     def test_fetch_playbyplay_empty_plays(self, mock_get):
-        """
-        Test play-by-play with no events yet.
+        """Test play-by-play with no events yet.
 
         This happens at game start before any events occur.
         """
@@ -153,17 +146,16 @@ class TestPlayByPlayFetch:
         assert result is not None
         assert result["plays"] == []
 
-    @patch('core.schedule.requests.get')
+    @patch("core.schedule.requests.get")
     def test_fetch_playbyplay_malformed_response(self, mock_get):
-        """
-        Test handling of malformed API response.
+        """Test handling of malformed API response.
 
         If NHL API changes structure, this should catch it.
         """
         # ARRANGE
         mock_response = Mock()
         mock_response.json.return_value = {
-            "id": 2025020176
+            "id": 2025020176,
             # Missing 'plays' key!
         }
         mock_response.raise_for_status = Mock()
@@ -180,10 +172,9 @@ class TestPlayByPlayFetch:
 class TestLandingFetch:
     """Test landing page data (used for three stars, etc)"""
 
-    @patch('core.schedule.requests.get')
+    @patch("core.schedule.requests.get")
     def test_fetch_landing_with_three_stars(self, mock_get):
-        """
-        Test landing fetch includes three stars data.
+        """Test landing fetch includes three stars data.
 
         This is the data we use for post-game three stars posts.
         """
@@ -195,8 +186,8 @@ class TestLandingFetch:
                     {"star": 1, "playerId": 8478407},
                     {"star": 2, "playerId": 8477933},
                     {"star": 3, "playerId": 8476878},
-                ]
-            }
+                ],
+            },
         }
         mock_response.raise_for_status = Mock()
         mock_get.return_value = mock_response
@@ -209,10 +200,9 @@ class TestLandingFetch:
         assert "threeStars" in result["summary"]
         assert len(result["summary"]["threeStars"]) == 3
 
-    @patch('core.schedule.requests.get')
+    @patch("core.schedule.requests.get")
     def test_fetch_landing_without_three_stars(self, mock_get):
-        """
-        Test landing fetch when three stars not available.
+        """Test landing fetch when three stars not available.
 
         Bug #1 Scenario: Three stars data often missing during/after games.
         Our code must handle this gracefully.
@@ -220,7 +210,7 @@ class TestLandingFetch:
         # ARRANGE
         mock_response = Mock()
         mock_response.json.return_value = {
-            "summary": {}  # No threeStars key
+            "summary": {},  # No threeStars key
         }
         mock_response.raise_for_status = Mock()
         mock_get.return_value = mock_response
@@ -236,10 +226,9 @@ class TestLandingFetch:
 class TestSeasonIDFetch:
     """Test current season ID fetching"""
 
-    @patch('core.schedule.requests.get')
+    @patch("core.schedule.requests.get")
     def test_fetch_season_id_success(self, mock_get):
-        """
-        Test fetching current season ID.
+        """Test fetching current season ID.
 
         Season ID format: 20252026 (YYYYZZZZ where ZZZZ = YYYY + 1)
         """
@@ -255,10 +244,9 @@ class TestSeasonIDFetch:
         # ASSERT
         assert result == 20252026
 
-    @patch('core.schedule.requests.get')
+    @patch("core.schedule.requests.get")
     def test_fetch_season_id_missing(self, mock_get):
-        """
-        Test handling when season ID not in response.
+        """Test handling when season ID not in response.
 
         Should handle missing data gracefully.
         """
@@ -278,7 +266,7 @@ class TestSeasonIDFetch:
 class TestGameStateFetch:
     """Test game state checking"""
 
-    @patch('core.schedule.requests.get')
+    @patch("core.schedule.requests.get")
     def test_fetch_game_state_live(self, mock_get):
         """Test fetching LIVE game state"""
         # ARRANGE
@@ -293,7 +281,7 @@ class TestGameStateFetch:
         # ASSERT
         assert result == "LIVE"
 
-    @patch('core.schedule.requests.get')
+    @patch("core.schedule.requests.get")
     def test_fetch_game_state_final(self, mock_get):
         """Test fetching FINAL game state"""
         # ARRANGE
@@ -308,10 +296,9 @@ class TestGameStateFetch:
         # ASSERT
         assert result == "FINAL"
 
-    @patch('core.schedule.requests.get')
+    @patch("core.schedule.requests.get")
     def test_fetch_game_state_unknown(self, mock_get):
-        """
-        Test handling unknown game state.
+        """Test handling unknown game state.
 
         If NHL adds new game states, this catches them.
         """
@@ -331,7 +318,7 @@ class TestGameStateFetch:
 class TestClockFetch:
     """Test game clock data fetching"""
 
-    @patch('core.schedule.requests.get')
+    @patch("core.schedule.requests.get")
     def test_fetch_clock_success(self, mock_get):
         """Test fetching game clock data"""
         # ARRANGE
@@ -342,7 +329,7 @@ class TestClockFetch:
                 "secondsRemaining": 754,
                 "running": True,
                 "inIntermission": False,
-            }
+            },
         }
         mock_response.raise_for_status = Mock()
         mock_get.return_value = mock_response
@@ -355,7 +342,7 @@ class TestClockFetch:
         assert result["timeRemaining"] == "12:34"
         assert result["inIntermission"] is False
 
-    @patch('core.schedule.requests.get')
+    @patch("core.schedule.requests.get")
     def test_fetch_clock_intermission(self, mock_get):
         """Test clock data during intermission"""
         # ARRANGE
@@ -418,7 +405,7 @@ class TestHelperFunctions:
                 {"id": 1, "gameState": "OFF", "gameDate": "2025-10-30"},
                 {"id": 2, "gameState": "FUT", "gameDate": "2025-11-01"},  # This one!
                 {"id": 3, "gameState": "FUT", "gameDate": "2025-11-03"},
-            ]
+            ],
         }
 
         # ACT
@@ -445,7 +432,7 @@ class TestHelperFunctions:
 class TestMonitorIntegration:
     """Test integration with StatusMonitor for tracking API calls"""
 
-    @patch('core.schedule.requests.get')
+    @patch("core.schedule.requests.get")
     def test_successful_api_call_tracked(self, mock_get):
         """Test that successful API calls are recorded in monitor"""
         # ARRANGE
@@ -466,7 +453,7 @@ class TestMonitorIntegration:
         # Cleanup
         schedule.set_monitor(None)
 
-    @patch('core.schedule.requests.get')
+    @patch("core.schedule.requests.get")
     def test_failed_api_call_tracked(self, mock_get):
         """Test that failed API calls are recorded in monitor"""
         # ARRANGE
@@ -491,17 +478,15 @@ class TestMonitorIntegration:
 
 
 class TestAPIStructureValidation:
-    """
-    Tests to validate NHL API response structure.
+    """Tests to validate NHL API response structure.
 
     These are CRITICAL for catching API changes.
     If NHL changes their API structure, these tests will fail.
     """
 
-    @patch('core.schedule.requests.get')
+    @patch("core.schedule.requests.get")
     def test_schedule_response_structure(self, mock_get):
-        """
-        Validate that schedule API returns expected structure.
+        """Validate that schedule API returns expected structure.
 
         If this fails, NHL changed their API!
         """
@@ -518,8 +503,8 @@ class TestAPIStructureValidation:
                     "gameState": "OFF",
                     "awayTeam": {"abbrev": "SJS", "score": 3},
                     "homeTeam": {"abbrev": "NJD", "score": 5},
-                }
-            ]
+                },
+            ],
         }
         mock_response.raise_for_status = Mock()
         mock_get.return_value = mock_response
@@ -536,10 +521,9 @@ class TestAPIStructureValidation:
         for field in required_fields:
             assert field in game, f"Missing required field: {field}"
 
-    @patch('core.schedule.requests.get')
+    @patch("core.schedule.requests.get")
     def test_playbyplay_response_structure(self, mock_get):
-        """
-        Validate play-by-play API response structure.
+        """Validate play-by-play API response structure.
 
         This is CRITICAL - we parse this constantly during games.
         """
@@ -556,7 +540,7 @@ class TestAPIStructureValidation:
                     "sortOrder": 100,
                     "periodDescriptor": {"number": 1},
                     "timeInPeriod": "12:34",
-                }
+                },
             ],
         }
         mock_response.raise_for_status = Mock()
@@ -582,8 +566,7 @@ class TestAPIStructureValidation:
 
 @pytest.mark.integration
 class TestAPIIntegration:
-    """
-    Integration tests that actually call NHL API.
+    """Integration tests that actually call NHL API.
 
     These are marked as 'integration' so they can be skipped:
     Run with: pytest -m integration
@@ -592,8 +575,7 @@ class TestAPIIntegration:
 
     @pytest.mark.skip(reason="Requires real API call - run manually")
     def test_real_schedule_fetch(self):
-        """
-        Test actual NHL API call.
+        """Test actual NHL API call.
 
         Run this occasionally to verify API is still compatible.
         """
@@ -604,8 +586,7 @@ class TestAPIIntegration:
 
     @pytest.mark.skip(reason="Requires real API call - run manually")
     def test_real_api_structure(self):
-        """
-        Verify current NHL API structure matches our expectations.
+        """Verify current NHL API structure matches our expectations.
 
         Run this when you suspect API changes.
         """

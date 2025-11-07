@@ -12,10 +12,12 @@ class GoalEvent(Event):
     REMOVAL_THRESHOLD = 5  # Configurable threshold for event removal checks
 
     def parse(self):
-        """
-        Parse a goal event and return a formatted message.
-        """
-        details = self.details
+        """Parse a goal event and return a formatted message."""
+        details = self.details or {}
+
+        # Assert Both Teams are not None (for Linting)
+        assert self.context.preferred_team is not None
+        assert self.context.other_team is not None
 
         # Add preferred team flag
         event_owner_team_id = details.get("eventOwnerTeamId")
@@ -23,7 +25,7 @@ class GoalEvent(Event):
         details["is_preferred"] = is_preferred
 
         # Add Team Details to Goal Object (better logging)
-        event_team_details = get_team_details_by_id(event_owner_team_id)
+        event_team_details = get_team_details_by_id(event_owner_team_id) or {}
         self.team_name = event_team_details.get("full_name")
         self.team_abbreviation = event_team_details.get("abbreviation")
 
@@ -67,8 +69,8 @@ class GoalEvent(Event):
 
         # Get Video Highlight Fields
 
-        # Check if Empty Net Goal
-        empty_net_goal = details.get("goalieInNetId") is None
+        # TODO: Check if Empty Net Goal
+        # empty_net_goal = details.get("goalieInNetId") is None
 
         if is_preferred:
             goal_emoji = "🚨" * self.preferred_score
@@ -96,10 +98,11 @@ class GoalEvent(Event):
             goal_message += "\n".join(assists) + "\n\n"
 
         # Add team scores
-        goal_message += (
-            f"{self.context.preferred_team.full_name}: {self.preferred_score}\n"
-            f"{self.context.other_team.full_name}: {self.other_score}"
-        )
+        if self.context.teams_ready:
+            goal_message += (
+                f"{self.context.preferred_team.full_name}: {self.preferred_score}\n"
+                f"{self.context.other_team.full_name}: {self.other_score}"
+            )
 
         return goal_message
 
@@ -116,16 +119,18 @@ class GoalEvent(Event):
         new_assists = [new_assist1_player_id, new_assist2_player_id]
         current_assists = [self.assist1_player_id, self.assist2_player_id]
 
-        # Check for changes
+        # TODO: Check for changes & actually return values based on EventFactory
         scorer_change = new_scoring_player_id != self.scoring_player_id
         assist_change = new_assists != current_assists
 
+        return {scorer_change, assist_change}
+
     def check_and_add_highlight(self, event_data):
-        """
-        Check event_data for highlight_clip_url, post a message if found, and update the event object.
+        """Check event_data for highlight_clip_url, post a message if found, and update the event object.
 
         Args:
             event_data (dict): The raw event data from the NHL Play-by-Play API.
+
         """
         # Extract highlight clip URL from event_data
         highlight_clip_url = event_data.get("details", {}).get("highlightClipSharingUrl")
@@ -153,8 +158,7 @@ class GoalEvent(Event):
         )
 
     def was_goal_removed(self, all_plays: dict) -> bool:
-        """
-        Checks if the goal was removed from the live feed (e.g., due to a Challenge).
+        """Checks if the goal was removed from the live feed (e.g., due to a Challenge).
         Returns True if the goal should be removed, False otherwise.
         """
         goal_still_exists = next((play for play in all_plays if play["eventId"] == self.event_id), None)
@@ -192,12 +196,15 @@ class GoalEvent(Event):
         media: str | list[str] | None = None,
         alt_text: str = "",
     ) -> None:
-        """
-        Threaded posting for GoalEvent:
+        """Threaded posting for GoalEvent:
         - First call: post on all enabled platforms, store PostRef(s).
         - Subsequent calls: reply in-place per platform and advance stored refs.
         Never raises; logs exceptions via context.logger if available.
         """
+        # Assert Both Teams are not None (for Linting)
+        assert self.context.preferred_team is not None
+        assert self.context.other_team is not None
+
         # Ensure per-event thread map exists (platform -> PostRef)
         if not hasattr(self, "_post_refs"):
             self._post_refs = {}
@@ -219,9 +226,7 @@ class GoalEvent(Event):
             try:
                 pref = self.context.preferred_team
                 other = self.context.other_team
-                footer_parts.append(
-                    f"{pref.abbreviation}: {pref.score} / {other.abbreviation}: {other.score}"
-                )
+                footer_parts.append(f"{pref.abbreviation}: {pref.score} / {other.abbreviation}: {other.score}")
             except Exception:
                 pass
 
@@ -234,9 +239,7 @@ class GoalEvent(Event):
         try:
             if not self._post_refs:
                 # Initial post on all enabled platforms; store refs for future replies.
-                logging.info(
-                    "GoalEvent[%s]: initial post across platforms.", getattr(self, "event_id", "unknown")
-                )
+                logging.info("GoalEvent[%s]: initial post across platforms.", getattr(self, "event_id", "unknown"))
                 results = self.context.social.post(
                     message=text,
                     media=media,
@@ -291,7 +294,4 @@ class GoalEvent(Event):
                 # Advance stored refs
                 self._post_refs.update(new_refs)
         except Exception as e:
-            if getattr(self.context, "logger", None):
-                self.context.logger.exception("GoalEvent post failed: %s", e)
-            else:
-                logging.exception("GoalEvent post failed: %s", e)
+            logging.exception("GoalEvent post failed: %s", e)

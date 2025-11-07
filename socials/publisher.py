@@ -5,7 +5,7 @@ import inspect
 import logging
 from collections.abc import Iterable
 from pathlib import Path
-from typing import Any
+from typing import Any, Protocol, runtime_checkable
 
 import yaml
 
@@ -16,9 +16,13 @@ from .bluesky_client import BlueskyClient, BlueskyConfig
 from .threads_client import ThreadsClient, ThreadsConfig
 
 
+@runtime_checkable
+class SocialClient(Protocol):
+    def post(self, post: SocialPost, reply_to_ref: PostRef | None = None) -> PostRef: ...
+
+
 class SocialPublisher:
-    """
-    Platform-agnostic publisher.
+    """Platform-agnostic publisher.
 
     - post(): fire-and-forget (doesn't affect per-platform reply anchors)
     - reply(): replies to last known PostRef per platform (or a supplied PostRef/state)
@@ -36,7 +40,8 @@ class SocialPublisher:
     ):
         # Load config if a path/str was provided
         if isinstance(config, (str, Path)):
-            with open(config, encoding="utf-8") as f:
+            cfg_path = Path(config)
+            with cfg_path.open(encoding="utf-8") as f:
                 self.cfg: dict = yaml.safe_load(f)
         else:
             self.cfg = dict(config)
@@ -62,7 +67,7 @@ class SocialPublisher:
                     handle=bc["handle"],
                     app_password=bc["app_password"],
                     service_url=bc.get("service_url"),
-                )
+                ),
             )
 
         self._thr = None
@@ -74,7 +79,7 @@ class SocialPublisher:
             )
 
         # Registry of active platforms
-        self._platforms: dict[str, object] = {}
+        self._platforms: dict[str, SocialClient] = {}
         if self._bsky:
             self._platforms["bluesky"] = self._bsky
         if self._thr:
@@ -89,7 +94,7 @@ class SocialPublisher:
         for name, client in self._platforms.items():
             if hasattr(client, "login_or_restore"):
                 try:
-                    client.login_or_restore()
+                    client.login_or_restore()  # type: ignore[attr-defined]
                 except Exception as e:
                     logging.exception("Login/restore failed for %s: %s", name, e)
 
@@ -104,8 +109,7 @@ class SocialPublisher:
         alt_text: str | None = None,
         state: Any | None = None,  # accepted but intentionally ignored in post()
     ) -> dict[str, PostRef]:
-        """
-        Create a new post on 1+ platforms. Does NOT update reply anchors.
+        """Create a new post on 1+ platforms. Does NOT update reply anchors.
         'state' is accepted for API symmetry but not used here.
         """
         # NOSOCIAL centrally
@@ -132,9 +136,7 @@ class SocialPublisher:
                     else None
                 ),
                 image_url=(
-                    media_path
-                    if (media_path and str(media_path).startswith(("http://", "https://")))
-                    else None
+                    media_path if (media_path and str(media_path).startswith(("http://", "https://"))) else None
                 ),
                 alt_text=alt_text,
             )
@@ -153,8 +155,7 @@ class SocialPublisher:
         alt_text: str | None = None,
         state: Any | None = None,  # NEW: use/advance per-platform parents from state
     ) -> dict[str, PostRef]:
-        """
-        Reply to the current anchor (publisher's _last or provided state) or to an explicit PostRef.
+        """Reply to the current anchor (publisher's _last or provided state) or to an explicit PostRef.
         Advances both the publisher anchors and 'state' parents if provided.
         """
         if self.nosocial:
@@ -179,9 +180,7 @@ class SocialPublisher:
 
             sp = SocialPost(
                 text=message,
-                local_image=(
-                    Path(media) if media and not str(media).startswith(("http://", "https://")) else None
-                ),
+                local_image=(Path(media) if media and not str(media).startswith(("http://", "https://")) else None),
                 image_url=(media if media and str(media).startswith(("http://", "https://")) else None),
                 alt_text=alt_text,
             )
@@ -203,8 +202,7 @@ class SocialPublisher:
         alt_text: str | None = None,
         state: Any | None = None,  # NEW: also seed state roots/parents
     ) -> dict[str, PostRef]:
-        """
-        post() and store returned PostRef(s) as new per-platform reply anchors.
+        """post() and store returned PostRef(s) as new per-platform reply anchors.
         If 'state' is provided, it seeds both roots and parents per platform.
         """
         results = self.post(message=message, media=media, platforms=platforms, alt_text=alt_text)
@@ -224,8 +222,7 @@ class SocialPublisher:
 
     # --- state wiring (works with your StartOfGameSocial or similar) ---
     def _seed_state(self, state: Any, results: dict[str, PostRef]) -> None:
-        """
-        Seed both root and parent for each platform in 'state'.
+        """Seed both root and parent for each platform in 'state'.
         We try a few shapes to maximize compatibility:
           - state.set_root(platform, ref)  (your helper, if present)
           - setattr(state, f"{platform}_root", ref) / f"{platform}_parent"
@@ -247,17 +244,14 @@ class SocialPublisher:
                 setattr(state, parent_attr, ref)
 
     def _get_state_parent(self, state: Any, platform: str) -> PostRef | None:
-        """
-        Read the current per-platform parent from 'state'.
+        """Read the current per-platform parent from 'state'.
         Looks for {platform}_parent (e.g., bluesky_parent / threads_parent).
         """
         attr = f"{platform}_parent"
         return getattr(state, attr, None)
 
     def _set_state_parent(self, state: Any, platform: str, ref: PostRef) -> None:
-        """
-        Advance the per-platform parent in 'state' after a reply.
-        """
+        """Advance the per-platform parent in 'state' after a reply."""
         attr = f"{platform}_parent"
         if hasattr(state, attr):
             setattr(state, attr, ref)

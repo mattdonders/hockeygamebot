@@ -1,151 +1,222 @@
 from datetime import datetime
+from typing import Any, Literal
 
 import pytz
 
 from core.models.clock import Clock
-from core.models.team import Team
+from core.models.team import Team, Teams
 from socials.publisher import SocialPublisher
 from socials.social_state import EndOfGameSocial, StartOfGameSocial
-from socials.types import PostRef
+from utils.status_monitor import StatusMonitor
 
 
 class GameContext:
-    """
-    Centralized context for managing NHL game-related data and shared resources.
+    """Centralized context for managing NHL game-related data and shared resources.
 
-    The `GameContext` class serves as the primary hub for tracking and managing the state
-    of an NHL game, including team details, game configuration, rosters, and social media
-    interactions. It facilitates communication between different parts of the application
-    and ensures that game-related data is consistently managed and accessible.
+    The `GameContext` class acts as the primary hub for tracking and managing the state
+    of an NHL game, including configuration data, team assignments, live-game updates,
+    social media integration, and event history. It ensures that all modules share a
+    consistent and authoritative view of the current game.
 
     Attributes:
+        # Core Configuration
         config (dict): Configuration settings loaded from a YAML file, including team preferences
             and API credentials.
-        bluesky_client: An instance of the Bluesky API client for posting social media updates.
-        nosocial (bool): A flag to disable social media posting for debugging purposes.
+        social (SocialPublisher): Unified social publisher for Bluesky/Threads.
+        bluesky_client (SocialPublisher): Backward-compatible alias for the same SocialPublisher.
+        nosocial (bool): If True, disables all outbound social media posting.
+        debugsocial (bool): If True, enables debug-mode logging for social posting without publishing.
 
-    Game Details:
-        game (dict): The raw game data from the NHL API.
-        game_id (str): Unique identifier for the game (e.g., "2023020356").
-        game_type (str): <TBD>
-        game_shortid (str): Abbreviated game ID for easier logging or debugging.
-        game_state (str): Current state of the game (e.g., "LIVE", "FUT", "OFF").
-        season_id (str): Identifier for the NHL season in which the game is played.
-        clock (Clock): An instance of the `Clock` class for managing game time.
+        # Game Metadata
+        game (dict | None): Raw game data fetched from the NHL API.
+        game_id (str): Unique identifier for the current game (e.g., "2023020356").
+        season_id (str): Identifier for the active NHL season.
+        game_type (str | None): Type of game (e.g., regular, preseason, postseason).
+        game_shortid (str | None): Abbreviated or simplified game identifier for logs.
+        game_state (str | None): Current state of the game (e.g., "LIVE", "FUT", "OFF").
+        game_time (datetime | None): Official start time of the game in UTC.
+        game_time_local (datetime | None): Localized version of `game_time`.
+        game_time_local_str (str | None): String representation of the local start time.
+        venue (str | None): Venue name where the game is played.
 
-    Team Details:
+        # Season Metadata
+        clock (Clock): Instance of the `Clock` class for time tracking within periods.
+
+        # Team Metadata
+        teams (Teams): Wrapper object containing preferred, other, home, and away teams.
         preferred_team (Team): The user's preferred NHL team.
-        other_team (Team): The opposing team in the game.
-        home_team (Team): The home team in the game.
-        away_team (Team): The away team in the game.
-        preferred_homeaway (str): Indicates whether the preferred team is playing as "home" or "away".
+        other_team (Team): The opponent.
+        home_team (Team): The home team.
+        away_team (Team): The away team.
+        preferred_homeaway (Literal["home", "away"] | None): Indicates whether the preferred team
+            is home or away.
+        teams_ready (bool): Returns True if all teams are initialized.
 
-    Roster Details:
-        combined_roster (dict): A combined roster of both teams for the game.
-        gametime_rosters_set (bool): Indicates whether rosters have been finalized at game time.
+        # Roster Data
+        combined_roster (dict | None): Combined player data from both teams.
+        gametime_rosters_set (bool): Whether the final game-time rosters are locked.
 
-    Social Media Details:
-        game_hashtag (str): The primary hashtag for the game, used in social media posts.
-        preferred_team_hashtag (str): Hashtag associated with the preferred team.
+        # Social Media Metadata
+        game_hashtag (str | None): Primary hashtag for the game (e.g., "#NJDvsNYR").
+        preferred_team_hashtag (str | None): Hashtag associated with the preferred team.
 
-    Event Tracking:
-        last_sort_order (int): Tracks the last event's sort order for real-time event parsing.
-        all_goals (list): List of all goals recorded during the game.
-        events (list): A collection of parsed game events.
-        live_loop_counter (int): A way to keep track of the number of live loops we've done.
+        # Event Tracking
+        last_sort_order (int): Sort order of the most recently processed event.
+        all_goals (list): History of all goal events parsed during the game.
+        events (list): Complete collection of parsed in-game events.
+        live_loop_counter (int): Number of polling loops executed during live-game parsing.
 
-    Social Media Trackers:
-        preview_socials (StartOfGameSocial): Tracks the state of social posts before the game starts.
-        final_socials (EndOfGameSocial): Tracks the state of social posts after the game ends.
+        # Monitoring
+        monitor (StatusMonitor): Tracks status JSON updates and runtime conditions.
+
+        # Social Media State
+        preview_socials (StartOfGameSocial): State tracking for pre-game social posts.
+        final_socials (EndOfGameSocial): State tracking for post-game social posts.
+
+        # Hidden Internal Fields (private)
+        _game_id (str | None): Backing field for the public `game_id` property.
+        _season_id (str | None): Backing field for the public `season_id` property.
+        _teams (Teams | None): Backing field for the public `teams` property.
 
     Methods:
-        __init__: Initializes the `GameContext` with configuration and shared resources.
+        __init__(config, social, nosocial=False, debugsocial=False):
+            Initializes the GameContext with configuration and shared resources.
+
+        set_game_ids(game_id: str, season_id: str) -> None:
+            Assigns both game and season identifiers at once.
+
+        set_teams(preferred: Team, other: Team, preferred_homeaway: Literal["home", "away"]) -> None:
+            Sets all team references (preferred, other, home, away) in one step.
+
+        format_scoreline() -> str:
+            Returns a formatted score string for display or social posts.
+
+        game_time_countdown() -> float:
+            Returns the number of seconds until game start, or 0 if already started or invalid.
+
+        teams_ready -> bool:
+            Returns True if all four team objects are initialized.
+
     """
 
-    def __init__(
-        self, config: dict, social: SocialPublisher, nosocial: bool = False, debugsocial: bool = False
-    ):
+    # ---------- Backing fields (intentional optionals) ----------
+    _game_id: str | None = None
+    _season_id: str | None = None
+    _teams: Teams | None = None
+
+    # Non-team metadata set later during setup
+    preferred_homeaway: Literal["home", "away"] | None = None  # convenience flag
+
+    # ---------- Public init inputs ----------
+    def __init__(self, config: dict, social: SocialPublisher, nosocial: bool = False, debugsocial: bool = False):
+        # Config + socials
         self.config = config
-        self.social = social  # unified SocialPublisher (Bluesky+Threads)
-        self.bluesky_client = social  # back-compat shim for old call sites
+        self.social = social  # unified SocialPublisher (Bluesky/Threads)
+        self.bluesky_client = social  # back-compat alias for older callsites
         self.nosocial: bool = nosocial
         self.debugsocial: bool = debugsocial
 
-        # Attributes Below are Not Passed-In at Initialization Time
-        self.game = None
-        self.game_id = None
-        self.game_type = None
-        self.game_shortid = None
-        self.game_state = None
-        self.season_id = None
-        self.game_time = None
-        self.game_time_local = None
-        self.game_time_local_str = None
-        self.venue = None
+        # Game meta (lazy-filled)
+        self.game: dict | None = None
+        self.game_type: str | None = None
+        self.game_shortid: str | None = None
+        self.game_state: str | None = None
+        self.game_time: datetime | None = None
+        self.game_time_local: datetime | None = None
+        self.game_time_local_str: str | None = None
+        self.venue: str | None = None
+
+        # Season meta (lazy-filled via setter)
+        # _season_id backing field above
+
+        # Clock
         self.clock: Clock = Clock()
 
-        self.preferred_team: Team = None
-        self.other_team: Team = None
-        self.home_team: Team = None
-        self.away_team: Team = None
+        # Rosters
+        self.combined_roster: dict[str, Any] = {}
+        self.gametime_rosters_set: bool = False
 
-        self.preferred_homeaway = None
+        # Social bits
+        self.game_hashtag: str | None = None
+        self.preferred_team_hashtag: str | None = None
 
-        self.combined_roster = None
-        self.gametime_rosters_set = False
-        self.game_hashtag = None
-        self.preferred_team_hashtag = None
+        # Event tracking
+        self.last_sort_order: int = 0
+        self.all_goals: list = []
+        self.events: list = []
+        self.live_loop_counter: int = 0
 
-        self.last_sort_order = 0
-        self.all_goals = []
-        self.events = []
+        # Status monitor (declare + initialize so Pylance knows it exists)
+        self.monitor: StatusMonitor = StatusMonitor()
 
-        self.live_loop_counter = 0
-
-        # Social Media Related Trackers
+        # Back-compat social state trackers
         self.preview_socials = StartOfGameSocial()
         self.final_socials = EndOfGameSocial()
 
-    # -------------------------
-    # Helpers
-    # -------------------------
-    @staticmethod
-    def make_post_ref(res: dict[str, PostRef] | None) -> PostRef | None:
-        """
-        Normalize a publisher result dict (from Bluesky/Threads/etc.) into PostRef.
-        Expected keys (best-effort, optional in input):
-          - platform: str
-          - id: str (Threads published/creation id; Bluesky URI)
-          - uri: str (Bluesky)
-          - cid: str (Bluesky)
-          - published: bool
-        """
-        if not res:
-            return None
-
-        platform = str(res.get("platform", "unknown"))
-        canonical_id = (
-            res.get("id") or res.get("uri") or res.get("published_id") or res.get("container_id") or ""
-        )
-
-        return PostRef(
-            platform=platform,
-            id=str(canonical_id),
-            uri=res.get("uri"),
-            cid=res.get("cid"),
-            published=bool(res.get("published", True)),
-            raw=res,
-        )
+    # ---------- Non-optional public properties (raise if unset) ----------
+    @property
+    def game_id(self) -> str:
+        if self._game_id is None:
+            raise RuntimeError("GameContext.game_id is not set")
+        return self._game_id
 
     @property
-    def game_time_of_day(self):
-        """Returns the time of the day of the game (later today or tonight)."""
-        game_date_hour = self.game_time_local.strftime("%H")
-        return "tonight" if int(game_date_hour) > 17 else "later today"
+    def season_id(self) -> str:
+        if self._season_id is None:
+            raise RuntimeError("GameContext.season_id is not set")
+        return self._season_id
 
     @property
-    def game_time_countdown(self):
-        """Returns a countdown (in seconds) to the game start time."""
+    def teams(self) -> Teams:
+        if self._teams is None:
+            raise RuntimeError("GameContext.teams is not set")
+        return self._teams
+
+    # ---------- Setters (simple helpers, no separate @property setters needed) ----------
+    def set_game_ids(self, game_id: str, season_id: str) -> None:
+        self._game_id = game_id
+        self._season_id = season_id
+
+    def set_teams(self, preferred: Team, other: Team, preferred_homeaway: Literal["home", "away"]) -> None:
+        self.preferred_homeaway = preferred_homeaway
+        if preferred_homeaway == "home":
+            self._teams = Teams(preferred=preferred, other=other, home=preferred, away=other)
+        else:
+            self._teams = Teams(preferred=preferred, other=other, home=other, away=preferred)
+
+    # ---------- Back-compat properties so existing code keeps working ----------
+    @property
+    def preferred_team(self) -> Team:
+        return self.teams.preferred
+
+    @property
+    def other_team(self) -> Team:
+        return self.teams.other
+
+    @property
+    def home_team(self) -> Team:
+        return self.teams.home
+
+    @property
+    def away_team(self) -> Team:
+        return self.teams.away
+
+    @property
+    def teams_ready(self) -> bool:
+        return self._teams is not None
+
+    # ---- Other / Optional Helpers ----
+    def game_time_of_day(self) -> str:
+        """Returns 'tonight' or 'later today' based on local hour."""
+        if not self.game_time_local:
+            return "later today"
+        hour = int(self.game_time_local.strftime("%H"))
+        return "tonight" if hour > 17 else "later today"
+
+    def game_time_countdown(self) -> float:
+        """Seconds until game start; 0 if missing or in the past."""
+        if not (self.game_time_local and self._teams and getattr(self.preferred_team, "timezone", None)):
+            return 0
         now = datetime.now().astimezone(pytz.timezone(self.preferred_team.timezone))
-        countdown = (self.game_time_local - now).total_seconds()
-        return 0 if countdown < 0 else countdown
+        delta = (self.game_time_local - now).total_seconds()
+        return max(delta, 0)

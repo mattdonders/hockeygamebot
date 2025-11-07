@@ -2,7 +2,7 @@
 # Paths Ruff should start from. Keep "." and let 'exclude' do the work.
 src = ["."]
 target-version = "py311"  # adjust to your actual runtime (py310/py311/py312)
-line-length = 110
+line-length = 120
 extend-exclude = [
   "v1-oldapi",
   "v2-toomuch",
@@ -43,10 +43,7 @@ select = [
   "RUF",    # Ruff-specific rules (e.g., RUF100 unused-noqa)
 ]
 # Keep it pragmatic: don't enforce docstrings, type-annotation rules, or complexity here.
-ignore = [
-  # If you rely on module-level imports that must come after runtime config, silence E402 repo-wide:
-  # "E402",
-]
+ignore = ["E501"]  # Disable “line too long” rule
 
 # Per-file exceptions (optional; uncomment if needed)
 #[tool.ruff.lint.per-file-ignores]

@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
-"""
-POC: Post to Bluesky + Threads.
+"""POC: Post to Bluesky + Threads.
 - Bluesky: text and optional local image (uploaded as blob).
 - Threads: text (auto or two-step) and image (create IMAGE container -> publish).
 - Local images are auto-uploaded to Backblaze B2 (S3-compatible) with GitHub Raw fallback.
@@ -10,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import base64
+import contextlib
 import mimetypes
 import sys
 import time
@@ -108,20 +108,17 @@ def get_public_url(cfg: dict, local_path: str) -> str:
     def try_b2():
         if not b2_cfg:
             raise RuntimeError("Backblaze not configured")
-        print("[Host] Uploading to Backblaze B2…")
         return upload_b2(b2_cfg, local_path)
 
     def try_gh():
         if not gh_cfg:
             raise RuntimeError("GitHub not configured")
-        print("[Host] Uploading to GitHub Raw…")
         return upload_github_raw(gh_cfg, local_path)
 
     # primary then fallback
     try:
         return try_b2() if primary == "backblaze" else try_gh()
-    except Exception as e:
-        print(f"[Host] Primary upload failed: {e}")
+    except Exception:
         try:
             return try_gh() if primary == "backblaze" else try_b2()
         except Exception as e2:
@@ -141,7 +138,6 @@ def post_bluesky(cfg: dict, text: str | None, image_path: str | None) -> None:
     pwd = c["app_password"]
     service_url = c.get("service_url") or "https://bsky.social"
 
-    print(f"[Bluesky] Logging in as {handle}…")
     client = Client(service_url)
     client.login(handle, pwd)
 
@@ -149,8 +145,7 @@ def post_bluesky(cfg: dict, text: str | None, image_path: str | None) -> None:
     tb.text(text or "")
 
     if not image_path:
-        resp = client.send_post(tb)
-        print(f"[Bluesky] ✅ Posted. URI: {resp.uri}")
+        client.send_post(tb)
         return
 
     # single image with aspect ratio
@@ -159,13 +154,12 @@ def post_bluesky(cfg: dict, text: str | None, image_path: str | None) -> None:
     ar = models.AppBskyEmbedDefs.AspectRatio(height=h, width=w)
     image_data = Path(image_path).read_bytes()
 
-    resp = client.send_image(
+    client.send_image(
         tb,
         image=image_data,
         image_alt=Path(image_path).name,
         image_aspect_ratio=ar,
     )
-    print(f"[Bluesky] ✅ Posted. URI: {resp.uri}")
 
 
 # ---------- Threads Graph API ----------
@@ -187,7 +181,10 @@ def threads_me(access_token: str) -> dict:
 def threads_create_text(access_token: str, text: str, auto_publish: bool) -> dict:
     params = {"text": text, "media_type": "TEXT", "auto_publish_text": "true" if auto_publish else "false"}
     r = requests.post(
-        f"{THREADS_BASE}/me/threads", params={"access_token": access_token}, data=params, timeout=30
+        f"{THREADS_BASE}/me/threads",
+        params={"access_token": access_token},
+        data=params,
+        timeout=30,
     )
     return {"status": r.status_code, "data": _safe_json(r)}
 
@@ -199,7 +196,10 @@ def threads_create_image(access_token: str, text: str | None, image_url: str, al
     if alt_text:
         params["alt_text"] = alt_text
     r = requests.post(
-        f"{THREADS_BASE}/me/threads", params={"access_token": access_token}, data=params, timeout=30
+        f"{THREADS_BASE}/me/threads",
+        params={"access_token": access_token},
+        data=params,
+        timeout=30,
     )
     return {"status": r.status_code, "data": _safe_json(r)}
 
@@ -217,7 +217,6 @@ def post_threads(cfg: dict, text: str | None, local_image: str | None, auto_publ
     md = mode_of(cfg)
     access_token = cfg["threads"][md]["access_token"]
 
-    print(f"[Threads] /me -> {threads_me(access_token)}")
 
     # If we have a local image path, convert to public URL first.
     image_url = None
@@ -229,44 +228,35 @@ def post_threads(cfg: dict, text: str | None, local_image: str | None, auto_publ
 
     if image_url:
         create = threads_create_image(access_token, text or "", image_url, alt_text=None)
-        print(f"[Threads] Create IMAGE -> {create}")
         if create["status"] != 200:
-            print(f"[Threads] ❌ Image container error: {create}")
             return
         creation_id = create["data"].get("id")
         if not creation_id:
-            print("[Threads] ❌ No creation_id for image.")
             return
         pub = threads_publish(access_token, creation_id)
-        print(f"[Threads] Publish -> {pub}")
         if pub["status"] == 200:
-            print("[Threads] ✅ Image post published.")
+            pass
         else:
-            print(f"[Threads] ❌ Publish error: {pub}")
+            pass
         return
 
     # Text only
     if text:
         create = threads_create_text(access_token, text, auto_publish_text)
-        print(f"[Threads] Create TEXT -> {create}")
         if create["status"] != 200:
-            print(f"[Threads] ❌ Text container error: {create}")
             return
         if auto_publish_text:
-            print("[Threads] ✅ Text posted via auto_publish_text.")
             return
         creation_id = create["data"].get("id")
         if not creation_id:
-            print("[Threads] ❌ No creation_id for text.")
             return
         pub = threads_publish(access_token, creation_id)
-        print(f"[Threads] Publish -> {pub}")
         if pub["status"] == 200:
-            print("[Threads] ✅ Text post published.")
+            pass
         else:
-            print(f"[Threads] ❌ Publish error: {pub}")
+            pass
     else:
-        print("[Threads] Skipping: nothing to post.")
+        pass
 
 
 # ---------- CLI ----------
@@ -281,33 +271,26 @@ def parse_args():
 def main():
     args = parse_args()
     cfg = load_config()
-    md = mode_of(cfg)
+    mode_of(cfg)
     socials = cfg.get("socials", {}) or {}
-    print(
-        f"Mode: {md.upper()} | Text: {bool(args.text)} | Image(local): {bool(args.image and not args.image.startswith(('http://', 'https://')))}"
-    )
 
     # Bluesky
     if socials.get("bluesky", False):
-        try:
+        with contextlib.suppress(Exception):
             post_bluesky(
                 cfg,
                 args.text,
                 args.image if args.image and not args.image.startswith(("http://", "https://")) else None,
             )
-        except Exception as e:
-            print(f"[Bluesky] ❌ Error: {e}")
     else:
-        print("[NOSOCIAL] Bluesky disabled")
+        pass
 
     # Threads
     if socials.get("threads", False):
-        try:
+        with contextlib.suppress(Exception):
             post_threads(cfg, args.text, args.image, auto_publish_text=args.auto_publish_text)
-        except Exception as e:
-            print(f"[Threads] ❌ Error: {e}")
     else:
-        print("[NOSOCIAL] Threads disabled")
+        pass
 
 
 if __name__ == "__main__":

@@ -1,9 +1,10 @@
+from pathlib import Path
+
 import yaml
 
 
 def load_config(config_file: str):
-    """
-    Load configuration settings from a YAML file.
+    """Load configuration settings from a YAML file.
 
     This function reads and parses a YAML file to load configuration data into a
     Python dictionary. It ensures proper error handling for missing files or
@@ -28,12 +29,12 @@ def load_config(config_file: str):
           which avoids executing arbitrary Python code.
         - Ensure the configuration file is properly formatted as YAML to
           prevent parsing errors.
+
     """
     try:
-        with open(config_file) as file:
-            config = yaml.safe_load(file)
-            return config
-    except FileNotFoundError:
-        raise Exception(f"Configuration file {config_file} not found.")
+        with Path(config_file).open() as file:
+            return yaml.safe_load(file)
+    except FileNotFoundError as exc:
+        raise Exception(f"Configuration file {config_file} not found.") from exc
     except yaml.YAMLError as e:
-        raise Exception(f"Error parsing YAML file: {e}")
+        raise Exception(f"Error parsing YAML file: {e}") from e
