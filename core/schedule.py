@@ -1,6 +1,8 @@
 import logging
+
 import requests
 
+from utils.http import get_json
 from utils.retry import retry
 
 # Module-level monitor for tracking API calls
@@ -33,8 +35,30 @@ def _make_api_call(url: str, timeout: int = 10):
             _monitor.record_api_call(success=True)
 
         return response
-    except Exception as e:
+    except Exception:
         # Track failed API call
+        if _monitor:
+            _monitor.record_api_call(success=False)
+        raise
+
+
+def _make_api_json(url: str, key: str = "default", timeout: int = 10):
+    """
+    Make a JSON API call through the robust HTTP client, with monitoring hooks.
+
+    Args:
+        url: URL to fetch
+        key: limiter key for rate control (e.g. 'play_by_play')
+        timeout: per-request timeout in seconds
+    Returns:
+        Parsed JSON dict
+    """
+    try:
+        data = get_json(url, key=key, timeout=timeout)
+        if _monitor:
+            _monitor.record_api_call(success=True)
+        return data
+    except Exception:
         if _monitor:
             _monitor.record_api_call(success=False)
         raise
@@ -70,17 +94,16 @@ def fetch_schedule(team_abbreviation: str, season_id: str):
     return response.json()
 
 
-@retry(max_attempts=3, delay=2.0, exceptions=(requests.RequestException,))
 def fetch_playbyplay(game_id: str):
     """
-    Fetch the play by play for the current game.
+    Fetch the play-by-play for the current game with built-in rate limiting
+    and 429/5xx resilience.
     """
     url = f"https://api-web.nhle.com/v1/gamecenter/{game_id}/play-by-play"
-    logging.info(f"Fetching play-by-play data from {url}")
+    logging.info("Fetching play-by-play data from %s", url)
 
-    response = _make_api_call(url, timeout=10)
-
-    return response.json()
+    # use key="play_by_play" so the limiter applies proper pacing
+    return _make_api_json(url, key="play_by_play", timeout=10)
 
 
 @retry(max_attempts=3, delay=2.0, exceptions=(requests.RequestException,))
@@ -159,7 +182,6 @@ def fetch_next_game(schedule: dict):
     return None, None
 
 
-@retry(max_attempts=3, delay=2.0, exceptions=(requests.RequestException,))
 def fetch_game_state(game_id: str):
     """
     Fetch the current game state for a specific game.
@@ -168,18 +190,10 @@ def fetch_game_state(game_id: str):
         str: Game state (e.g., 'LIVE', 'FUT', 'FINAL', 'OFF') or 'UNKNOWN' if not found
     """
     url = f"https://api-web.nhle.com/v1/gamecenter/{game_id}/play-by-play"
-    logging.debug(f"Fetching game state from {url}")
-
-    response = _make_api_call(url, timeout=10)
-
-    game_data = response.json()
-    game_state = game_data.get("gameState", "UNKNOWN")
-    logging.debug(f"Game {game_id} state: {game_state}")
-
-    return game_state
+    game_data = _make_api_json(url, key="play_by_play", timeout=10)
+    return game_data.get("gameState", "UNKNOWN")
 
 
-@retry(max_attempts=3, delay=2.0, exceptions=(requests.RequestException,))
 def fetch_clock(game_id: str):
     """
     Fetch the current game clock data for a specific game.
@@ -188,11 +202,5 @@ def fetch_clock(game_id: str):
         dict: Clock data including time remaining, period, intermission status, etc.
     """
     url = f"https://api-web.nhle.com/v1/gamecenter/{game_id}/play-by-play"
-    logging.debug(f"Fetching clock data from {url}")
-
-    response = _make_api_call(url, timeout=10)
-
-    game_data = response.json()
-    clock_data = game_data.get("clock", {})
-
-    return clock_data
+    game_data = _make_api_json(url, key="play_by_play", timeout=10)
+    return game_data.get("clock", {})
