@@ -254,3 +254,6 @@ config-00-njd-gamebottwitterkeys.txt
 # Legacy archived code
 v1-oldapi/
 v2-toomuch/
+
+# Local-only deployment scripts on PROD
+scripts/hgb-prod.sh
