@@ -1,8 +1,9 @@
 # socials/base.py
 from __future__ import annotations
+
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional, Protocol
+from typing import List, Optional, Protocol
 
 from socials.types import PostRef
 
@@ -21,6 +22,9 @@ class SocialPost:
     local_image: Optional[Path] = None  # local file path (e.g., "./charts/shotmap.png")
     image_url: Optional[str] = None  # already-hosted URL (e.g., B2/GitHub CDN)
     alt_text: Optional[str] = None  # image alt/description (if any)
+    # Multi-Image Fields
+    local_images: Optional[List[Path]] = None  # list of local paths
+    images: Optional[List[str]] = None  # list of hosted URLs
 
 
 class SocialClient(Protocol):

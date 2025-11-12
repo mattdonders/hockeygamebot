@@ -1,0 +1,39 @@
+[tool.black]
+line-length = 120
+target-version = ["py311"]
+include = "\\.pyi?$"
+skip-string-normalization = true
+
+[tool.isort]
+profile = "black"
+line_length = 120
+known_first_party = ["core", "utils", "socials"]
+
+[tool.pylint.'MAIN']
+max-line-length = 120
+jobs = 0
+extension-pkg-allow-list = []
+unsafe-load-any-extension = false
+
+# Start friendly; tighten later
+disable = [
+  "C0114",  # missing-module-docstring
+  "C0115",  # missing-class-docstring
+  "C0116",  # missing-function-docstring
+  "R0903",  # too-few-public-methods
+  "R0801",  # duplicate-code (noisy early on)
+  "W1203",  # f-string in logging
+  "W1514",  # unspecified-encoding (fix gradually)
+]
+
+[tool.pylint.BASIC]
+good-names = ["i","j","k","x","y","z","df","id","url"]
+
+[tool.pylint.FORMAT]
+max-line-length = 120
+
+[tool.pylint.SIMILARITIES]
+min-similarity-lines = 10
+ignore-comments = true
+ignore-docstrings = true
+ignore-imports = true

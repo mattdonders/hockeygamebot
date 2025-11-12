@@ -1,13 +1,15 @@
 # socials/publisher.py
 from __future__ import annotations
 
-from pathlib import Path
-from typing import Optional, Iterable, Union, Dict, Any
-import logging
 import inspect
+import logging
+from pathlib import Path
+from typing import Any, Dict, Iterable, Optional, Union
+
 import yaml
 
 from socials.types import PostRef
+
 from .base import SocialPost
 from .bluesky_client import BlueskyClient, BlueskyConfig
 from .threads_client import ThreadsClient, ThreadsConfig
@@ -113,26 +115,30 @@ class SocialPublisher:
         targets = self._resolve_targets(platforms)
         results: dict[str, PostRef] = {}
 
-        media_path: Optional[str] = None
+        # Normalize media into local vs hosted lists without losing items
+        local_paths: list[str] = []
+        hosted_urls: list[str] = []
         if isinstance(media, list):
-            media_path = media[0] if media else None
+            for m in media:
+                if isinstance(m, str) and m.startswith(("http://", "https://")):
+                    hosted_urls.append(m)
+                elif m:
+                    local_paths.append(str(m))
         elif isinstance(media, str):
-            media_path = media
+            if media.startswith(("http://", "https://")):
+                hosted_urls.append(media)
+            else:
+                local_paths.append(media)
 
         for name, client in self._iter_clients(targets):
             rp = reply_parent if (reply_parent and reply_parent.platform == name) else None
             sp = SocialPost(
                 text=message,
-                local_image=(
-                    Path(media_path)
-                    if (media_path and not str(media_path).startswith(("http://", "https://")))
-                    else None
-                ),
-                image_url=(
-                    media_path
-                    if (media_path and str(media_path).startswith(("http://", "https://")))
-                    else None
-                ),
+                # singletons stay compatible; lists enable multi-image
+                local_image=Path(local_paths[0]) if len(local_paths) == 1 else None,
+                image_url=hosted_urls[0] if (len(hosted_urls) == 1 and not local_paths) else None,
+                local_images=[Path(p) for p in local_paths] if len(local_paths) > 1 else None,
+                images=hosted_urls if len(hosted_urls) > 1 or (hosted_urls and local_paths) else None,
                 alt_text=alt_text,
             )
             ref: PostRef = client.post(sp, reply_to_ref=rp)
@@ -144,7 +150,7 @@ class SocialPublisher:
     def reply(
         self,
         message: str,
-        media: str | None = None,
+        media: str | list[str] | None = None,
         platforms: str | Iterable[str] = "enabled",
         reply_to: PostRef | None = None,
         alt_text: str | None = None,
@@ -174,12 +180,26 @@ class SocialPublisher:
             if parent is None:
                 parent = self._last.get(name)
 
+            # normalize media like in post()
+            local_paths: list[str] = []
+            hosted_urls: list[str] = []
+            if isinstance(media, list):
+                for m in media:
+                    if isinstance(m, str) and m.startswith(("http://", "https://")):
+                        hosted_urls.append(m)
+                    elif m:
+                        local_paths.append(str(m))
+            elif isinstance(media, str):
+                if media.startswith(("http://", "https://")):
+                    hosted_urls.append(media)
+                elif media:
+                    local_paths.append(media)
             sp = SocialPost(
                 text=message,
-                local_image=(
-                    Path(media) if media and not str(media).startswith(("http://", "https://")) else None
-                ),
-                image_url=(media if media and str(media).startswith(("http://", "https://")) else None),
+                local_image=Path(local_paths[0]) if len(local_paths) == 1 else None,
+                image_url=hosted_urls[0] if (len(hosted_urls) == 1 and not local_paths) else None,
+                local_images=[Path(p) for p in local_paths] if len(local_paths) > 1 else None,
+                images=hosted_urls if len(hosted_urls) > 1 or (hosted_urls and local_paths) else None,
                 alt_text=alt_text,
             )
             ref: PostRef = client.post(sp, reply_to_ref=parent)

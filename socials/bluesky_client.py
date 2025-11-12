@@ -76,7 +76,10 @@ class BlueskyClient(SocialClient):
             return False
         try:
             data = json.loads(p.read_text(encoding="utf-8"))
-            self.client.restore_session(data)
+
+            # pylint: disable=no-member  # provided by atproto client at runtime
+            self.client.restore_session(data)  # type: ignore[attr-defined]
+
             # sanity check
             self.client.get_profile(self.cfg.handle)
             logging.info("Bluesky session restored from %s", p)
@@ -91,7 +94,10 @@ class BlueskyClient(SocialClient):
             return
         p = Path(sf)
         p.parent.mkdir(parents=True, exist_ok=True)
-        data = self.client.export_session()
+
+        # pylint: disable=no-member  # provided by atproto client at runtime
+        data = self.client.export_session()  # type: ignore[attr-defined]
+
         p.write_text(json.dumps(data), encoding="utf-8")
         logging.info("Bluesky session saved to %s", p)
 
@@ -220,12 +226,15 @@ class BlueskyClient(SocialClient):
             reply_ref = self._reply_ref_from_parent_uri(reply_to_ref.uri)
 
         # 3) Images
-        local_image = getattr(post, "local_image", None)
+        image_payload = None
+        if getattr(post, "local_images", None):
+            image_payload = post.local_images
+        elif getattr(post, "local_image", None):
+            image_payload = post.local_image
         embed = None
-        if local_image:
-            # If it’s a list/tuple, we’ll build a multi-image embed.
-            # If it’s a single path, we’ll build a single-image embed with aspect ratio.
-            embed = self._upload_image(local_image, getattr(post, "alt_text", "") or "")
+        if image_payload:
+            # If list/tuple -> multi-image embed (up to 4). If single -> single-image.
+            embed = self._upload_image(image_payload, getattr(post, "alt_text", "") or "")
 
         # 4) Send (try helper; fall back to raw createRecord)
         try:
