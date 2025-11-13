@@ -1,5 +1,6 @@
 import logging
 import time
+
 import requests
 
 from core import schedule
@@ -53,6 +54,9 @@ def detect_removed_goals(context, all_plays):
 def parse_live_game(context: GameContext):
     """
     Parse live game events via Event Factory.
+    Restart-safe:
+      - Non-goal events are skipped if already processed (via context.cache).
+      - Goal events are always re-evaluated each loop (for highlight/score updates).
     """
 
     play_by_play_data = schedule.fetch_playbyplay(context.game_id)
@@ -64,24 +68,61 @@ def parse_live_game(context: GameContext):
     goal_events = [event for event in all_events if event.get("typeDescKey") == "goal"]
     logging.debug("Number of *GOAL* Events Retrieved from PBP: %s", len(goal_events))
 
-    last_sort_order = context.last_sort_order
-    new_events = [event for event in all_events if event["sortOrder"] > last_sort_order]
+    # Be defensive about types
+    last_sort_order = int(getattr(context, "last_sort_order", 0) or 0)
+    new_events = [e for e in all_events if int(e.get("sortOrder", 0)) > last_sort_order]
     num_new_events = len(new_events)
     new_plays = num_new_events != 0
-    #  logging.info("Number of *NEW* Events Retrieved from PBP: %s", num_new_events)
 
-    if not new_plays == 0:
+    # ✅ Correct message based on new_plays
+    if not new_plays:
         logging.info(
-            "No new plays detected. This game event loop will catch any missed events & "
-            "and also check for any scoring changes on existing goals."
+            "No new plays detected. This loop will catch any missed events "
+            "and also check for scoring changes on existing goals."
         )
     else:
         logging.info("%s new event(s) detected - looping through them now.", num_new_events)
 
-    # We pass in the entire all_plays list into our event_factory in case we missed an event
-    # it will be created because it doesn't exist in the Cache.
+    # We pass the entire list into the factory so missed events can still be created.
+    # BUT we gate non-goals with the persistent cache to avoid duplicates across restarts.
     for event in all_events:
+        event_type = event.get("typeDescKey")
+        is_goal = event_type == "goal"
+
+        # Persistent cache gating for non-goal events
+        ev_id = event.get("eventId")
+        if not is_goal and getattr(context, "cache", None) and ev_id is not None:
+            if context.cache.has_seen(ev_id):
+                logging.info("🔍 Skipping cached non-goal: eventType=%s / eventId=%s (restart-safe)", event_type, ev_id)
+                # Already processed in a previous run/loop; skip creating it again
+                continue
+
+        # Dispatch to factory (goal events re-evaluate every loop)
         EventFactory.create_event(event, context, new_plays)
+
+        # Update last_sort_order fast-gate (ignore weird sentinel values if any)
+        try:
+            sort_order = int(event.get("sortOrder", 0))
+        except Exception:
+            sort_order = 0
+
+        if sort_order > last_sort_order and sort_order < 9000:
+            context.last_sort_order = sort_order
+            last_sort_order = sort_order  # keep local in sync
+
+        # Mark non-goal events as processed in the persistent cache
+        if not is_goal and getattr(context, "cache", None) and ev_id is not None:
+            context.cache.mark_seen(ev_id, sort_order)
+            # Persist immediately or based on config
+            flush_every = int(context.config.get("script", {}).get("cache_flush_every_events", 1))
+            if flush_every == 1:
+                context.cache.save()
+
+    # If batching, persist once at end
+    if getattr(context, "cache", None):
+        flush_every = int(context.config.get("script", {}).get("cache_flush_every_events", 1))
+        if flush_every > 1:
+            context.cache.save()
 
     # After event creation is completed, let's check for deleted goals (usually for challenges)
     # detect_removed_goals(context, all_events)

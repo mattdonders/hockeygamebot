@@ -17,6 +17,7 @@ import core.schedule as schedule
 import utils.others as otherutils
 from core import charts, final
 from core.charts import teamstats_chart
+from core.events.event_cache import GameCache
 from core.integrations import nst
 from core.live import parse_live_game
 from core.models.game_context import GameContext
@@ -160,17 +161,44 @@ def start_game_loop(context: GameContext):
         if context.game_state in ["PRE", "FUT"]:
             logging.info("Handling a preview game state: %s", context.game_state)
 
+            # Load the Cache from GameContext
+            cache = getattr(context, "cache", None)
+
+            # If we have a cache, sync preview flags + rehydrate thread roots
+            if cache is not None:
+                # 1) align sent flags from cache -> StartOfGameSocial
+                mapping = [
+                    ("core", "core_sent"),
+                    ("season_series", "season_series_sent"),
+                    ("team_stats", "team_stats_sent"),
+                    ("officials", "officials_sent"),
+                ]
+                for kind, attr in mapping:
+                    if hasattr(context.preview_socials, attr) and cache.is_pregame_sent(kind):
+                        setattr(context.preview_socials, attr, True)
+
+                # 2) restore per-platform thread roots (PostRefs) so replies stay in the same thread
+                roots = cache.get_pregame_root_refs()
+                if roots:
+                    context.social.restore_roots_from_cache(roots, state=context.preview_socials)
+
             # Generate and post the game time preview
             if not context.preview_socials.core_sent:
                 game_time_post = preview.format_future_game_post(context.game, context)
                 try:
                     # Handles posting + seeding thread roots automatically
-                    context.social.post_and_seed(
+                    results = context.social.post_and_seed(
                         message=game_time_post,
                         platforms="enabled",
                         state=context.preview_socials,
                     )
                     context.preview_socials.core_sent = True
+
+                    # Save Pre-Game Sent State into Cache
+                    if cache is not None:
+                        cache.mark_pregame_sent("core", results)
+                        cache.save()
+
                     logging.info("Posted and seeded pre-game thread roots.")
                 except Exception as e:
                     logging.exception("Failed to post preview: %s", e)
@@ -197,6 +225,11 @@ def start_game_loop(context: GameContext):
                     )
 
                     context.preview_socials.season_series_sent = True
+
+                    if cache is not None:
+                        cache.mark_pregame_sent("season_series")
+                        cache.save()
+
                     logging.info("Posted season series preview (threaded).")
                 except Exception as e:
                     logging.exception("Failed to post season series preview: %s", e)
@@ -218,6 +251,11 @@ def start_game_loop(context: GameContext):
                             state=context.preview_socials,
                         )
                         context.preview_socials.team_stats_sent = True
+
+                        if cache is not None:
+                            cache.mark_pregame_sent("team_stats")
+                            cache.save()
+
                         logging.info("Posted pre-game team stats chart (threaded).")
                     else:
                         logging.info("No team stats chart produced; skipping.")
@@ -235,6 +273,11 @@ def start_game_loop(context: GameContext):
                             state=context.preview_socials,  # keeps roots/parents advancing
                         )
                         context.preview_socials.officials_sent = True
+
+                        if cache is not None:
+                            cache.mark_pregame_sent("officials")
+                            cache.save()
+
                         logging.info("Posted officials preview (threaded).")
                     else:
                         logging.info("No officials info available; skipping.")
@@ -520,6 +563,16 @@ def handle_is_game_today(game, target_date, preferred_team, season_id, context: 
 
     # Load Combined Rosters into Game Context
     context.combined_roster = rosters.load_combined_roster(game, preferred_team, other_team, season_id)
+
+    # Initialize restart-safe cache
+    cache_dir = context.config.get("script", {}).get("cache_dir", "./data/cache")
+    context.cache = GameCache(
+        root_dir=cache_dir,
+        season_id=str(season_id),
+        game_id=str(game_id),
+        team_abbrev=context.preferred_team.abbreviation,
+    )
+    context.cache.load()
 
     # DEBUG Log the GameContext
     logging.debug(f"Full Game Context: {vars(context)}")

@@ -5,6 +5,7 @@ import inspect
 import logging
 from pathlib import Path
 from typing import Any, Dict, Iterable, Optional, Union
+from uuid import uuid4
 
 import yaml
 
@@ -110,7 +111,12 @@ class SocialPublisher:
         # NOSOCIAL centrally
         if self.nosocial:
             self._log_nosocial_preview(message)
-            return {}
+
+            # Simulate refs for each enabled/target platform so callers can seed state/anchors
+            results: dict[str, PostRef] = {}
+            for name in self._resolve_targets(platforms):
+                results[name] = PostRef(platform=name, id=f"nosocial-{uuid4()}")
+            return results
 
         targets = self._resolve_targets(platforms)
         results: dict[str, PostRef] = {}
@@ -162,7 +168,17 @@ class SocialPublisher:
         """
         if self.nosocial:
             self._log_nosocial_preview(message)
-            return {}
+            results: dict[str, PostRef] = {}
+
+            # Simulate refs for each enabled/target platform so callers can seed state/anchors
+            for name in self._resolve_targets(platforms):
+                ref = PostRef(platform=name, id=f"nosocial-{uuid4()}")
+                results[name] = ref
+                # Advance publisher anchor and (optionally) state parent just like real replies
+                self._last[name] = ref
+                if state is not None:
+                    self._set_state_parent(state, name, ref)
+            return results
 
         targets = self._resolve_targets(platforms)
         results: dict[str, PostRef] = {}
@@ -278,6 +294,44 @@ class SocialPublisher:
         attr = f"{platform}_parent"
         if hasattr(state, attr):
             setattr(state, attr, ref)
+
+    def restore_roots_from_cache(
+        self,
+        roots: Dict[str, Dict[str, str]],
+        state: Any | None = None,
+    ) -> None:
+        """
+        Restore per-platform reply anchors and optional state roots/parents
+        from cached PostRef data.
+
+        'roots' is expected to look like:
+        {
+            "bluesky": {"platform": "bluesky", "id": "..."},
+            "threads": {"platform": "threads", "id": "..."},
+        }
+        """
+        if not roots:
+            return
+
+        for platform, info in roots.items():
+            post_id = info.get("id")
+            if not post_id:
+                continue
+
+            ref = PostRef(platform=platform, id=post_id)
+
+            # Restore internal anchor so future .reply() calls thread correctly
+            self._last[platform] = ref
+
+            if state is not None:
+                # Try to seed <platform>_root and <platform>_parent on the StartOfGameSocial state
+                root_attr = f"{platform}_root"
+                parent_attr = f"{platform}_parent"
+
+                if hasattr(state, root_attr):
+                    setattr(state, root_attr, ref)
+                if hasattr(state, parent_attr):
+                    setattr(state, parent_attr, ref)
 
     # ---------- target resolution & iteration ----------
     def _resolve_targets(self, platforms: str | Iterable[str]) -> list[str]:

@@ -64,14 +64,14 @@ class GameContext:
         __init__: Initializes the `GameContext` with configuration and shared resources.
     """
 
-    def __init__(
-        self, config: dict, social: SocialPublisher, nosocial: bool = False, debugsocial: bool = False
-    ):
+    def __init__(self, config: dict, social: SocialPublisher, nosocial: bool = False, debugsocial: bool = False):
         self.config = config
         self.social = social  # unified SocialPublisher (Bluesky+Threads)
         self.bluesky_client = social  # back-compat shim for old call sites
         self.nosocial: bool = nosocial
         self.debugsocial: bool = debugsocial
+
+        self.cache = None  # type: ignore  # set per game after IDs/teams are known
 
         # Attributes Below are Not Passed-In at Initialization Time
         self.game = None
@@ -126,9 +126,7 @@ class GameContext:
             return None
 
         platform = str(res.get("platform", "unknown"))
-        canonical_id = (
-            res.get("id") or res.get("uri") or res.get("published_id") or res.get("container_id") or ""
-        )
+        canonical_id = res.get("id") or res.get("uri") or res.get("published_id") or res.get("container_id") or ""
 
         return PostRef(
             platform=platform,

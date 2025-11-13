@@ -1,7 +1,9 @@
 import logging
 from typing import Dict, List, Optional, Union
-from .base import Cache, Event
+
 from utils.team_details import get_team_details_by_id
+
+from .base import Cache, Event
 
 
 class GoalEvent(Event):
@@ -24,6 +26,10 @@ class GoalEvent(Event):
         event_team_details = get_team_details_by_id(event_owner_team_id)
         self.team_name = event_team_details.get("full_name")
         self.team_abbreviation = event_team_details.get("abbreviation")
+
+        # Make sure these always exist for downstream code:
+        self.event_team = getattr(self, "event_team", self.team_name)
+        self.event_removal_counter = getattr(self, "event_removal_counter", 0)
 
         # Adjust scores
         if self.context.preferred_homeaway == "home":
@@ -73,14 +79,14 @@ class GoalEvent(Event):
             goal_message = (
                 f"{self.context.preferred_team.full_name} GOAL! {goal_emoji}\n\n"
                 f"{self.scoring_player_name} ({self.scoring_player_total}) scores on a {self.shot_type} shot "
-                f"with {self.time_remaining} remaining in the {self.period_number_ordinal} period.\n\n"
+                f"with {self.time_remaining} remaining in {self.period_label}.\n\n"
             )
         else:
             goal_emoji = "👎" * self.other_score
             goal_message = (
                 f"{self.context.other_team.full_name} goal. {goal_emoji}\n\n"
                 f"{self.scoring_player_name} ({self.scoring_player_total}) scores on a {self.shot_type} shot "
-                f"with {self.time_remaining} remaining in the {self.period_number_ordinal} period.\n\n"
+                f"with {self.time_remaining} remaining in {self.period_label}.\n\n"
             )
 
         # Dynamically add assists if they exist
@@ -103,20 +109,24 @@ class GoalEvent(Event):
 
     def check_scoring_changes(self, data: dict):
         logging.info("Checking for scoring changes (team: %s, event ID: %s).", self.team_name, self.event_id)
-
-        # Extract updated information from payload
         details = data.get("details", {})
-        new_scoring_player_id = details.get("scoringPlayerId")
-        new_assist1_player_id = details.get("assist1PlayerId")
-        new_assist2_player_id = details.get("assist2PlayerId")
 
-        # Compile assists into a list for comparison
-        new_assists = [new_assist1_player_id, new_assist2_player_id]
-        current_assists = [self.assist1_player_id, self.assist2_player_id]
+        new_scorer = details.get("scoringPlayerId")
+        new_a1 = details.get("assist1PlayerId")
+        new_a2 = details.get("assist2PlayerId")
 
-        # Check for changes
-        scorer_change = new_scoring_player_id != self.scoring_player_id
-        assist_change = new_assists != current_assists
+        scorer_change = new_scorer != self.scoring_player_id
+        assist_change = [new_a1, new_a2] != [self.assist1_player_id, self.assist2_player_id]
+
+        return {
+            "scorer_changed": scorer_change,
+            "assist_changed": assist_change,
+            "new": {
+                "scorer_id": new_scorer,
+                "assist1_id": new_a1,
+                "assist2_id": new_a2,
+            },
+        }
 
     def check_and_add_highlight(self, event_data):
         """
@@ -150,36 +160,36 @@ class GoalEvent(Event):
             link=self.highlight_clip_url,
         )
 
-    def was_goal_removed(self, all_plays: dict) -> bool:
+    def was_goal_removed(self, all_plays: list) -> bool:
         """
-        Checks if the goal was removed from the live feed (e.g., due to a Challenge).
+        Checks if the goal was removed from the live feed (e.g., coach's challenge).
         Returns True if the goal should be removed, False otherwise.
         """
-        goal_still_exists = next((play for play in all_plays if play["eventId"] == self.event_id), None)
-
-        if goal_still_exists:
-            # Reset the counter if the goal reappears
+        present = any(play.get("eventId") == self.event_id for play in all_plays)
+        if present:
             self.event_removal_counter = 0
-            logging.info("Goal (event ID: %s) is still present in the live feed.", self.event_id)
+            logging.info("Goal (event ID: %s) still present in live feed.", self.event_id)
             return False
 
-        # Goal is missing; increment the removal counter
-        self.event_removal_counter += 1
+        self.event_removal_counter = getattr(self, "event_removal_counter", 0) + 1
         if self.event_removal_counter < self.REMOVAL_THRESHOLD:
             logging.info(
-                "Goal (event ID: %s) is missing (check #%d). Will retry.",
+                "Goal (event ID: %s) missing (check #%d). Will retry.",
                 self.event_id,
                 self.event_removal_counter,
             )
             return False
 
-        # Goal has been missing for the threshold duration
         logging.warning(
-            "Goal (event ID: %s) has been missing for %d checks. Marking for removal.",
+            "Goal (event ID: %s) missing for %d checks. Marking for removal.",
             self.event_id,
             self.REMOVAL_THRESHOLD,
         )
         return True
+
+    # ------------------------------------------------------------------
+    # Social posting / threading with restart-safe goal cache
+    # ------------------------------------------------------------------
 
     def post_message(
         self,
@@ -195,10 +205,25 @@ class GoalEvent(Event):
         - First call: post on all enabled platforms, store PostRef(s).
         - Subsequent calls: reply in-place per platform and advance stored refs.
         Never raises; logs exceptions via context.logger if available.
+
+        Integrates with the restart-safe GameCache (context.cache) so that
+        initial goal posts are not duplicated after a process restart.
         """
         # Ensure per-event thread map exists (platform -> PostRef)
         if not hasattr(self, "_post_refs"):
             self._post_refs = {}
+
+        # Restart-safe guard: if this would be treated as an initial post
+        # (no in-memory refs yet), consult the per-game cache to avoid
+        # re-posting goals after a process restart.
+        cache = getattr(self.context, "cache", None)
+        if cache is not None and not self._post_refs:
+            if cache.was_goal_posted(self.event_id):
+                logging.info(
+                    "GoalEvent[%s]: initial goal already posted in a previous run; skipping re-post.",
+                    self.event_id,
+                )
+                return
 
         # Respect debugsocial for hashtags
         add_hashtags = False if getattr(self.context, "debugsocial", False) else add_hashtags
@@ -217,9 +242,7 @@ class GoalEvent(Event):
             try:
                 pref = self.context.preferred_team
                 other = self.context.other_team
-                footer_parts.append(
-                    f"{pref.abbreviation}: {pref.score} / {other.abbreviation}: {other.score}"
-                )
+                footer_parts.append(f"{pref.abbreviation}: {pref.score} / {other.abbreviation}: {other.score}")
             except Exception:
                 pass
 
@@ -232,15 +255,30 @@ class GoalEvent(Event):
         try:
             if not self._post_refs:
                 # Initial post on all enabled platforms; store refs for future replies.
-                logging.info(
-                    "GoalEvent[%s]: initial post across platforms.", getattr(self, "event_id", "unknown")
-                )
+                logging.info("GoalEvent[%s]: initial post across platforms.", getattr(self, "event_id", "unknown"))
                 results = self.context.social.post(
                     message=text,
                     media=media,
                     alt_text=alt_text or "",
                     platforms="enabled",
                 )
+
+                # After a successful initial post, mark this goal as posted in the
+                # restart-safe cache so we don't re-post it on a future restart.
+                if cache is not None:
+                    try:
+                        cache.mark_goal_posted(
+                            self.event_id,
+                            team_abbrev=getattr(self, "team_abbreviation", None),
+                            sort_order=getattr(self, "sort_order", None),
+                        )
+                    except Exception as e:
+                        logging.warning(
+                            "GoalEvent[%s]: failed to mark goal as posted in cache: %s",
+                            self.event_id,
+                            e,
+                        )
+
                 for platform, ref in (results or {}).items():
                     self._post_refs[platform] = ref
                 if not results:
