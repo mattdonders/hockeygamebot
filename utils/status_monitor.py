@@ -22,7 +22,7 @@ import logging
 from datetime import datetime
 from pathlib import Path
 from threading import Lock
-from typing import Dict, Any, Optional
+from typing import Any, Dict, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -108,7 +108,13 @@ class StatusMonitor:
             "health": {
                 "healthy": True,
                 "issues": [],
-            }
+            },
+            "cache": {
+                "enabled": False,
+                "summary": None,
+                "raw": None,
+                "last_updated": None,
+            },
         }
 
         # Write initial status
@@ -137,6 +143,7 @@ class StatusMonitor:
         period_type = None
         events_snapshot = []
         live_loop_counter = 0
+        cache_snapshot = None
 
         # Quickly copy only what we need
         try:
@@ -154,6 +161,38 @@ class StatusMonitor:
                     away_team_abbrev = context.away_team.abbreviation
                     away_score = game_snapshot.get("awayTeam", {}).get("score")
 
+                # Fallback: if the game snapshot doesn't have scores yet, derive them
+                # from the running GoalEvent context (preferred_team/other_team).
+                #
+                # GoalEvent keeps these up to date on every goal:
+                #   context.preferred_team.score
+                #   context.other_team.score
+                try:
+                    pref_team = getattr(context, "preferred_team", None)
+                    other_team = getattr(context, "other_team", None)
+                    pref_homeaway = getattr(context, "preferred_homeaway", None)
+
+                    pref_score = getattr(pref_team, "score", None) if pref_team else None
+                    other_score = getattr(other_team, "score", None) if other_team else None
+
+                    # Only override if the game dict has no scores at all
+                    if (
+                        pref_homeaway in ("home", "away")
+                        and pref_score is not None
+                        and other_score is not None
+                        and home_score is None
+                        and away_score is None
+                    ):
+                        if pref_homeaway == "home":
+                            home_score = pref_score
+                            away_score = other_score
+                        else:
+                            home_score = other_score
+                            away_score = pref_score
+                except Exception:
+                    # Never let scoreboard issues break status updates
+                    pass
+
                 if context.clock:
                     clock_time_remaining = context.clock.time_remaining
                     clock_in_intermission = context.clock.in_intermission
@@ -167,6 +206,14 @@ class StatusMonitor:
 
             if hasattr(context, 'live_loop_counter'):
                 live_loop_counter = context.live_loop_counter
+
+            # Snapshot cache (if present)
+            if hasattr(context, "cache") and context.cache is not None:
+                try:
+                    cache_snapshot = context.cache.to_dict()
+                except Exception as e:
+                    logger.warning(f"Failed to snapshot cache: {e}")
+                    cache_snapshot = None
 
             # Copy social tracking state
             preview_socials_data = None
@@ -231,10 +278,34 @@ class StatusMonitor:
             self.status["performance"]["live_loop_count"] = live_loop_counter
             self.status["performance"]["last_loop_time"] = datetime.now().isoformat()
 
+            # Update cache info
+            if cache_snapshot:
+                processed = cache_snapshot.get("processed_event_ids") or []
+                goals = cache_snapshot.get("goal_snapshots") or {}
+
+                self.status["cache"]["enabled"] = True
+                self.status["cache"]["summary"] = {
+                    "season_id": cache_snapshot.get("season_id"),
+                    "game_id": cache_snapshot.get("game_id"),
+                    "team_abbrev": cache_snapshot.get("team_abbrev"),
+                    "processed_events": len(processed),
+                    "goal_snapshots": len(goals),
+                    "last_sort_order": cache_snapshot.get("last_sort_order"),
+                }
+                self.status["cache"]["raw"] = cache_snapshot
+                self.status["cache"]["last_updated"] = datetime.now().isoformat()
+            else:
+                self.status["cache"]["enabled"] = False
+                self.status["cache"]["summary"] = None
+                self.status["cache"]["raw"] = None
+                # keep last_updated as-is so you can see when it last existed
+
             # Update social tracking
             if preview_socials_data:
                 self.status["socials"]["preview_posts"]["core_sent"] = preview_socials_data['core_sent']
-                self.status["socials"]["preview_posts"]["season_series_sent"] = preview_socials_data['season_series_sent']
+                self.status["socials"]["preview_posts"]["season_series_sent"] = preview_socials_data[
+                    'season_series_sent'
+                ]
                 self.status["socials"]["preview_posts"]["team_stats_sent"] = preview_socials_data['team_stats_sent']
                 self.status["socials"]["preview_posts"]["officials_sent"] = preview_socials_data['officials_sent']
 
@@ -365,23 +436,18 @@ class StatusMonitor:
 
         except PermissionError as e:
             self._consecutive_write_failures += 1
-            logger.error(
-                f"Permission denied writing status file (failure {self._consecutive_write_failures}): {e}"
-            )
+            logger.error(f"Permission denied writing status file (failure {self._consecutive_write_failures}): {e}")
             self._check_disable_monitoring()
 
         except OSError as e:
             self._consecutive_write_failures += 1
-            logger.error(
-                f"OS error writing status file (failure {self._consecutive_write_failures}): {e}"
-            )
+            logger.error(f"OS error writing status file (failure {self._consecutive_write_failures}): {e}")
             self._check_disable_monitoring()
 
         except Exception as e:
             self._consecutive_write_failures += 1
             logger.error(
-                f"Unexpected error writing status file (failure {self._consecutive_write_failures}): {e}",
-                exc_info=True
+                f"Unexpected error writing status file (failure {self._consecutive_write_failures}): {e}", exc_info=True
             )
             self._check_disable_monitoring()
 
@@ -393,9 +459,7 @@ class StatusMonitor:
                 f"Monitoring disabled after {self._max_consecutive_failures} consecutive write failures. "
                 "Bot will continue running but dashboard will show stale data."
             )
-            logger.critical(
-                "To re-enable, fix the status.json write issue and restart the bot."
-            )
+            logger.critical("To re-enable, fix the status.json write issue and restart the bot.")
 
     def get_status(self) -> Dict[str, Any]:
         """Get current status as dictionary."""

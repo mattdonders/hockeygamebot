@@ -1,5 +1,7 @@
+import logging
 from typing import List, Optional, Union
 
+from core.events.text_utils import period_label, period_label_playoffs
 from core.models.game_context import GameContext
 from utils.others import ordinal
 
@@ -114,6 +116,41 @@ class Event:
     def parse(self):
         pass
 
+    # -------------------------------------------------
+    # Period labeling helpers
+    # -------------------------------------------------
+    @property
+    def is_playoffs(self) -> bool:
+        """
+        Whether the current game is a playoff game.
+
+        TODO: Replace this stub once playoff logic is implemented.
+        e.g., set via `context.is_playoffs` or `context.game_type`
+        when reading from the NHL schedule API.
+        """
+        return False
+
+    def _period_label(self, *, short: bool) -> str:
+        """
+        Internal helper that selects the correct label
+        function depending on playoff state.
+        """
+        event_dict = getattr(self, "event_data", {}) or {}
+
+        if self.is_playoffs:
+            return period_label_playoffs(event_dict, short=short)
+        return period_label(event_dict, short=short)
+
+    @property
+    def period_label(self) -> str:
+        """Long form: 'the 2nd period', 'overtime', or 'the shootout'."""
+        return self._period_label(short=False)
+
+    @property
+    def period_label_short(self) -> str:
+        """Short form: '2nd', 'OT', or 'SO'."""
+        return self._period_label(short=True)
+
     def post_message(
         self,
         message: str,
@@ -129,6 +166,18 @@ class Event:
         Delegates to the unified SocialPublisher (Bluesky/Threads parity).
         Never raises; logs exceptions via context.logger if available.
         """
+
+        # If parse() returned None or an empty string, there is nothing to post.
+        if not message or not str(message).strip():
+            # This can happen for GenericEvent and other “silent” events.
+            logging.debug(
+                "post_message: no text for %s (event_id=%s, type=%s) — skipping.",
+                self.__class__.__name__,
+                getattr(self, "event_id", None),
+                getattr(self, "event_type", None),
+            )
+            return
+
         # Respect debugsocial for hashtags
         add_hashtags = False if getattr(self.context, "debugsocial", False) else add_hashtags
 
@@ -146,13 +195,11 @@ class Event:
             try:
                 pref = self.context.preferred_team
                 other = self.context.other_team
-                footer_parts.append(
-                    f"{pref.abbreviation}: {pref.score} / {other.abbreviation}: {other.score}"
-                )
+                footer_parts.append(f"{pref.abbreviation}: {pref.score} / {other.abbreviation}: {other.score}")
             except Exception:
                 pass
 
-        text = message
+        text = str(message)
         if footer_parts:
             text += "\n\n" + " | ".join(footer_parts)
         if link:
@@ -168,8 +215,7 @@ class Event:
             )
         except Exception as e:
             # Never crash event parsing
-            if getattr(self.context, "logger", None):
-                self.context.logger.exception("Social post failed: %s", e)
+            logging.exception("Social post failed: %s", e)
 
     def post_message_old(
         self,

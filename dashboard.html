@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -87,8 +88,15 @@
         }
 
         @keyframes pulse {
-            0%, 100% { opacity: 1; }
-            50% { opacity: 0.5; }
+
+            0%,
+            100% {
+                opacity: 1;
+            }
+
+            50% {
+                opacity: 0.5;
+            }
         }
 
         .last-update {
@@ -98,9 +106,13 @@
 
         .grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-            gap: 20px;
-            margin-bottom: 20px;
+            grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+            gap: 16px;
+            margin-bottom: 16px;
+        }
+
+        .game-card-full {
+            margin-bottom: 16px;
         }
 
         .card {
@@ -143,12 +155,14 @@
         .stat-label {
             font-size: 14px;
             color: #6b7280;
+            white-space: nowrap;
         }
 
         .stat-value {
             font-size: 18px;
             font-weight: 600;
             color: #1f2937;
+            text-align: right;
         }
 
         .game-score {
@@ -277,8 +291,93 @@
             font-weight: 600;
             color: #1f2937;
         }
+
+        /* JSON debug card */
+        .json-card .json-details {
+            margin-top: 8px;
+        }
+
+        .json-card .json-details summary {
+            cursor: pointer;
+            font-weight: 600;
+            list-style: none;
+            margin-bottom: 4px;
+        }
+
+        .json-card .json-block {
+            background: #111827;
+            color: #e5e7eb;
+            border-radius: 8px;
+            padding: 12px;
+            font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+            font-size: 12px;
+            max-height: 320px;
+            overflow: auto;
+            margin: 4px 0 8px;
+        }
+
+        .json-card .json-empty {
+            font-size: 13px;
+            color: #6b7280;
+            margin: 4px 0 8px;
+        }
+
+        .cache-goals {
+            margin-top: 12px;
+        }
+
+        .cache-goals-header {
+            font-weight: 600;
+            margin-bottom: 6px;
+        }
+
+        .cache-goals-grid {
+            display: grid;
+            grid-template-columns: repeat(4, minmax(0, 1fr));
+            gap: 4px 8px;
+            font-size: 12px;
+        }
+
+        .cache-goals-cell-head {
+            font-weight: 600;
+            color: #4b5563;
+        }
+
+        /* Responsive layout / mobile fixes */
+        @media (max-width: 900px) {
+            body {
+                padding: 16px;
+            }
+
+            .container {
+                max-width: 100%;
+                padding: 16px;
+            }
+
+            .header {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 12px;
+            }
+
+            .grid {
+                grid-template-columns: 1fr;
+            }
+
+            /* Override inline grid-column on small screens */
+            .grid .card {
+                grid-column: auto !important;
+            }
+
+            .period-info {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 6px;
+            }
+        }
     </style>
 </head>
+
 <body>
     <div class="container">
         <div class="header">
@@ -350,17 +449,29 @@
             const socials = data.socials;
             const health = data.health;
 
+            const cache = data.cache || {};
+            const cacheSummary = cache.summary || {};
+            const cacheRaw = cache.raw || null;
+
+            const pregame = (cacheRaw && cacheRaw.pregame_posts) || {};
+            const pregameSent = pregame.sent || {};
+            const pregameRoots = pregame.root_refs || {};
+
+            const rootPlatformsText = Object.keys(pregameRoots).length
+                ? Object.keys(pregameRoots).sort().join(", ")
+                : "None";
+
             // Update header
             updateStatusBadge(bot.status);
-            document.getElementById('lastUpdate').textContent =
+            document.getElementById("lastUpdate").textContent =
                 `Last Update: ${timeSince(bot.last_update)}`;
 
-            // Build content
-            let html = '';
+            let html = "";
 
-            // Game Info Card
-            html += '<div class="grid">';
-            html += '<div class="card" style="grid-column: span 2;">';
+            // =========================
+            // Full-width Game Information / Score
+            // =========================
+            html += '<div class="card game-card-full">';
             html += '<div class="card-title">Game Information</div>';
 
             if (game.game_id && game.game_state !== null) {
@@ -376,7 +487,7 @@
                                 <div class="team-name">${game.home_team}</div>
                                 <div class="score">${game.home_score || 0}</div>
                              </div>`;
-                    html += '</div>';
+                    html += "</div>";
                 }
 
                 // Period and Time
@@ -384,17 +495,17 @@
                     html += '<div class="period-info">';
                     html += `<div>
                                 <div class="period-label">Period</div>
-                                <div class="period-value">${game.period || 'N/A'}</div>
+                                <div class="period-value">${game.period || "N/A"}</div>
                              </div>`;
                     html += `<div>
                                 <div class="period-label">Time Remaining</div>
-                                <div class="period-value">${game.time_remaining || 'N/A'}</div>
+                                <div class="period-value">${game.time_remaining || "N/A"}</div>
                              </div>`;
                     html += `<div>
                                 <div class="period-label">Intermission</div>
-                                <div class="period-value">${game.in_intermission ? 'Yes' : 'No'}</div>
+                                <div class="period-value">${game.in_intermission ? "Yes" : "No"}</div>
                              </div>`;
-                    html += '</div>';
+                    html += "</div>";
                 }
 
                 // Game Details
@@ -416,7 +527,12 @@
                 html += '<div class="no-game">No active game</div>';
             }
 
-            html += '</div>';
+            html += "</div>"; // end game-card-full
+
+            // =========================
+            // Row 2: Bot Stats & System Health
+            // =========================
+            html += '<div class="grid">';
 
             // Bot Stats Card
             html += '<div class="card">';
@@ -437,15 +553,15 @@
                         <span class="stat-label">Last Loop</span>
                         <span class="stat-value">${timeSince(performance.last_loop_time)}</span>
                      </div>`;
-            html += '</div>';
+            html += "</div>";
 
             // Health Card
             html += '<div class="card">';
             html += '<div class="card-title">System Health</div>';
             html += `<div class="stat-row">
                         <span class="stat-label">Status</span>
-                        <span class="stat-value ${health.healthy ? 'health-good' : 'health-bad'}">
-                            ${health.healthy ? '✓ Healthy' : '✗ Issues Detected'}
+                        <span class="stat-value ${health.healthy ? "health-good" : "health-bad"}">
+                            ${health.healthy ? "✓ Healthy" : "✗ Issues Detected"}
                         </span>
                      </div>`;
             html += `<div class="stat-row">
@@ -457,12 +573,14 @@
                         <span class="stat-value">${timeSince(errors.last_error_time)}</span>
                      </div>`;
 
-            if (!health.healthy && health.issues.length > 0) {
+            const issues = (health && Array.isArray(health.issues)) ? health.issues : [];
+
+            if (!health.healthy && issues.length > 0) {
                 html += '<ul class="issues-list">';
-                health.issues.forEach(issue => {
+                issues.forEach((issue) => {
                     html += `<li>⚠️ ${issue}</li>`;
                 });
-                html += '</ul>';
+                html += "</ul>";
             }
 
             if (errors.last_error) {
@@ -470,39 +588,44 @@
                             ${errors.last_error}
                          </div>`;
             }
-            html += '</div>';
-            html += '</div>'; // end grid
+            html += "</div>"; // end health card
+
+            html += "</div>"; // end grid row 2
+
+            // =========================
+            // Row 3: Events / API / Social
+            // =========================
+            html += '<div class="grid">';
 
             // Events Card
-            html += '<div class="grid">';
-            html += '<div class="card" style="grid-column: span 2;">';
+            html += '<div class="card">';
             html += '<div class="card-title">Game Events Processed</div>';
             html += '<div class="event-grid">';
 
             const eventTypes = [
-                { key: 'total', label: 'Total Events' },
-                { key: 'goals', label: 'Goals' },
-                { key: 'penalties', label: 'Penalties' },
-                { key: 'shots', label: 'Shots' },
-                { key: 'saves', label: 'Saves' },
-                { key: 'hits', label: 'Hits' },
-                { key: 'blocks', label: 'Blocks' },
-                { key: 'takeaways', label: 'Takeaways' },
-                { key: 'giveaways', label: 'Giveaways' },
-                { key: 'faceoffs', label: 'Faceoffs' },
+                { key: "total", label: "Total Events" },
+                { key: "goals", label: "Goals" },
+                { key: "penalties", label: "Penalties" },
+                { key: "shots", label: "Shots" },
+                { key: "saves", label: "Saves" },
+                { key: "hits", label: "Hits" },
+                { key: "blocks", label: "Blocks" },
+                { key: "takeaways", label: "Takeaways" },
+                { key: "giveaways", label: "Giveaways" },
+                { key: "faceoffs", label: "Faceoffs" },
             ];
 
-            eventTypes.forEach(event => {
+            eventTypes.forEach((event) => {
                 html += `<div class="event-stat">
                             <div class="event-stat-value">${events[event.key]}</div>
                             <div class="event-stat-label">${event.label}</div>
                          </div>`;
             });
 
-            html += '</div>';
-            html += '</div>';
+            html += "</div>";
+            html += "</div>"; // end events card
 
-            // API & Social Stats
+            // API Performance Card
             html += '<div class="card">';
             html += '<div class="card-title">API Performance</div>';
             html += `<div class="stat-row">
@@ -517,15 +640,24 @@
                         <span class="stat-label">Failed</span>
                         <span class="stat-value" style="color: #ef4444;">${performance.api_calls.failed}</span>
                      </div>`;
-            const successRate = performance.api_calls.total > 0
-                ? ((performance.api_calls.successful / performance.api_calls.total) * 100).toFixed(1)
-                : 100;
+            const successRate =
+                performance.api_calls.total > 0
+                    ? (
+                        (performance.api_calls.successful /
+                            performance.api_calls.total) *
+                        100
+                    ).toFixed(1)
+                    : 100;
             html += `<div class="stat-row">
                         <span class="stat-label">Success Rate</span>
                         <span class="stat-value">${successRate}%</span>
                      </div>`;
-            html += '</div>';
+            html += "</div>";
 
+            // Social Media Card
+            const previewSent = Object.values(socials.preview_posts || {}).filter(
+                (v) => v
+            ).length;
             html += '<div class="card">';
             html += '<div class="card-title">Social Media</div>';
             html += `<div class="stat-row">
@@ -538,13 +670,131 @@
                      </div>`;
             html += `<div class="stat-row">
                         <span class="stat-label">Preview Posts</span>
-                        <span class="stat-value">${Object.values(socials.preview_posts).filter(v => v).length}/4</span>
+                        <span class="stat-value">${previewSent}/4</span>
                      </div>`;
-            html += '</div>';
-            html += '</div>'; // end grid
+            html += "</div>";
 
-            document.getElementById('content').innerHTML = html;
+            html += "</div>"; // end grid row 3
+
+            // =========================
+            // Row 4: Cache / Restart-Safe State (incl. pre-game)
+            // =========================
+            html += '<div class="grid">';
+            html += '<div class="card">';
+            html += '<div class="card-title">Cache / Restart-Safe State</div>';
+
+            if (!cache.enabled || !cacheSummary) {
+                html += '<p class="json-empty">Cache has not been initialized yet.</p>';
+            } else {
+                html += `<div class="stat-row">
+                            <span class="stat-label">Enabled</span>
+                            <span class="stat-value">${cache.enabled ? "Yes" : "No"}</span>
+                         </div>`;
+                html += `<div class="stat-row">
+                            <span class="stat-label">Season ID</span>
+                            <span class="stat-value">${cacheSummary.season_id || "—"}</span>
+                         </div>`;
+                html += `<div class="stat-row">
+                            <span class="stat-label">Game ID</span>
+                            <span class="stat-value">${cacheSummary.game_id || "—"}</span>
+                         </div>`;
+                html += `<div class="stat-row">
+                            <span class="stat-label">Team</span>
+                            <span class="stat-value">${cacheSummary.team_abbrev || "—"}</span>
+                         </div>`;
+                html += `<div class="stat-row">
+                            <span class="stat-label">Processed Events</span>
+                            <span class="stat-value">${cacheSummary.processed_events ?? 0
+                    }</span>
+                         </div>`;
+                html += `<div class="stat-row">
+                            <span class="stat-label">Goal Snapshots</span>
+                            <span class="stat-value">${cacheSummary.goal_snapshots ?? 0
+                    }</span>
+                         </div>`;
+                html += `<div class="stat-row">
+                            <span class="stat-label">Last Sort Order</span>
+                            <span class="stat-value">${cacheSummary.last_sort_order ?? "—"
+                    }</span>
+                         </div>`;
+                html += `<div class="stat-row">
+                            <span class="stat-label">Thread Roots</span>
+                            <span class="stat-value">${rootPlatformsText}</span>
+                         </div>`;
+
+                // ---- Pre-game socials summary ----
+                const pregameKinds = [
+                    { key: "core", label: "Core Preview" },
+                    { key: "season_series", label: "Season Series" },
+                    { key: "team_stats", label: "Team Stats Chart" },
+                    { key: "officials", label: "Officials" },
+                ];
+
+                html += '<div class="cache-goals" style="margin-top: 12px;">';
+                html += '<div class="cache-goals-header">Pregame Socials</div>';
+                html +=
+                    '<div class="cache-goals-grid" style="grid-template-columns: repeat(2, minmax(0, 1fr));">';
+
+                html +=
+                    '<div class="cache-goals-cell cache-goals-cell-head">Type</div>';
+                html +=
+                    '<div class="cache-goals-cell cache-goals-cell-head">Status</div>';
+
+                pregameKinds.forEach((item) => {
+                    const status = pregameSent[item.key] ? "Sent" : "Pending";
+                    html += `<div class="cache-goals-cell">${item.label}</div>`;
+                    html += `<div class="cache-goals-cell">${status}</div>`;
+                });
+
+                html += "</div>"; // grid
+                html += "</div>"; // pregame section
+
+                // ---- Goals in cache (existing) ----
+                const goalSnapshots = (cacheRaw && cacheRaw.goal_snapshots) || {};
+                const goalIds = Object.keys(goalSnapshots);
+                if (goalIds.length > 0) {
+                    goalIds.sort((a, b) => {
+                        const sa = goalSnapshots[a].sort_order || 0;
+                        const sb = goalSnapshots[b].sort_order || 0;
+                        return sa - sb;
+                    });
+
+                    html += '<div class="cache-goals" style="margin-top: 16px;">';
+                    html += '<div class="cache-goals-header">Goals in Cache</div>';
+                    html += '<div class="cache-goals-grid">';
+                    html +=
+                        '<div class="cache-goals-cell cache-goals-cell-head">Event ID</div>';
+                    html +=
+                        '<div class="cache-goals-cell cache-goals-cell-head">Team</div>';
+                    html +=
+                        '<div class="cache-goals-cell cache-goals-cell-head">Sort Order</div>';
+                    html +=
+                        '<div class="cache-goals-cell cache-goals-cell-head">Posted</div>';
+
+                    goalIds.forEach((id) => {
+                        const g = goalSnapshots[id] || {};
+                        html += `<div class="cache-goals-cell">${id}</div>`;
+                        html += `<div class="cache-goals-cell">${g.team_abbrev || "—"
+                            }</div>`;
+                        html += `<div class="cache-goals-cell">${g.sort_order ?? "—"
+                            }</div>`;
+                        html += `<div class="cache-goals-cell">${g.posted ? "Yes" : "No"
+                            }</div>`;
+                    });
+
+                    html += "</div>"; // cache-goals-grid
+                    html += "</div>"; // cache-goals
+                }
+            }
+
+            html += "</div>"; // end cache card
+            html += "</div>"; // end grid row 4
+
+            // Inject HTML
+            document.getElementById("content").innerHTML = html;
         }
+
+
 
         async function fetchStatus() {
             try {
@@ -562,6 +812,14 @@
             }
         }
 
+        function escapeHtml(str) {
+            return str
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;");
+        }
+
+
         // Initial fetch
         fetchStatus();
 
@@ -569,4 +827,5 @@
         setInterval(fetchStatus, 2000);
     </script>
 </body>
+
 </html>
