@@ -1,17 +1,23 @@
 # socials/threads_client.py
 from __future__ import annotations
+
+import logging
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import List, Optional
-import time
+
 import requests
 
 from socials.types import PostRef
-from .base import SocialClient, SocialPost
 from socials.utils import sanitize_for_threads
 from utils.image_hosting import get_public_url
 
+from .base import SocialClient, SocialPost
+
 THREADS_BASE = "https://graph.threads.net/v1.0"
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -20,25 +26,26 @@ class ThreadsConfig:
 
 
 class ThreadsClient(SocialClient):
-    """
-    Threads adapter using Graph Threads API.
+    """Threads adapter using Graph Threads API.
 
-    - Text-only posts: /me/threads with media_type=TEXT and auto_publish_text=true
-      (no container/publish step; this is fastest & most reliable for text)
-    - Image posts: create container (/me/threads) with media_type=IMAGE, image_url
-      then publish (/me/threads_publish) with retry/backoff until the container is ready.
-    - Multi-image: not supported as a single post; we emulate a 'carousel' by
-      posting the first image, then replying with additional images in a thread.
+    - Text-only posts: /me/threads with media_type=TEXT and auto_publish_text=true.
+    - Image posts: IMAGE containers + /me/threads_publish.
+    - Multi-image: CAROUSEL container with child IMAGE containers.
     """
 
     def __init__(self, cfg: ThreadsConfig, root_cfg: dict):
         self.token = cfg.access_token
-        self.root_cfg = root_cfg  # needed for image hosting (B2/GitHub/etc.)
+        self.root_cfg = root_cfg
 
     # ---------------------------
     # Low-level Graph endpoints
     # ---------------------------
-    def _create_text(self, text: str, auto_publish: bool = True, reply_to_id: Optional[str] = None):
+    def _create_text(
+        self,
+        text: str,
+        auto_publish: bool = True,
+        reply_to_id: Optional[str] = None,
+    ) -> dict:
         data = {
             "text": text,
             "media_type": "TEXT",
@@ -46,6 +53,12 @@ class ThreadsClient(SocialClient):
         }
         if reply_to_id:
             data["reply_to_id"] = reply_to_id
+
+        logger.info(
+            "Threads: creating TEXT post (auto_publish=%s, reply_to_id=%s)",
+            auto_publish,
+            reply_to_id,
+        )
         r = requests.post(
             f"{THREADS_BASE}/me/threads",
             params={"access_token": self.token},
@@ -53,7 +66,9 @@ class ThreadsClient(SocialClient):
             timeout=30,
         )
         r.raise_for_status()
-        return r.json()
+        res = r.json()
+        logger.debug("Threads: TEXT response: %s", res)
+        return res
 
     def _create_image(
         self,
@@ -61,14 +76,27 @@ class ThreadsClient(SocialClient):
         image_url: str,
         alt_text: Optional[str],
         reply_to_id: Optional[str] = None,
-    ):
-        data = {"media_type": "IMAGE", "image_url": image_url}
+        *,
+        is_carousel_item: bool = False,
+    ) -> dict:
+        data: dict[str, str] = {
+            "media_type": "IMAGE",
+            "image_url": image_url,
+        }
         if text:
             data["text"] = text
         if alt_text:
             data["alt_text"] = alt_text
         if reply_to_id:
             data["reply_to_id"] = reply_to_id
+        if is_carousel_item:
+            data["is_carousel_item"] = "true"
+
+        logger.info(
+            "Threads: creating IMAGE container (carousel_item=%s, reply_to_id=%s)",
+            is_carousel_item,
+            reply_to_id,
+        )
         r = requests.post(
             f"{THREADS_BASE}/me/threads",
             params={"access_token": self.token},
@@ -76,35 +104,105 @@ class ThreadsClient(SocialClient):
             timeout=30,
         )
         r.raise_for_status()
-        return r.json()
+        res = r.json()
+        logger.debug("Threads: IMAGE response: %s", res)
+        return res
 
-    def _publish(self, creation_id: str):
+    def _create_carousel(
+        self,
+        text: Optional[str],
+        children_ids: List[str],
+        reply_to_id: Optional[str] = None,
+    ) -> dict:
+        if len(children_ids) < 2:
+            raise ValueError("Carousel must have at least 2 children.")
+        if len(children_ids) > 20:
+            raise ValueError("Carousel cannot have more than 20 children.")
+
+        data: dict[str, str] = {
+            "media_type": "CAROUSEL",
+            # Threads wants a comma-separated list of child container IDs
+            "children": ",".join(children_ids),
+        }
+        if text:
+            data["text"] = text
+        if reply_to_id:
+            data["reply_to_id"] = reply_to_id
+
+        logger.info(
+            "Threads: creating CAROUSEL container with %d children (reply_to_id=%s)",
+            len(children_ids),
+            reply_to_id,
+        )
+        r = requests.post(
+            f"{THREADS_BASE}/me/threads",
+            params={"access_token": self.token},
+            data=data,
+            timeout=30,
+        )
+
+        # Try to parse JSON either way so we can see error details
+        raw_text = r.text
+        try:
+            res = r.json()
+        except ValueError:
+            res = None
+
+        if r.status_code >= 400:
+            logger.error(
+                "Threads: CAROUSEL create failed (%s). Payload=%s Response=%s",
+                r.status_code,
+                data,
+                raw_text,
+            )
+            r.raise_for_status()
+
+        logger.debug("Threads: CAROUSEL response: %s", res if res is not None else raw_text)
+        return res if res is not None else {"raw": raw_text}
+
+    def _publish(self, creation_id: str) -> dict:
+        logger.info("Threads: publishing container %s", creation_id)
         r = requests.post(
             f"{THREADS_BASE}/me/threads_publish",
             params={"access_token": self.token, "creation_id": creation_id},
             timeout=30,
         )
         r.raise_for_status()
-        return r.json()
+        res = r.json()
+        logger.debug("Threads: publish response for %s: %s", creation_id, res)
+        return res
 
-    # Robust publish: retry on 400 "container not ready"
-    def _publish_with_retry(self, creation_id: str, max_attempts: int = 8, base_delay: float = 0.6):
+    def _publish_with_retry(
+        self,
+        creation_id: str,
+        max_attempts: int = 8,
+        base_delay: float = 0.6,
+    ) -> dict:
         attempt = 1
-        last_err = None
+        last_err: Exception | None = None
         while attempt <= max_attempts:
             try:
                 return self._publish(creation_id)
             except requests.HTTPError as e:
-                # 400 usually means "not ready" — wait and retry
                 if e.response is not None and e.response.status_code == 400:
                     last_err = e
-                    time.sleep(base_delay * attempt)  # linear-ish backoff
+                    logger.warning(
+                        "Threads: container %s not ready (attempt %d/%d), retrying...",
+                        creation_id,
+                        attempt,
+                        max_attempts,
+                    )
+                    time.sleep(base_delay * attempt)
                     attempt += 1
                     continue
-                # any other HTTP error, just bubble up
+                # other HTTP error – bubble up
                 raise
-        # if we exhausted retries, raise the last 400
         if last_err:
+            logger.error(
+                "Threads: failed to publish container %s after %d attempts",
+                creation_id,
+                max_attempts,
+            )
             raise last_err
         raise RuntimeError("Failed to publish Threads media: unknown error")
 
@@ -112,38 +210,26 @@ class ThreadsClient(SocialClient):
     # Helpers
     # ---------------------------
     def _ensure_hosted_url(self, path_or_url: str) -> str:
-        """
-        If it's a local path, host it and return the public URL.
-        Otherwise return the input (already-hosted URL).
-        """
         p = Path(path_or_url)
         if p.exists():
-            return get_public_url(self.root_cfg, p)
+            hosted = get_public_url(self.root_cfg, p)
+            logger.info("Threads: hosted local image %s -> %s", p, hosted)
+            return hosted
         return path_or_url
 
     def _collect_images(self, post: SocialPost) -> List[str]:
-        """
-        Collect all images associated with the post as hosted URLs.
-        Supports:
-          - post.image_url (str), post.images (List[str] of URLs)
-          - post.local_image (str path), post.local_images (List[str] of paths)
-        """
         urls: List[str] = []
-        # Hosted first
         if getattr(post, "image_url", None):
             urls.append(str(post.image_url))
         if getattr(post, "images", None):
             urls.extend([str(u) for u in post.images])
-
-        # Local(s) -> host & add
         if getattr(post, "local_image", None):
             urls.append(self._ensure_hosted_url(str(post.local_image)))
         if getattr(post, "local_images", None):
             urls.extend([self._ensure_hosted_url(str(p)) for p in post.local_images])
 
-        # De-dup while keeping order
-        seen = set()
-        deduped = []
+        seen: set[str] = set()
+        deduped: List[str] = []
         for u in urls:
             if u not in seen:
                 seen.add(u)
@@ -154,25 +240,36 @@ class ThreadsClient(SocialClient):
     # SocialClient API
     # ---------------------------
     def post(self, post: SocialPost, reply_to_ref: PostRef | None = None) -> PostRef:
-        """
-        Create a Threads post (text or image[s]). Returns a PostRef.
-        If reply_to_ref is provided (and platform==threads), reply in that thread.
-        """
         reply_to_id = reply_to_ref.id if (reply_to_ref and reply_to_ref.platform == "threads") else None
 
-        # Sanitize text for Threads (emoji tags etc.)
         text = sanitize_for_threads(post.text or "")
-
         image_urls = self._collect_images(post)
+        logger.info(
+            "Threads: post requested (reply_to_id=%s, images=%d, text_len=%d)",
+            reply_to_id,
+            len(image_urls),
+            len(text),
+        )
 
-        # --- TEXT ONLY --------------------------------------------------------
+        # TEXT ONLY
         if not image_urls:
             created = self._create_text(text, auto_publish=True, reply_to_id=reply_to_id)
-            return PostRef(platform="threads", id=str(created.get("id")), published=True, raw=created)
+            return PostRef(
+                platform="threads",
+                id=str(created.get("id")),
+                published=True,
+                raw=created,
+            )
 
-        # --- SINGLE IMAGE -----------------------------------------------------
+        # SINGLE IMAGE
         if len(image_urls) == 1:
-            created = self._create_image(text, image_urls[0], getattr(post, "alt_text", None), reply_to_id)
+            created = self._create_image(
+                text,
+                image_urls[0],
+                getattr(post, "alt_text", None),
+                reply_to_id=reply_to_id,
+                is_carousel_item=False,
+            )
             pub = self._publish_with_retry(created["id"])
             published_id = pub.get("id") or created.get("id")
             return PostRef(
@@ -182,30 +279,30 @@ class ThreadsClient(SocialClient):
                 raw={"created": created, "publish": pub},
             )
 
-        # --- MULTI-IMAGE (carousel workaround via threaded replies) -----------
-        # 1) Root with first image + text
-        created_root = self._create_image(text, image_urls[0], getattr(post, "alt_text", None), reply_to_id)
-        pub_root = self._publish_with_retry(created_root["id"])
-        parent_id = pub_root.get("id") or created_root.get("id")
-        last_ref = PostRef(
-            platform="threads",
-            id=str(parent_id),
-            published=True,
-            raw={"created": created_root, "publish": pub_root},
+        # MULTI-IMAGE: CAROUSEL
+        alt_text = getattr(post, "alt_text", None)
+        child_ids: List[str] = []
+        for url in image_urls:
+            child = self._create_image(
+                text=None,
+                image_url=url,
+                alt_text=alt_text,
+                reply_to_id=None,
+                is_carousel_item=True,
+            )
+            child_ids.append(child["id"])
+
+        created_carousel = self._create_carousel(
+            text=text,
+            children_ids=child_ids,
+            reply_to_id=reply_to_id,
         )
+        pub_carousel = self._publish_with_retry(created_carousel["id"])
+        carousel_id = pub_carousel.get("id") or created_carousel.get("id")
 
-        # 2) Reply for each additional image; keep threading
-        for u in image_urls[1:]:
-            created_child = self._create_image(
-                None, u, getattr(post, "alt_text", None), reply_to_id=last_ref.id
-            )
-            pub_child = self._publish_with_retry(created_child["id"])
-            child_id = pub_child.get("id") or created_child.get("id")
-            last_ref = PostRef(
-                platform="threads",
-                id=str(child_id),
-                published=True,
-                raw={"created": created_child, "publish": pub_child},
-            )
-
-        return last_ref
+        return PostRef(
+            platform="threads",
+            id=str(carousel_id),
+            published=True,
+            raw={"created": created_carousel, "publish": pub_carousel},
+        )

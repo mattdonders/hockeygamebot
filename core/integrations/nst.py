@@ -1,16 +1,18 @@
 import logging
 import os
+from io import StringIO
 from typing import Optional
 from urllib.parse import urlencode
 
-from matplotlib import pyplot as plt, rcParams
 import pandas as pd
+from matplotlib import pyplot as plt
+from matplotlib import rcParams
 
+import utils.others as otherutils
 from core.integrations import api
 from core.models.game_context import GameContext
-from utils.team_details import get_team_details_by_name
-import utils.others as otherutils
 from definitions import IMAGES_DIR
+from utils.team_details import get_team_details_by_name
 
 
 def get_nst_report_url(context: GameContext, full: bool = False) -> Optional[str]:
@@ -89,7 +91,7 @@ def generate_team_season_charts(team_name, situation, lastgames=None):
 
     # Extract the team table and convert it to a Pandas DataFrame
     teams = soup.find("table", id="teams")
-    teams_df = pd.read_html(str(teams), index_col=0)[0]
+    teams_df = pd.read_html(StringIO(str(teams)), index_col=0)[0]
 
     # Before calculating the average, store a copy of the dataframe for rankings
     df_rank = teams_df.copy()
@@ -125,10 +127,12 @@ def generate_team_season_charts(team_name, situation, lastgames=None):
     # Convert the "Against Column to 100-value" to make sure each row totals 100
     # Convert PDO & Point % to full percentage values
     pref_df_T["AGAINST"] = pref_df_T.apply(lambda row: 100 - row.FOR, axis=1)
-    pref_df_no_against["FOR"]["Point %"] = pref_df_no_against["FOR"]["Point %"] * 100
-    pref_df_no_against["FOR"]["PDO"] = pref_df_no_against["FOR"]["PDO"] * 100
-    pref_df_no_against["avg"]["Point %"] = pref_df_no_against["avg"]["Point %"] * 100
-    pref_df_no_against["avg"]["PDO"] = pref_df_no_against["avg"]["PDO"] * 100
+
+    # Use .loc[row, col] instead of chained indexing
+    pref_df_no_against.loc["Point %", "FOR"] *= 100
+    pref_df_no_against.loc["PDO", "FOR"] *= 100
+    pref_df_no_against.loc["Point %", "avg"] *= 100
+    pref_df_no_against.loc["PDO", "avg"] *= 100
 
     # Reverse the Order of the DataFrame rows to make the graph look cleaner
     pref_df_T = pref_df_T.iloc[::-1]
@@ -224,13 +228,9 @@ def generate_team_season_charts(team_name, situation, lastgames=None):
         )
 
     for i, v in enumerate(pref_df_T["AGAINST"].values):
-        ax2.text(
-            100 - 2, i, str(round(v, 2)), va="center", ha="right", color=team_color_text, fontweight="bold"
-        )
+        ax2.text(100 - 2, i, str(round(v, 2)), va="center", ha="right", color=team_color_text, fontweight="bold")
 
     last_games_file = "" if not lastgames else f"-last{lastgames}"
-    overview_fig_path = os.path.join(
-        IMAGES_DIR, f"allcharts-yesterday-team-season-{situation}{last_games_file}.png"
-    )
+    overview_fig_path = os.path.join(IMAGES_DIR, f"allcharts-yesterday-team-season-{situation}{last_games_file}.png")
     overview_fig.savefig(overview_fig_path, bbox_inches="tight")
     return overview_fig_path
