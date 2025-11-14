@@ -7,6 +7,7 @@ from typing import Optional, Dict, Any
 
 from socials.types import PostRef
 
+logger = logging.getLogger(__name__)
 
 @dataclass
 class StartOfGameSocial:
@@ -110,7 +111,7 @@ class StartOfGameSocial:
         pregame_checks = ("core_sent", "season_series_sent", "officials_sent")
         status = {attr: getattr(self, attr) for attr in pregame_checks}
         if not all(status.values()):
-            logging.info("Pregame Socials Status: %s", status)
+            logger.info("Pregame Socials Status: %s", status)
         return all(status.values())
 
 

@@ -9,13 +9,14 @@ from core.models.game_context import GameContext
 from core.play_by_play import parse_play_by_play_with_names
 from utils.others import safe_remove
 
+logger = logging.getLogger(__name__)
 
 def process_removed_goal(goal, context):
     """Remove a goal from all relevant lists and caches."""
     pref_team = context.preferred_team.team_name
     goals_list = context.pref_goals if goal.event_team == pref_team else context.other_goals
 
-    logging.info(f"Removing goal by {goal.event_team}. Event ID: {goal.event_id}")
+    logger.info(f"Removing goal by {goal.event_team}. Event ID: {goal.event_id}")
 
     # Safely remove the goal from all relevant collections
     safe_remove(goal, context.all_goals)
@@ -37,18 +38,18 @@ def detect_removed_goals(context, all_plays):
         for goal in context.all_goals[:]:
             # Check if the goal has been removed
             if goal.was_goal_removed(all_plays):
-                logging.info("Goal removed: Event ID %s", goal.event_id)
+                logger.info("Goal removed: Event ID %s", goal.event_id)
                 process_removed_goal(goal, context)
             else:
-                logging.debug(
+                logger.debug(
                     "Goal still valid or pending removal: Event ID %s (Counter: %d)",
                     goal.event_id,
                     goal.event_removal_counter,
                 )
     except Exception as e:
         # Log any unexpected exceptions
-        logging.error("Encountered an exception while detecting removed goals.")
-        logging.exception(e)
+        logger.error("Encountered an exception while detecting removed goals.")
+        logger.exception(e)
 
 
 def parse_live_game(context: GameContext):
@@ -62,11 +63,11 @@ def parse_live_game(context: GameContext):
     play_by_play_data = schedule.fetch_playbyplay(context.game_id)
     all_events = play_by_play_data.get("plays", [])
 
-    logging.debug("Number of *TOTAL* Events Retrieved from PBP: %s", len(all_events))
-    logging.info("%s total event(s) detected in PBP - checking for new events.", len(all_events))
+    logger.debug("Number of *TOTAL* Events Retrieved from PBP: %s", len(all_events))
+    logger.info("%s total event(s) detected in PBP - checking for new events.", len(all_events))
 
     goal_events = [event for event in all_events if event.get("typeDescKey") == "goal"]
-    logging.debug("Number of *GOAL* Events Retrieved from PBP: %s", len(goal_events))
+    logger.debug("Number of *GOAL* Events Retrieved from PBP: %s", len(goal_events))
 
     # Be defensive about types
     last_sort_order = int(getattr(context, "last_sort_order", 0) or 0)
@@ -76,12 +77,12 @@ def parse_live_game(context: GameContext):
 
     # ✅ Correct message based on new_plays
     if not new_plays:
-        logging.info(
+        logger.info(
             "No new plays detected. This loop will catch any missed events "
             "and also check for scoring changes on existing goals."
         )
     else:
-        logging.info("%s new event(s) detected - looping through them now.", num_new_events)
+        logger.info("%s new event(s) detected - looping through them now.", num_new_events)
 
     # We pass the entire list into the factory so missed events can still be created.
     # BUT we gate non-goals with the persistent cache to avoid duplicates across restarts.
@@ -93,7 +94,7 @@ def parse_live_game(context: GameContext):
         ev_id = event.get("eventId")
         if not is_goal and getattr(context, "cache", None) and ev_id is not None:
             if context.cache.has_seen(ev_id):
-                logging.info("🔍 Skipping cached non-goal: eventType=%s / eventId=%s (restart-safe)", event_type, ev_id)
+                logger.info("🔍 Skipping cached non-goal: eventType=%s / eventId=%s (restart-safe)", event_type, ev_id)
                 # Already processed in a previous run/loop; skip creating it again
                 continue
 

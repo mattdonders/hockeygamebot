@@ -6,6 +6,7 @@ from urllib3.util.retry import Retry
 
 from utils.sessions import SessionFactory
 
+logger = logging.getLogger(__name__)
 
 def thirdparty_request(url, headers=None):
     """Handles all third-party requests / URL calls.
@@ -36,14 +37,14 @@ def thirdparty_request(url, headers=None):
     headers = {**headers, **ua_header} if headers else ua_header
 
     try:
-        logging.info(f"Sending request to {url}")
+        logger.info(f"Sending request to {url}")
         response = session.get(url, headers=headers, timeout=10)
         response.raise_for_status()
         return response
     except HTTPError as http_err:
-        logging.error(f"HTTP error occurred: {http_err}")
+        logger.error(f"HTTP error occurred: {http_err}")
     except RequestException as req_err:
-        logging.error(f"Request error occurred: {req_err}")
+        logger.error(f"Request error occurred: {req_err}")
     return None
 
 
@@ -60,5 +61,5 @@ def bs4_parse(content):
     try:
         return BeautifulSoup(content, "lxml")
     except TypeError as e:
-        logging.error(e)
+        logger.error(e)
         return None

@@ -14,6 +14,7 @@ from core.models.game_context import GameContext
 from definitions import IMAGES_DIR
 from utils.team_details import get_team_details_by_name
 
+logger = logging.getLogger(__name__)
 
 def get_nst_report_url(context: GameContext, full: bool = False) -> Optional[str]:
     """
@@ -35,7 +36,7 @@ def get_nst_report_url(context: GameContext, full: bool = False) -> Optional[str
     # Validate the `game` object has the required attributes
     required_attrs = ["season", "game_type", "game_shortid"]
     if not all(hasattr(context, attr) for attr in required_attrs):
-        logging.error(f"GameContext is missing required attributes: {required_attrs}")
+        logger.error(f"GameContext is missing required attributes: {required_attrs}")
         return None
 
     # Construct query parameters
@@ -49,7 +50,7 @@ def get_nst_report_url(context: GameContext, full: bool = False) -> Optional[str
         nst_rpt_url = f"{base_url}/game.php?{urlencode(query_params)}"
         return nst_rpt_url
     except Exception as e:
-        logging.error(f"Failed to construct NST URL: {e}")
+        logger.error(f"Failed to construct NST URL: {e}")
         return None
 
 

@@ -2,6 +2,7 @@ import logging
 import utils.others as otherutils
 from core.events import EventFactory
 
+logger = logging.getLogger(__name__)
 
 def replace_ids_with_names(details, roster):
     """
@@ -29,7 +30,7 @@ def parse_play_by_play_with_names(events, context):
 
         # Replace player IDs with names dynamically
         details = replace_ids_with_names(details, context.combined_roster)
-        logging.debug(f"Event details after replacing IDs with names: {details}")
+        logger.debug(f"Event details after replacing IDs with names: {details}")
 
         # Create an event object using the factory
         parsed_event = EventFactory.create_event(event, context)
@@ -43,6 +44,6 @@ def parse_play_by_play_with_names(events, context):
                 # if message:
                 #     context.bluesky_client.post(message)
             except Exception as e:
-                logging.error(f"Error processing event: {e}", exc_info=True)
+                logger.error(f"Error processing event: {e}", exc_info=True)
 
-    # logging.info(f"Parsed {len(parsed_events)} events successfully.")
+    # logger.info(f"Parsed {len(parsed_events)} events successfully.")

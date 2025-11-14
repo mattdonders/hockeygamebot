@@ -13,3 +13,5 @@ pandas>=2.0.0          # Data analysis and manipulation - REQUIRED: Used by core
 numpy>=1.24.0          # Numerical computing - SECURITY: Fixes CVE-2021-34141 and other vulnerabilities
 lxml>=5.1.0            # XML/HTML processing - SECURITY: Fixes CVE-2021-43818 and XSS vulnerabilities
 beautifulsoup4>=4.12.2 # HTML parsing for web scraping
+nhl-api-py>=3.1.1      # NHL API client library
+tweepy>=4.14.0

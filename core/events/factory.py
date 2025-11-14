@@ -11,6 +11,7 @@ from core.events.period_end import PeriodEndEvent
 from core.events.generic import GenericEvent
 import utils.others as otherutils
 
+logger = logging.getLogger(__name__)
 
 class EventFactory:
     """
@@ -46,7 +47,7 @@ class EventFactory:
 
         # Check whether this event is in our Cache
         event_object = event_class.cache.get(event_id)
-        logging.debug("Existing Event Object: %s", event_object)
+        logger.debug("Existing Event Object: %s", event_object)
 
         # Check for scoring changes and NHL Video IDs on GoalEvents
         # We also use the new_plays variable to only check for scoring changes on no new events
@@ -70,7 +71,7 @@ class EventFactory:
             event_data["details"] = details
 
             try:
-                logging.info(
+                logger.info(
                     "Creating %s event (type: %s) for ID: %s / SortOrder: %s.",
                     event_class.__name__,
                     event_type,
@@ -104,32 +105,32 @@ class EventFactory:
 
                     # For GoalEvents, we want to Check & Add Highlight Clip (even on event creation)
                     if event_class == GoalEvent:
-                        logging.info("New GoalEvent creation - checking for highlights.")
+                        logger.info("New GoalEvent creation - checking for highlights.")
                         event_object: GoalEvent  # IDE Typing Hint
                         event_object.check_and_add_highlight(event_data)
                 else:
-                    logging.warning(
+                    logger.warning(
                         "Unable to create / parse %s event (type: %s) for ID: %s / SortOrder: %s.",
                         event_class.__name__,
                         event_type,
                         event_id,
                         sort_order,
                     )
-                    logging.warning(event_data)
+                    logger.warning(event_data)
             except Exception as error:
-                logging.error(
+                logger.error(
                     "Error creating %s event (type: %s) for ID: %s / SortOrder: %s.",
                     event_class.__name__,
                     event_type,
                     event_id,
                     sort_order,
                 )
-                # logging.error(response)
-                logging.error(error)
-                logging.error(traceback.format_exc())
+                # logger.error(response)
+                logger.error(error)
+                logger.error(traceback.format_exc())
                 return
 
         if sort_order < 9000:
             context.last_sort_order = sort_order
         else:
-            logging.warning("Not setting GameContext sort order to %s - invalid value.", sort_order)
+            logger.warning("Not setting GameContext sort order to %s - invalid value.", sort_order)

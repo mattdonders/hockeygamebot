@@ -9,6 +9,7 @@ import logging
 from datetime import datetime, timedelta
 import requests
 
+logger = logging.getLogger(__name__)
 
 def load_roster(team_abbreviation: str, season_id: int):
     """
@@ -28,11 +29,11 @@ def load_roster(team_abbreviation: str, season_id: int):
         if time_difference <= timedelta(hours=24):
             # File is up-to-date, load it
             with open(file_path, "r") as file:
-                logging.info(f"Loaded roster for {team_abbreviation} from local file.")
+                logger.info(f"Loaded roster for {team_abbreviation} from local file.")
                 return json.load(file)
         else:
             # File is outdated, log and update
-            logging.info(
+            logger.info(
                 f"Roster file for {team_abbreviation} is outdated (last updated: {last_modified_time}). "
                 "Fetching a new roster from the API."
             )
@@ -47,19 +48,19 @@ def load_roster(team_abbreviation: str, season_id: int):
         os.makedirs(os.path.dirname(file_path), exist_ok=True)
         with open(file_path, "w") as file:
             json.dump(roster, file)
-            logging.info(f"Saved updated roster for {team_abbreviation} to {file_path}.")
+            logger.info(f"Saved updated roster for {team_abbreviation} to {file_path}.")
 
         return roster
     else:
         error_message = (
             f"Failed to fetch roster for {team_abbreviation}. " f"Status Code: {response.status_code}"
         )
-        logging.error(error_message)
+        logger.error(error_message)
         raise Exception(error_message)
 
 
 def load_game_rosters(context):
-    logging.info("Getting rosterSpots from Game Center feed.")
+    logger.info("Getting rosterSpots from Game Center feed.")
     game_id = context.game_id
     url = f"https://api-web.nhle.com/v1/gamecenter/{game_id}/play-by-play"
     response = requests.get(url)

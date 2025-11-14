@@ -10,6 +10,7 @@ from utils.others import categorize_broadcasts, clock_emoji, convert_utc_to_loca
 from utils.team_details import TEAM_DETAILS
 from core.schedule import fetch_schedule
 
+logger = logging.getLogger(__name__)
 
 def sleep_until_game_start(start_time_utc):
     """
@@ -20,10 +21,10 @@ def sleep_until_game_start(start_time_utc):
     time_diff = (start_time - now).total_seconds()
 
     if time_diff > 0:
-        logging.info(f"Sleeping for {time_diff:.2f} seconds until game start at {start_time}.")
+        logger.info(f"Sleeping for {time_diff:.2f} seconds until game start at {start_time}.")
         time.sleep(time_diff)
     else:
-        logging.warning("Game start time is in the past, but not live yet - sleep for 30s.")
+        logger.warning("Game start time is in the past, but not live yet - sleep for 30s.")
         time.sleep(30)
 
 
@@ -42,7 +43,7 @@ def preview_sleep_calculator(context: GameContext):
 
     # Scenario 1: Game Time Passed, but not LIVE yet
     if context.game_time_countdown < 0:
-        logging.warning(
+        logger.warning(
             "Game start time is in the past (%s seconds ago), but not live yet - sleep for 30s.",
             abs(context.game_time_countdown)
         )
@@ -56,13 +57,13 @@ def preview_sleep_calculator(context: GameContext):
         preview_sleep_mins = int(actual_sleep_time / 60)
 
         if context.game_time_countdown < MIN_SLEEP_TIME:
-            logging.info(
+            logger.info(
                 "All pre-game messages sent. Game starts in %s seconds - sleeping for minimum %s seconds to avoid API spam.",
                 int(context.game_time_countdown),
                 MIN_SLEEP_TIME
             )
         else:
-            logging.info(
+            logger.info(
                 "All pre-game messages sent. Sleeping until game time (~%s minutes).",
                 preview_sleep_mins
             )
@@ -76,13 +77,13 @@ def preview_sleep_calculator(context: GameContext):
         actual_sleep_time = max(context.game_time_countdown, MIN_SLEEP_TIME)
 
         if context.game_time_countdown < MIN_SLEEP_TIME:
-            logging.info(
+            logger.info(
                 "Not all pre-game messages sent, but game starts in %s seconds - sleeping for minimum %s seconds to avoid API spam.",
                 int(context.game_time_countdown),
                 MIN_SLEEP_TIME
             )
         else:
-            logging.info(
+            logger.info(
                 "Preview sleep time is greater than game countdown - sleeping until game time (~%s seconds).",
                 int(context.game_time_countdown)
             )
@@ -91,7 +92,7 @@ def preview_sleep_calculator(context: GameContext):
         return
 
     # Scenario 4: FALLBACK - Not all pre-game messages sent and we have time
-    logging.info(
+    logger.info(
         "Not all pre-game messages are sent, sleeping for %s minutes & will try again.",
         preview_sleep_mins
     )
@@ -187,7 +188,7 @@ def calculate_season_series(
     # Check if no games were found and fallback to last season
     if len(team_games) == 0:
         last_season_id = str(int(season_id[:4]) - 1) + str(int(season_id[4:]) - 1)
-        logging.info(f"No games found for the current season. Checking last season: {last_season_id}.")
+        logger.info(f"No games found for the current season. Checking last season: {last_season_id}.")
         last_season_schedule = fetch_schedule(preferred_team_abbreviation, last_season_id)
         return calculate_season_series(
             last_season_schedule,
@@ -199,7 +200,7 @@ def calculate_season_series(
 
     # Format the record string
     record_str = f"{preferred_record['wins']}-{preferred_record['losses']}-{preferred_record['ot']}"
-    logging.info(
+    logger.info(
         f"Calculated season series record for {preferred_team_abbreviation} vs {opposing_team_abbreviation}: {record_str}"
     )
 
@@ -245,7 +246,7 @@ def generate_referees_post(context: GameContext):
     """
     Generate a social media post highlighting the referees for the game.
     """
-    logging.info("Attempting to fetch officials from NHL Gamecenter site now to generate preview post.")
+    logger.info("Attempting to fetch officials from NHL Gamecenter site now to generate preview post.")
 
     right_rail = schedule.fetch_rightrail(context.game_id)
     game_info = right_rail["gameInfo"]

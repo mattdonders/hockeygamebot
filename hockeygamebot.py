@@ -28,6 +28,7 @@ from utils.config import load_config
 from utils.status_monitor import StatusMonitor
 from utils.team_details import TEAM_DETAILS
 
+logger = logging.getLogger("hockeygamebot")
 warnings.filterwarnings(
     "ignore",
     message="The 'default' attribute.*`Field\\(\\)`",
@@ -66,7 +67,7 @@ def start_dashboard_server(port=8000, max_retries=5):
         try:
             # Try to bind to the port
             with socketserver.TCPServer(("0.0.0.0", current_port), Handler) as httpd:
-                logging.info(f"Dashboard server running at http://0.0.0.0:{current_port}/dashboard.html")
+                logger.info(f"Dashboard server running at http://0.0.0.0:{current_port}/dashboard.html")
 
                 # Write port file for easy reference
                 try:
@@ -83,14 +84,14 @@ def start_dashboard_server(port=8000, max_retries=5):
                         f.write(f"http://localhost:{current_port}/dashboard.html\n")
                         f.write(f"http://{local_ip}:{current_port}/dashboard.html\n")
 
-                    logging.info("Dashboard info written to .dashboard_port")
-                    logging.info(f"Network access: http://{local_ip}:{current_port}/dashboard.html")
+                    logger.info("Dashboard info written to .dashboard_port")
+                    logger.info(f"Network access: http://{local_ip}:{current_port}/dashboard.html")
                 except Exception as e:
-                    logging.warning(f"Could not write dashboard port file: {e}")
+                    logger.warning(f"Could not write dashboard port file: {e}")
 
                 # If we had to use a different port, warn user
                 if current_port != port:
-                    logging.warning(f"Original port {port} unavailable, using {current_port}")
+                    logger.warning(f"Original port {port} unavailable, using {current_port}")
 
                 # Start serving (this blocks)
                 httpd.serve_forever()
@@ -98,13 +99,13 @@ def start_dashboard_server(port=8000, max_retries=5):
         except OSError as e:
             if e.errno == errno.EADDRINUSE:
                 # Port is already in use, try next port
-                logging.warning(f"Port {current_port} is in use, trying {current_port + 1}")
+                logger.warning(f"Port {current_port} is in use, trying {current_port + 1}")
                 current_port += 1
                 retry_count += 1
                 continue
             else:
                 # Other OS error, log and retry after delay
-                logging.error(f"Dashboard server error: {e}", exc_info=True)
+                logger.error(f"Dashboard server error: {e}", exc_info=True)
                 retry_count += 1
                 if retry_count < max_retries:
                     import time
@@ -114,18 +115,18 @@ def start_dashboard_server(port=8000, max_retries=5):
 
         except Exception as e:
             # Unexpected error, log and retry
-            logging.error(f"Dashboard server crashed: {e}", exc_info=True)
+            logger.error(f"Dashboard server crashed: {e}", exc_info=True)
             retry_count += 1
             if retry_count < max_retries:
-                logging.info(f"Restarting dashboard server (attempt {retry_count}/{max_retries})...")
+                logger.info(f"Restarting dashboard server (attempt {retry_count}/{max_retries})...")
                 import time
 
                 time.sleep(10)
             continue
 
     # If we get here, all retries failed
-    logging.critical(f"Dashboard server failed to start after {max_retries} attempts")
-    logging.critical("Bot will continue running but dashboard will be unavailable")
+    logger.critical(f"Dashboard server failed to start after {max_retries} attempts")
+    logger.critical("Bot will continue running but dashboard will be unavailable")
 
 
 def start_game_loop(context: GameContext):
@@ -159,7 +160,7 @@ def start_game_loop(context: GameContext):
         # If we enter this function on the day of a game (before the game starts), gameState = "FUT"
         # We should send preview posts & then sleep until game time.
         if context.game_state in ["PRE", "FUT"]:
-            logging.info("Handling a preview game state: %s", context.game_state)
+            logger.info("Handling a preview game state: %s", context.game_state)
 
             # Load the Cache from GameContext
             cache = getattr(context, "cache", None)
@@ -199,9 +200,9 @@ def start_game_loop(context: GameContext):
                         cache.mark_pregame_sent("core", results)
                         cache.save()
 
-                    logging.info("Posted and seeded pre-game thread roots.")
+                    logger.info("Posted and seeded pre-game thread roots.")
                 except Exception as e:
-                    logging.exception("Failed to post preview: %s", e)
+                    logger.exception("Failed to post preview: %s", e)
 
             if not context.preview_socials.season_series_sent:
                 try:
@@ -230,9 +231,9 @@ def start_game_loop(context: GameContext):
                         cache.mark_pregame_sent("season_series")
                         cache.save()
 
-                    logging.info("Posted season series preview (threaded).")
+                    logger.info("Posted season series preview (threaded).")
                 except Exception as e:
-                    logging.exception("Failed to post season series preview: %s", e)
+                    logger.exception("Failed to post season series preview: %s", e)
 
             # Post pre-game team stats chart (reply under the same thread)
             if not context.preview_socials.team_stats_sent and context.preview_socials.core_sent:
@@ -256,11 +257,11 @@ def start_game_loop(context: GameContext):
                             cache.mark_pregame_sent("team_stats")
                             cache.save()
 
-                        logging.info("Posted pre-game team stats chart (threaded).")
+                        logger.info("Posted pre-game team stats chart (threaded).")
                     else:
-                        logging.info("No team stats chart produced; skipping.")
+                        logger.info("No team stats chart produced; skipping.")
                 except Exception as e:
-                    logging.exception("Failed to post pre-game team stats chart: %s", e)
+                    logger.exception("Failed to post pre-game team stats chart: %s", e)
 
             # Post officials (reply under the same thread)
             if not context.preview_socials.officials_sent:
@@ -278,11 +279,11 @@ def start_game_loop(context: GameContext):
                             cache.mark_pregame_sent("officials")
                             cache.save()
 
-                        logging.info("Posted officials preview (threaded).")
+                        logger.info("Posted officials preview (threaded).")
                     else:
-                        logging.info("No officials info available; skipping.")
+                        logger.info("No officials info available; skipping.")
                 except Exception as e:
-                    logging.exception("Failed to post officials preview: %s", e)
+                    logger.exception("Failed to post officials preview: %s", e)
 
             # Use our auto-sleep calculator now
             if hasattr(context, "monitor"):
@@ -290,8 +291,8 @@ def start_game_loop(context: GameContext):
             preview.preview_sleep_calculator(context)
 
         elif context.game_state in ["PRE", "LIVE", "CRIT"]:
-            logging.debug("Game Context: %s", vars(context))
-            logging.info("Handling a LIVE game state: %s", context.game_state)
+            logger.debug("Game Context: %s", vars(context))
+            logger.info("Handling a LIVE game state: %s", context.game_state)
 
             # Set status to RUNNING when actively processing game
             if hasattr(context, "monitor"):
@@ -299,7 +300,7 @@ def start_game_loop(context: GameContext):
 
             if not context.gametime_rosters_set:
                 # Get Game-Time Rosters and Combine w/ Pre-Game Rosters
-                logging.info("Getting game-time rosters and adding them to existing combined rosters.")
+                logger.info("Getting game-time rosters and adding them to existing combined rosters.")
                 game_time_rosters = rosters.load_game_rosters(context)
                 final_combined_rosters = {
                     **context.combined_roster,
@@ -313,7 +314,7 @@ def start_game_loop(context: GameContext):
 
             if context.clock.in_intermission:
                 intermission_sleep_time = context.clock.seconds_remaining
-                logging.info(
+                logger.info(
                     "Game is in intermission - sleep for the remaining time (%ss).",
                     intermission_sleep_time,
                 )
@@ -322,14 +323,14 @@ def start_game_loop(context: GameContext):
                 time.sleep(intermission_sleep_time)
             else:
                 live_sleep_time = context.config["script"]["live_sleep_time"]
-                logging.info("Sleeping for configured live game time (%ss).", live_sleep_time)
+                logger.info("Sleeping for configured live game time (%ss).", live_sleep_time)
 
                 # Now increment the counter sleep for the calculated time above
                 context.live_loop_counter += 1
                 time.sleep(live_sleep_time)
 
         elif context.game_state in ["OFF", "FINAL"]:
-            logging.info("Game is now over and / or 'Official' - run end of game functions with increased sleep time.")
+            logger.info("Game is now over and / or 'Official' - run end of game functions with increased sleep time.")
 
             # Set status to RUNNING for final game processing
             if hasattr(context, "monitor"):
@@ -338,11 +339,11 @@ def start_game_loop(context: GameContext):
             # If (for some reason) the bot was started after the end of the game
             # We need to re-run the live loop once to parse all of the events
             if not context.events:
-                logging.info("Bot started after game ended, pass livefeed into event factory to fill events.")
+                logger.info("Bot started after game ended, pass livefeed into event factory to fill events.")
 
                 if not context.gametime_rosters_set:
                     # Get Game-Time Rosters and Combine w/ Pre-Game Rosters
-                    logging.info("Getting game-time rosters and adding them to existing combined rosters.")
+                    logger.info("Getting game-time rosters and adding them to existing combined rosters.")
                     game_time_rosters = rosters.load_game_rosters(context)
                     final_combined_rosters = {
                         **context.combined_roster,
@@ -368,7 +369,7 @@ def start_game_loop(context: GameContext):
                 final_attempt += 1
                 all_content_posted = True
 
-                logging.info(f"Final content check - attempt {final_attempt}/{max_final_attempts}")
+                logger.info(f"Final content check - attempt {final_attempt}/{max_final_attempts}")
 
                 # 1. Post Final Score (should always be ready)
                 if not context.final_socials.final_score_sent:
@@ -381,11 +382,11 @@ def start_game_loop(context: GameContext):
                                 state=context.final_socials,
                             )
                             context.final_socials.final_score_sent = True
-                            logging.info("Posted and seeded final score thread roots.")
+                            logger.info("Posted and seeded final score thread roots.")
                         else:
-                            logging.warning("Final score post returned None")
+                            logger.warning("Final score post returned None")
                     except Exception as e:
-                        logging.error(f"Error posting final score: {e}", exc_info=True)
+                        logger.error(f"Error posting final score: {e}", exc_info=True)
                         if hasattr(context, "monitor"):
                             context.monitor.record_error(f"Final score post failed: {e}")
 
@@ -400,12 +401,12 @@ def start_game_loop(context: GameContext):
                                 state=context.final_socials,  # uses seeded roots/parents
                             )
                             context.final_socials.three_stars_sent = True
-                            logging.info("Posted three stars reply successfully.")
+                            logger.info("Posted three stars reply successfully.")
                         else:
-                            logging.info("⏳ Three stars not available yet, will retry")
+                            logger.info("⏳ Three stars not available yet, will retry")
                             all_content_posted = False
                     except Exception as e:
-                        logging.error(f"Error posting three stars: {e}", exc_info=True)
+                        logger.error(f"Error posting three stars: {e}", exc_info=True)
                         if hasattr(context, "monitor"):
                             context.monitor.record_error(f"Three stars post failed: {e}")
 
@@ -425,13 +426,13 @@ def start_game_loop(context: GameContext):
                                     state=context.final_socials,  # auto-picks the current parent
                                 )
                                 context.final_socials.team_stats_sent = True
-                                logging.info("Posted team stats chart reply successfully.")
+                                logger.info("Posted team stats chart reply successfully.")
                             else:
-                                logging.warning("Team stats chart returned None")
+                                logger.warning("Team stats chart returned None")
                         else:
-                            logging.warning("Team stats data not available")
+                            logger.warning("Team stats data not available")
                     except Exception as e:
-                        logging.error(f"Error posting team stats: {e}", exc_info=True)
+                        logger.error(f"Error posting team stats: {e}", exc_info=True)
                         if hasattr(context, "monitor"):
                             context.monitor.record_error(f"Team stats post failed: {e}")
 
@@ -441,7 +442,7 @@ def start_game_loop(context: GameContext):
                     and context.final_socials.three_stars_sent
                     and context.final_socials.team_stats_sent
                 ):
-                    logging.info("🎉 All final content posted successfully!")
+                    logger.info("🎉 All final content posted successfully!")
                     end_game_loop(context)
                     return  # Exit the function
 
@@ -449,7 +450,7 @@ def start_game_loop(context: GameContext):
                 if final_attempt < max_final_attempts:
                     if hasattr(context, "monitor"):
                         context.monitor.set_status("SLEEPING")
-                    logging.info(f"Waiting {final_sleep_time}s before next final content check...")
+                    logger.info(f"Waiting {final_sleep_time}s before next final content check...")
                     time.sleep(final_sleep_time)
                     if hasattr(context, "monitor"):
                         context.monitor.set_status("RUNNING")
@@ -464,14 +465,14 @@ def start_game_loop(context: GameContext):
                 missing_content.append("team stats")
 
             if missing_content:
-                logging.warning(f"⚠️  Max final attempts reached. Missing content: {', '.join(missing_content)}")
+                logger.warning(f"⚠️  Max final attempts reached. Missing content: {', '.join(missing_content)}")
                 if hasattr(context, "monitor"):
                     context.monitor.record_error(f"Incomplete final content: {', '.join(missing_content)}")
 
             end_game_loop(context)
 
         else:
-            logging.error(f"Unknown game state: {context.game_state}")
+            logger.error(f"Unknown game state: {context.game_state}")
             print(context.game_state)
             sys.exit()
 
@@ -488,17 +489,17 @@ def end_game_loop(context: GameContext):
             and state management.
     """
 
-    logging.info("#" * 80)
-    logging.info("End of the '%s' Hockey Game Bot game.", context.preferred_team.full_name)
-    logging.info(
+    logger.info("#" * 80)
+    logger.info("End of the '%s' Hockey Game Bot game.", context.preferred_team.full_name)
+    logger.info(
         "Final Score: %s: %s / %s: %s",
         context.preferred_team.full_name,
         context.preferred_team.score,
         context.other_team.full_name,
         context.other_team.score,
     )
-    logging.info("TIME: %s", datetime.now())
-    logging.info("%s\n", "#" * 80)
+    logger.info("TIME: %s", datetime.now())
+    logger.info("%s\n", "#" * 80)
     sys.exit()
 
 
@@ -518,13 +519,13 @@ def handle_is_game_today(game, target_date, preferred_team, season_id, context: 
             and state management.
     """
 
-    logging.info(f"Game found today ({target_date}):")
-    logging.info(
+    logger.info(f"Game found today ({target_date}):")
+    logger.info(
         f"  {game['awayTeam']['placeName']['default']} ({game['awayTeam']['abbrev']}) "
         f"@ {game['homeTeam']['placeName']['default']} ({game['homeTeam']['abbrev']})"
     )
-    logging.info(f"  Venue: {game['venue']['default']}")
-    logging.info(f"  Start Time (UTC): {game['startTimeUTC']}")
+    logger.info(f"  Venue: {game['venue']['default']}")
+    logger.info(f"  Start Time (UTC): {game['startTimeUTC']}")
 
     # Setup Other Team Object & Other Related Team Functions
     is_preferred_home = game["homeTeam"]["abbrev"] == preferred_team.abbreviation
@@ -575,7 +576,7 @@ def handle_is_game_today(game, target_date, preferred_team, season_id, context: 
     context.cache.load()
 
     # DEBUG Log the GameContext
-    logging.debug(f"Full Game Context: {vars(context)}")
+    logger.debug(f"Full Game Context: {vars(context)}")
 
     # Pre-Game Setup is Completed
     # Start Game Loop by passing in GameContext
@@ -597,7 +598,7 @@ def handle_was_game_yesterday(game, yesterday, context: GameContext):
     """
 
     # Log placeholder action for yesterday's game
-    logging.debug("No play-by-play parsing performed for yesterday's game.")
+    logger.debug("No play-by-play parsing performed for yesterday's game.")
 
     # Setup Other Team Object & Other Related Team Functions
     is_preferred_home = game["homeTeam"]["abbrev"] == context.preferred_team.abbreviation
@@ -622,18 +623,18 @@ def handle_was_game_yesterday(game, yesterday, context: GameContext):
     pref_team_name = context.preferred_team.full_name
     other_team_name = context.other_team.full_name
 
-    logging.info(f"Game found yesterday ({yesterday}):")
-    logging.info(
+    logger.info(f"Game found yesterday ({yesterday}):")
+    logger.info(
         f"  {game['awayTeam']['placeName']['default']} ({game['awayTeam']['abbrev']}) "
         f"@ {game['homeTeam']['placeName']['default']} ({game['homeTeam']['abbrev']})"
     )
-    logging.info(f"  Venue: {game['venue']['default']}")
-    logging.info(f"  Start Time (UTC): {game['startTimeUTC']}")
-    logging.info(
+    logger.info(f"  Venue: {game['venue']['default']}")
+    logger.info(f"  Start Time (UTC): {game['startTimeUTC']}")
+    logger.info(
         f"  Final Score - {context.preferred_team.abbreviation}: {pref_score} / {context.other_team.abbreviation}: {other_score}"
     )
 
-    logging.info("Getting Game Recap & Description")
+    logger.info("Getting Game Recap & Description")
     game_stories = schedule.fetch_stories(context.game_id)
     right_rail = schedule.fetch_rightrail(context.game_id)
     # print(game_stories)
@@ -660,11 +661,11 @@ def handle_was_game_yesterday(game, yesterday, context: GameContext):
         # TBD: Removed threading from Game Recap / Condensed posts for now
         context.social.post(message=game_recap_msg, platforms="enabled")
         context.social.post(message=game_condensed_msg, platforms="enabled")
-        logging.info("Posted Game Recap & Condensed Game Videos to Socials.")
+        logger.info("Posted Game Recap & Condensed Game Videos to Socials.")
     except Exception as e:
-        logging.exception("Failed to post recap/condensed game: %s", e)
+        logger.exception("Failed to post recap/condensed game: %s", e)
 
-    logging.info("Generating Season & L10 Team Stat Charts from Natural Stat Trick.")
+    logger.info("Generating Season & L10 Team Stat Charts from Natural Stat Trick.")
     team_season_msg = (
         f"Updated season overview & last 10 game stats after the {pref_team_name} "
         f"{game_result_str} the {other_team_name} by a score of {pref_score} to {other_score}."
@@ -687,9 +688,9 @@ def handle_was_game_yesterday(game, yesterday, context: GameContext):
             media=team_season_charts,  # list[str]; Bluesky multi-image, Threads mini-thread
             platforms="enabled",
         )
-        logging.info("Posted season charts successfully.")
+        logger.info("Posted season charts successfully.")
     except Exception as e:
-        logging.exception("Failed to post season charts: %s", e)
+        logger.exception("Failed to post season charts: %s", e)
 
 
 def main():
@@ -724,7 +725,7 @@ def main():
     # Start dashboard server in background
     dashboard_thread = threading.Thread(target=start_dashboard_server, args=(8000,), daemon=True)
     dashboard_thread.start()
-    logging.info("Dashboard server started in background")
+    logger.info("Dashboard server started in background")
 
     team_name = config.get("default", {}).get("team_name", "New Jersey Devils")
     preferred_team = Team(team_name)
@@ -735,7 +736,7 @@ def main():
     # bluesky_password = config["bluesky"][bluesky_environment]["password"]
     # bluesky_client = BlueskyClient(account=bluesky_account, password=bluesky_password, nosocial=args.nosocial)
     # bluesky_client.login()
-    # logging.info(f"Bluesky client initialized for environment: {bluesky_environment}.")
+    # logger.info(f"Bluesky client initialized for environment: {bluesky_environment}.")
 
     # Initialize unified Social Publisher (handles Bluesky + Threads)
     # Resolve social mode with clear precedence and no CLI override:
@@ -750,13 +751,13 @@ def main():
     yaml_mode_raw = script_cfg.get("post_mode")
     if yaml_mode_raw is None:
         yaml_mode_raw = script_cfg.get("mode", "prod")  # legacy
-        logging.warning("Config 'script.mode' is deprecated; use 'script.post_mode'.")
+        logger.warning("Config 'script.mode' is deprecated; use 'script.post_mode'.")
     config_mode = str(yaml_mode_raw).strip().lower()
 
     # Transitional: if the old flag is still present, warn that it's ignored.
     try:
         if getattr(args, "debugsocial", False):
-            logging.warning("Flag --debugsocial is set but ignored. Social mode no longer supports CLI debug override.")
+            logger.warning("Flag --debugsocial is set but ignored. Social mode no longer supports CLI debug override.")
     except NameError:
         # args may not exist in some contexts; ignore.
         pass
@@ -770,7 +771,7 @@ def main():
 
     debug_social_flag = social_mode == "debug"
 
-    logging.info(
+    logger.info(
         "Social mode resolved -> %s [from: ENV=%r, YAML=%r]",
         social_mode,
         env_mode or None,
@@ -790,7 +791,7 @@ def main():
         publisher.login_all()
 
     # Log exactly what the publisher is using
-    logging.info(
+    logger.info(
         "SocialPublisher initialized (mode=%s, nosocial=%s) [cli_nosocial=%s, yaml_nosocial=%s]",
         social_mode,
         publisher.nosocial,  # authoritative value used internally
@@ -835,7 +836,7 @@ def main():
     try:
         # Fetch schedule
         team_schedule = schedule.fetch_schedule(preferred_team.abbreviation, season_id)
-        logging.info(f"Fetched schedule for {team_name}.")
+        logger.info(f"Fetched schedule for {team_name}.")
 
         # Check for a game on the target date
         game_today, _ = schedule.is_game_on_date(team_schedule, target_date)
@@ -851,10 +852,10 @@ def main():
             return
 
         # No games found
-        logging.info(f"No games found for {team_name} on {target_date} or {yesterday}.")
+        logger.info(f"No games found for {team_name} on {target_date} or {yesterday}.")
 
     except Exception as e:
-        logging.error(f"Error occurred: {e}", exc_info=True)
+        logger.error(f"Error occurred: {e}", exc_info=True)
         if hasattr(context, "monitor"):
             context.monitor.record_error(str(e))
             context.monitor.set_status("ERROR")
