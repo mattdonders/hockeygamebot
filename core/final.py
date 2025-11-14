@@ -6,9 +6,10 @@ from core.models.game_context import GameContext
 import utils.others as otherutils
 import core.charts as charts
 
+logger = logging.getLogger(__name__)
 
 def final_score(context: GameContext):
-    logging.info("Starting the core Final Score work now.")
+    logger.info("Starting the core Final Score work now.")
 
     play_by_play_data = schedule.fetch_playbyplay(context.game_id)
 
@@ -37,7 +38,7 @@ def final_score(context: GameContext):
 
 
 def next_game(context: GameContext):
-    logging.info("Getting next game and formatting message.")
+    logger.info("Getting next game and formatting message.")
 
     full_schedule = schedule.fetch_schedule(context.preferred_team.abbreviation, context.season_id)
     next_game = schedule.fetch_next_game(full_schedule)
@@ -68,13 +69,13 @@ def next_game(context: GameContext):
 
 
 def three_stars(context: GameContext):
-    logging.info("Getting the three stars of the game.")
+    logger.info("Getting the three stars of the game.")
 
     landing_data = schedule.fetch_landing(context.game_id)
     three_stars = landing_data.get("summary", {}).get("threeStars")
 
     if not three_stars:
-        logging.info("3-stars have not yet posted - try again in next iteration.")
+        logger.info("3-stars have not yet posted - try again in next iteration.")
         return None
 
     first_star = next((star for star in three_stars if star["star"] == 1), None)

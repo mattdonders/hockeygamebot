@@ -1,6 +1,7 @@
 import logging
 from .base import Cache, Event
 
+logger = logging.getLogger(__name__)
 
 class FaceoffEvent(Event):
     cache = Cache(__name__)
@@ -12,7 +13,7 @@ class FaceoffEvent(Event):
         if self.time_in_period == "00:00":
             # 'Force Fail' on missing data
             if not (winning_player_name or losing_player_name):
-                logging.warning("Faceoff data not fully available - force fail & will retry next loop.")
+                logger.warning("Faceoff data not fully available - force fail & will retry next loop.")
                 return False
 
             return (

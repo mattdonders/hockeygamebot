@@ -256,4 +256,4 @@ v1-oldapi/
 v2-toomuch/
 
 # Local-only deployment scripts on PROD
-scripts/hgb-prod.sh
+scripts/

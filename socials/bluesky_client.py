@@ -19,6 +19,7 @@ from socials.types import PostRef
 
 from .base import SocialClient, SocialPost
 
+logger = logging.getLogger(__name__)
 
 @dataclass
 class BlueskyConfig:
@@ -82,10 +83,10 @@ class BlueskyClient(SocialClient):
 
             # sanity check
             self.client.get_profile(self.cfg.handle)
-            logging.info("Bluesky session restored from %s", p)
+            logger.info("Bluesky session restored from %s", p)
             return True
         except Exception as e:
-            logging.warning("Failed to restore Bluesky session (%s). Will re-login.", e)
+            logger.warning("Failed to restore Bluesky session (%s). Will re-login.", e)
             return False
 
     def _save_session(self) -> None:
@@ -99,7 +100,7 @@ class BlueskyClient(SocialClient):
         data = self.client.export_session()  # type: ignore[attr-defined]
 
         p.write_text(json.dumps(data), encoding="utf-8")
-        logging.info("Bluesky session saved to %s", p)
+        logger.info("Bluesky session saved to %s", p)
 
     def login_or_restore(self) -> None:
         if not self._load_session():

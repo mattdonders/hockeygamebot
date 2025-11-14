@@ -15,6 +15,7 @@ from .base import SocialPost
 from .bluesky_client import BlueskyClient, BlueskyConfig
 from .threads_client import ThreadsClient, ThreadsConfig
 
+logger = logging.getLogger(__name__)
 
 class SocialPublisher:
     """
@@ -91,7 +92,7 @@ class SocialPublisher:
                 try:
                     client.login_or_restore()
                 except Exception as e:
-                    logging.exception("Login/restore failed for %s: %s", name, e)
+                    logger.exception("Login/restore failed for %s: %s", name, e)
 
     # ---------- high-level API ----------
     def post(
@@ -351,10 +352,10 @@ class SocialPublisher:
     def _log_nosocial_preview(self, message: str | None) -> None:
         if message:
             preview = message.strip().replace("\n", " ")[:180]
-            logging.info(f"[NOSOCIAL] Would post → {preview}")
-            logging.debug(f"[NOSOCIAL-FULL]\n{message}")
+            logger.info(f"[NOSOCIAL] Would post → {preview}")
+            logger.debug(f"[NOSOCIAL-FULL]\n{message}")
         else:
-            logging.info("[NOSOCIAL] Would post an image-only update.")
+            logger.info("[NOSOCIAL] Would post an image-only update.")
         # Call monitor without guessing parameters
         mon = getattr(self, "monitor", None)
         if mon and hasattr(mon, "record_social_post"):
@@ -367,4 +368,4 @@ class SocialPublisher:
                     kwargs["message"] = message
                 mon.record_social_post(**kwargs)
             except Exception as e:
-                logging.warning("Monitor record failed in NOSOCIAL: %s", e)
+                logger.warning("Monitor record failed in NOSOCIAL: %s", e)

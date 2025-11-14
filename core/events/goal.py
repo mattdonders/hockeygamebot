@@ -5,6 +5,7 @@ from utils.team_details import get_team_details_by_id
 
 from .base import Cache, Event
 
+logger = logging.getLogger(__name__)
 
 class GoalEvent(Event):
     cache = Cache(__name__)
@@ -66,7 +67,7 @@ class GoalEvent(Event):
 
         # 'Force Fail' on missing data
         if not self.shot_type:
-            logging.warning("Goal data not fully available - force fail & will retry next loop.")
+            logger.warning("Goal data not fully available - force fail & will retry next loop.")
             return False
 
         # Get Video Highlight Fields
@@ -108,7 +109,7 @@ class GoalEvent(Event):
         return goal_message
 
     def check_scoring_changes(self, data: dict):
-        logging.info("Checking for scoring changes (team: %s, event ID: %s).", self.team_name, self.event_id)
+        logger.info("Checking for scoring changes (team: %s, event ID: %s).", self.team_name, self.event_id)
         details = data.get("details", {})
 
         new_scorer = details.get("scoringPlayerId")
@@ -138,17 +139,17 @@ class GoalEvent(Event):
         # Extract highlight clip URL from event_data
         highlight_clip_url = event_data.get("details", {}).get("highlightClipSharingUrl")
         if not highlight_clip_url:
-            logging.info("No highlight clip URL found for event ID %s.", event_data.get("eventId"))
+            logger.info("No highlight clip URL found for event ID %s.", event_data.get("eventId"))
             return
 
         if highlight_clip_url == "https://www.nhl.com/video/":
-            logging.info("Invalid highlight clip URL found for event ID %s.", event_data.get("eventId"))
+            logger.info("Invalid highlight clip URL found for event ID %s.", event_data.get("eventId"))
             return
 
         # Normalize and store
         highlight_clip_url = highlight_clip_url.replace("https://nhl.com", "https://www.nhl.com")
         self.highlight_clip_url = highlight_clip_url
-        logging.info("Added highlight clip URL to GoalEvent (event ID: %s).", event_data.get("eventId"))
+        logger.info("Added highlight clip URL to GoalEvent (event ID: %s).", event_data.get("eventId"))
 
         # Construct message and post as a reply within the existing goal thread (if present)
         message = f"🎥 HIGHLIGHT: {self.scoring_player_name} scores for the {self.team_name}!"
@@ -168,19 +169,19 @@ class GoalEvent(Event):
         present = any(play.get("eventId") == self.event_id for play in all_plays)
         if present:
             self.event_removal_counter = 0
-            logging.info("Goal (event ID: %s) still present in live feed.", self.event_id)
+            logger.info("Goal (event ID: %s) still present in live feed.", self.event_id)
             return False
 
         self.event_removal_counter = getattr(self, "event_removal_counter", 0) + 1
         if self.event_removal_counter < self.REMOVAL_THRESHOLD:
-            logging.info(
+            logger.info(
                 "Goal (event ID: %s) missing (check #%d). Will retry.",
                 self.event_id,
                 self.event_removal_counter,
             )
             return False
 
-        logging.warning(
+        logger.warning(
             "Goal (event ID: %s) missing for %d checks. Marking for removal.",
             self.event_id,
             self.REMOVAL_THRESHOLD,
@@ -219,7 +220,7 @@ class GoalEvent(Event):
         cache = getattr(self.context, "cache", None)
         if cache is not None and not self._post_refs:
             if cache.was_goal_posted(self.event_id):
-                logging.info(
+                logger.info(
                     "GoalEvent[%s]: initial goal already posted in a previous run; skipping re-post.",
                     self.event_id,
                 )
@@ -255,7 +256,7 @@ class GoalEvent(Event):
         try:
             if not self._post_refs:
                 # Initial post on all enabled platforms; store refs for future replies.
-                logging.info("GoalEvent[%s]: initial post across platforms.", getattr(self, "event_id", "unknown"))
+                logger.info("GoalEvent[%s]: initial post across platforms.", getattr(self, "event_id", "unknown"))
                 results = self.context.social.post(
                     message=text,
                     media=media,
@@ -273,7 +274,7 @@ class GoalEvent(Event):
                             sort_order=getattr(self, "sort_order", None),
                         )
                     except Exception as e:
-                        logging.warning(
+                        logger.warning(
                             "GoalEvent[%s]: failed to mark goal as posted in cache: %s",
                             self.event_id,
                             e,
@@ -282,13 +283,13 @@ class GoalEvent(Event):
                 for platform, ref in (results or {}).items():
                     self._post_refs[platform] = ref
                 if not results:
-                    logging.warning(
+                    logger.warning(
                         "GoalEvent[%s]: no PostRefs returned from initial post.",
                         getattr(self, "event_id", "unknown"),
                     )
             else:
                 # Reply per platform to maintain threading; update refs as we go.
-                logging.info(
+                logger.info(
                     "GoalEvent[%s]: replying to existing thread on %d platform(s).",
                     getattr(self, "event_id", "unknown"),
                     len(self._post_refs),
@@ -312,14 +313,14 @@ class GoalEvent(Event):
                     )
                     if platform in res:
                         new_refs[platform] = res[platform]
-                        logging.debug(
+                        logger.debug(
                             "GoalEvent[%s]: advanced %s thread id=%s",
                             getattr(self, "event_id", "unknown"),
                             platform,
                             res[platform].id,
                         )
                     else:
-                        logging.warning(
+                        logger.warning(
                             "GoalEvent[%s]: no reply PostRef for %s",
                             getattr(self, "event_id", "unknown"),
                             platform,
@@ -330,4 +331,4 @@ class GoalEvent(Event):
             if getattr(self.context, "logger", None):
                 self.context.logger.exception("GoalEvent post failed: %s", e)
             else:
-                logging.exception("GoalEvent post failed: %s", e)
+                logger.exception("GoalEvent post failed: %s", e)

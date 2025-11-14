@@ -3,6 +3,7 @@ from .base import Cache, Event
 from utils.others import get_player_name
 from utils.team_details import get_team_name_by_id
 
+logger = logging.getLogger(__name__)
 
 class PenaltyEvent(Event):
     cache = Cache(__name__)
@@ -29,7 +30,7 @@ class PenaltyEvent(Event):
 
         # 'Force Fail' on missing data
         if penalty_name == "minor":
-            logging.warning("Penalty data not fully available - force fail & will retry next loop.")
+            logger.warning("Penalty data not fully available - force fail & will retry next loop.")
             return False
 
         # Start constructing the penalty string

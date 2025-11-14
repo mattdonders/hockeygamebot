@@ -1,11 +1,30 @@
 import logging
-from datetime import datetime, timezone
 import os
+from datetime import datetime, timezone
 
 import pytz
+from pytz import timezone as pytz_timezone
+
 from definitions import LOGS_DIR
 
-from pytz import timezone as pytz_timezone
+logger = logging.getLogger(__name__)
+
+
+class ColoredFormatter(logging.Formatter):
+    COLORS = {
+        "DEBUG": "\033[38;5;244m",  # gray
+        "INFO": "\033[38;5;120m",  # soft mint green
+        "WARNING": "\033[38;5;221m",  # warm yellow
+        "ERROR": "\033[38;5;196m",  # bright red
+        "CRITICAL": "\033[1;38;5;196;48;5;232m",  # bold bright red on dark bg
+    }
+    RESET = "\033[0m"
+
+    def format(self, record):
+        level = record.levelname
+        if level in self.COLORS:
+            record.levelname = f"{self.COLORS[level]}{level}{self.RESET}"
+        return super().format(record)
 
 
 def setup_logging(config, console=False, debug=False):
@@ -30,11 +49,20 @@ def setup_logging(config, console=False, debug=False):
     logger_level = logging.DEBUG if debug else logging.INFO
 
     # Define logging format
-    log_format = "%(asctime)s - %(module)s.%(funcName)s (%(lineno)d) - %(levelname)s - %(message)s"
+    log_format = "%(asctime)s [%(name)s.%(funcName)s:%(lineno)d] %(levelname)s - %(message)s"
     date_format = "%Y-%m-%d %H:%M:%S"
 
     # Configure logging handlers
-    handlers = [logging.StreamHandler()] if console else [logging.FileHandler(log_file_path)]
+    handlers = []
+
+    if console:
+        handler = logging.StreamHandler()
+        handler.setFormatter(ColoredFormatter(log_format, datefmt=date_format))
+        handlers.append(handler)
+    else:
+        handler = logging.FileHandler(log_file_path)
+        handler.setFormatter(logging.Formatter(log_format, date_format))
+        handlers.append(handler)
 
     # Set up the logging configuration
     logging.basicConfig(
@@ -45,11 +73,11 @@ def setup_logging(config, console=False, debug=False):
     )
 
     # Log initialization messages
-    logging.info("Logging initialized.")
+    logger.info("Logging initialized.")
     if console:
-        logging.info("Logging to console.")
+        logger.info("Logging to console.")
     else:
-        logging.info(f"Logging to file: {log_file_path}")
+        logger.info(f"Logging to file: {log_file_path}")
 
 
 def log_startup_info(args, config):
@@ -60,22 +88,22 @@ def log_startup_info(args, config):
         args (Namespace): The parsed arguments.
         config (dict): The configuration dictionary.
     """
-    logging.info("#" * 80)
-    logging.info("New instance of the Hockey Game Bot started.")
-    logging.info("TIME: %s", datetime.now())
-    logging.info("Startup Parameters:")
+    logger.info("#" * 80)
+    logger.info("New instance of the Hockey Game Bot started.")
+    logger.info("TIME: %s", datetime.now())
+    logger.info("Startup Parameters:")
 
     # Log all argument values dynamically
     for arg, value in vars(args).items():
-        logging.info(f"  ARG - {arg}: {value}")
+        logger.info(f"  ARG - {arg}: {value}")
 
     # Log social media flags
-    logging.info("Social Media Configurations:")
+    logger.info("Social Media Configurations:")
     socials_config = config.get("socials", {})
     for platform, enabled in socials_config.items():
-        logging.info(f"  SOCIAL - {platform}: {enabled}")
+        logger.info(f"  SOCIAL - {platform}: {enabled}")
 
-    logging.info("#" * 80)
+    logger.info("#" * 80)
 
 
 def ordinal(n):

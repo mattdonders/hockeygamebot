@@ -5,6 +5,7 @@ from core.events.text_utils import period_label, period_label_playoffs
 from core.models.game_context import GameContext
 from utils.others import ordinal
 
+logger = logging.getLogger(__name__)
 
 class Cache:
     """
@@ -170,7 +171,7 @@ class Event:
         # If parse() returned None or an empty string, there is nothing to post.
         if not message or not str(message).strip():
             # This can happen for GenericEvent and other “silent” events.
-            logging.debug(
+            logger.debug(
                 "post_message: no text for %s (event_id=%s, type=%s) — skipping.",
                 self.__class__.__name__,
                 getattr(self, "event_id", None),
@@ -215,7 +216,7 @@ class Event:
             )
         except Exception as e:
             # Never crash event parsing
-            logging.exception("Social post failed: %s", e)
+            logger.exception("Social post failed: %s", e)
 
     def post_message_old(
         self,

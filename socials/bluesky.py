@@ -7,6 +7,7 @@ import httpx
 from atproto import Client, client_utils, models
 from PIL import Image
 
+logger = logging.getLogger(__name__)
 _META_PATTERN = re.compile(r'<meta property="og:.*?>')
 _CONTENT_PATTERN = re.compile(r'<meta[^>]+content="([^"]+)"')
 
@@ -170,15 +171,15 @@ class BlueskyClient:
 
         # Validation for Empty Messages or non-strings
         if not message:
-            logging.warning("Attempted to post empty/None message to Bluesky - skipping")
+            logger.warning("Attempted to post empty/None message to Bluesky - skipping")
             return None
 
         if not isinstance(message, str):
-            logging.error(f"Invalid message type: {type(message).__name__}. Expected str.")
+            logger.error(f"Invalid message type: {type(message).__name__}. Expected str.")
             return None
 
         if self.nosocial:
-            logging.info(f"[NOSOCIAL] {message}")
+            logger.info(f"[NOSOCIAL] {message}")
             # Track social post in monitor (even in nosocial mode for testing)
             if hasattr(self, 'monitor') and self.monitor:
                 self.monitor.record_social_post()
@@ -206,7 +207,7 @@ class BlueskyClient:
 
         # Sort matches by their start position
         matches = sorted(matches, key=lambda x: x["start"])
-        logging.debug(f"Bluesky Text Builder Matches: {matches}")
+        logger.debug(f"Bluesky Text Builder Matches: {matches}")
 
         # Process the message based on matches
         last_pos = 0  # Tracks the end of the last processed segment
@@ -231,7 +232,7 @@ class BlueskyClient:
         # Debugging TextBuilder facets
         if hasattr(text_builder, "_facets"):
             for i, facet in enumerate(text_builder._facets):
-                logging.debug(f"Facet {i}: {facet}")
+                logger.debug(f"Facet {i}: {facet}")
 
         # If Link is True, Add External Embed
         if link:

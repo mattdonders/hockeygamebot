@@ -9,6 +9,7 @@ from definitions import IMAGES_DIR
 from utils.team_details import TEAM_DETAILS
 import utils.others as otherutils
 
+logger = logging.getLogger(__name__)
 
 def generate_split_barchart(context: GameContext, game_title, stats):
     """
@@ -58,7 +59,7 @@ def generate_split_barchart(context: GameContext, game_title, stats):
 
     # Check if the DataFrame is empty
     if df_percentage.empty:
-        logging.error("generate_percentage_split_barchart: DataFrame is empty. No data to plot.")
+        logger.error("generate_percentage_split_barchart: DataFrame is empty. No data to plot.")
         return None
 
     overview_fig, ax1 = plt.subplots(1, 1, figsize=(10, 5))
@@ -172,7 +173,7 @@ def generate_split_barchart(context: GameContext, game_title, stats):
         return file_path
 
     except Exception as e:
-        logging.error(f"generate_percentage_split_barchart: Failed to generate chart. Error: {e}")
+        logger.error(f"generate_percentage_split_barchart: Failed to generate chart. Error: {e}")
         plt.close(overview_fig)
         return None
 
