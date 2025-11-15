@@ -38,6 +38,7 @@ class Team(object):
 
         # Populate attributes from the team details
         self.full_name = team_data["full_name"]
+        self.short_name = team_data["short_name"]
         self.abbreviation = team_data["abbreviation"]
         self.hashtag = team_data["hashtag"]
         self.timezone = team_data["timezone"]

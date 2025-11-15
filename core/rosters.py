@@ -1,15 +1,12 @@
-import os
-import json
-import requests
-
-
-import os
 import json
 import logging
+import os
 from datetime import datetime, timedelta
+
 import requests
 
 logger = logging.getLogger(__name__)
+
 
 def load_roster(team_abbreviation: str, season_id: int):
     """
@@ -52,9 +49,7 @@ def load_roster(team_abbreviation: str, season_id: int):
 
         return roster
     else:
-        error_message = (
-            f"Failed to fetch roster for {team_abbreviation}. " f"Status Code: {response.status_code}"
-        )
+        error_message = f"Failed to fetch roster for {team_abbreviation}. " f"Status Code: {response.status_code}"
         logger.error(error_message)
         raise Exception(error_message)
 
@@ -90,13 +85,8 @@ def flatten_roster(roster_data):
     Flatten roster data from 'forwards', 'defensemen', and 'goalies' sections into a single list.
     Extract the 'default' key for each player's firstName and lastName.
     """
-    all_players = (
-        roster_data.get("forwards", []) + roster_data.get("defensemen", []) + roster_data.get("goalies", [])
-    )
-    return {
-        player["id"]: f"{player['firstName']['default']} {player['lastName']['default']}"
-        for player in all_players
-    }
+    all_players = roster_data.get("forwards", []) + roster_data.get("defensemen", []) + roster_data.get("goalies", [])
+    return {player["id"]: f"{player['firstName']['default']} {player['lastName']['default']}" for player in all_players}
 
 
 def load_combined_roster(game, preferred_team, other_team, season_id):

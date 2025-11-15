@@ -1,16 +1,17 @@
-from datetime import datetime, timezone
 import logging
 import time
+from datetime import datetime, timezone
 
 import requests
 
 from core import schedule
 from core.models.game_context import GameContext
+from core.schedule import fetch_schedule
 from utils.others import categorize_broadcasts, clock_emoji, convert_utc_to_localteam
 from utils.team_details import TEAM_DETAILS
-from core.schedule import fetch_schedule
 
 logger = logging.getLogger(__name__)
+
 
 def sleep_until_game_start(start_time_utc):
     """
@@ -45,7 +46,7 @@ def preview_sleep_calculator(context: GameContext):
     if context.game_time_countdown < 0:
         logger.warning(
             "Game start time is in the past (%s seconds ago), but not live yet - sleep for 30s.",
-            abs(context.game_time_countdown)
+            abs(context.game_time_countdown),
         )
         time.sleep(30)
         return
@@ -60,13 +61,10 @@ def preview_sleep_calculator(context: GameContext):
             logger.info(
                 "All pre-game messages sent. Game starts in %s seconds - sleeping for minimum %s seconds to avoid API spam.",
                 int(context.game_time_countdown),
-                MIN_SLEEP_TIME
+                MIN_SLEEP_TIME,
             )
         else:
-            logger.info(
-                "All pre-game messages sent. Sleeping until game time (~%s minutes).",
-                preview_sleep_mins
-            )
+            logger.info("All pre-game messages sent. Sleeping until game time (~%s minutes).", preview_sleep_mins)
 
         time.sleep(actual_sleep_time)
         return
@@ -80,22 +78,19 @@ def preview_sleep_calculator(context: GameContext):
             logger.info(
                 "Not all pre-game messages sent, but game starts in %s seconds - sleeping for minimum %s seconds to avoid API spam.",
                 int(context.game_time_countdown),
-                MIN_SLEEP_TIME
+                MIN_SLEEP_TIME,
             )
         else:
             logger.info(
                 "Preview sleep time is greater than game countdown - sleeping until game time (~%s seconds).",
-                int(context.game_time_countdown)
+                int(context.game_time_countdown),
             )
 
         time.sleep(actual_sleep_time)
         return
 
     # Scenario 4: FALLBACK - Not all pre-game messages sent and we have time
-    logger.info(
-        "Not all pre-game messages are sent, sleeping for %s minutes & will try again.",
-        preview_sleep_mins
-    )
+    logger.info("Not all pre-game messages are sent, sleeping for %s minutes & will try again.", preview_sleep_mins)
     time.sleep(preview_sleep_time)
 
 
@@ -208,9 +203,63 @@ def calculate_season_series(
     return record_str, last_season
 
 
-def format_season_series_post(
-    schedule, preferred_team_abbreviation, opposing_team_abbreviation, context: GameContext
-):
+def calculate_last_n_record(team_schedule, team_abbreviation: str, n: int = 5) -> str:
+    """
+    Calculate a W-L-OT record for the last N completed games for a team.
+
+    Uses the same win/loss/OT logic as calculate_season_series, but across
+    all completed games in the given schedule.
+    """
+    games = []
+
+    for game in team_schedule.get("games", []):
+        # Skip future/preview games
+        if game["gameState"] in ["FUT", "PREVIEW"]:
+            continue
+
+        home_team = game["homeTeam"]["abbrev"]
+        away_team = game["awayTeam"]["abbrev"]
+
+        if team_abbreviation not in [home_team, away_team]:
+            continue
+
+        games.append(game)
+
+    # Sort by start time so we can take the most recent N
+    games.sort(key=lambda g: g.get("startTimeUTC", ""))
+
+    if not games:
+        return "0-0-0"
+
+    recent_games = games[-n:]
+
+    record = {"wins": 0, "losses": 0, "ot": 0}
+
+    for game in recent_games:
+        home_team = game["homeTeam"]["abbrev"]
+        away_team = game["awayTeam"]["abbrev"]
+
+        if home_team == team_abbreviation:
+            team_score = game["homeTeam"]["score"]
+            opp_score = game["awayTeam"]["score"]
+        else:
+            team_score = game["awayTeam"]["score"]
+            opp_score = game["homeTeam"]["score"]
+
+        extra_time = game["gameOutcome"]["lastPeriodType"] != "REG"
+
+        if team_score > opp_score:
+            record["wins"] += 1
+        elif team_score < opp_score:
+            if extra_time:
+                record["ot"] += 1
+            else:
+                record["losses"] += 1
+
+    return f"{record['wins']}-{record['losses']}-{record['ot']}"
+
+
+def format_season_series_post(schedule, preferred_team_abbreviation, opposing_team_abbreviation, context: GameContext):
     """
     Format a social media post with the season series record.
 
@@ -242,6 +291,90 @@ def format_season_series_post(
         )
 
 
+def format_x_pregame_post(game, context: GameContext) -> str:
+    """
+    Format the X-only pre-game post.
+
+    Final structure (example):
+
+    🆚 Tune in tonight when the Washington Capitals take on the New Jersey Devils at Capital One Arena.
+
+    Matchup Notes 👇
+
+    Season Series: 0–0–1
+    Last 5 NJD: 3–1–1
+    Last 5 WSH: 2–3–0
+
+    🕖 07:00 PM
+    📺 MNMT • MSGSN
+    #️⃣ #NJDevils 🏒 | #NJDvsWSH
+    """
+    preferred_abbr = context.preferred_team.abbreviation
+    other_abbr = context.other_team.abbreviation
+
+    # Full team names for the core sentence
+    away_team = f"{game['awayTeam']['placeName']['default']} {game['awayTeam']['commonName']['default']}"
+    home_team = f"{game['homeTeam']['placeName']['default']} {game['homeTeam']['commonName']['default']}"
+    venue = game["venue"]["default"]
+    start_time_utc = game["startTimeUTC"]
+
+    # Schedules for both teams
+    preferred_schedule = fetch_schedule(preferred_abbr, context.season_id)
+    other_schedule = fetch_schedule(other_abbr, context.season_id)
+
+    # Season series (reuses existing logic, including last-season fallback)
+    series_record, last_season = calculate_season_series(
+        preferred_schedule,
+        preferred_abbr,
+        other_abbr,
+        context.season_id,
+    )
+
+    # Label makes last-season fallback obvious but still short
+    series_label = "Season Series" if not last_season else "Season Series (last season)"
+    series_line = f"{series_label}: {series_record}"
+
+    # Last 5 for each team (overall, not head-to-head)
+    preferred_last5 = calculate_last_n_record(preferred_schedule, preferred_abbr, n=5)
+    other_last5 = calculate_last_n_record(other_schedule, other_abbr, n=5)
+
+    last5_preferred_line = f"Last 5 {preferred_abbr}: {preferred_last5}"
+    last5_other_line = f"Last 5 {other_abbr}: {other_last5}"
+
+    # Game time + TV
+    game_time_local = convert_utc_to_localteam(start_time_utc, context.preferred_team.timezone)
+
+    # Correct clock emoji based on local time string
+    clock = clock_emoji(game_time_local)
+
+    broadcasts = game.get("tvBroadcasts", [])
+    local_broadcasts, national_broadcasts = categorize_broadcasts(broadcasts)
+    if local_broadcasts or national_broadcasts:
+        broadcast_info = " • ".join(local_broadcasts + national_broadcasts)
+    else:
+        broadcast_info = "TBD"
+
+    time_line = f"{clock} {game_time_local}"
+    tv_line = f"📺 {broadcast_info}"
+    hashtag_line = f"#️⃣ {context.preferred_team.hashtag} | {context.game_hashtag}"
+
+    # Core sentence with VS emoji at the front (no separate header line)
+    core_line = f"🆚 Tune in {context.game_time_of_day} when the {home_team} " f"take on the {away_team} at {venue}."
+
+    # Body: season series + last 5s
+    body = "\n".join(
+        [
+            series_line,
+            last5_preferred_line,
+            last5_other_line,
+        ]
+    )
+
+    post = f"{core_line}\n\n" "Matchup Notes 👇\n\n" f"{body}\n\n" f"{time_line}\n" f"{tv_line}\n" f"{hashtag_line}"
+
+    return post
+
+
 def generate_referees_post(context: GameContext):
     """
     Generate a social media post highlighting the referees for the game.
@@ -256,9 +389,7 @@ def generate_referees_post(context: GameContext):
     if referees and linesmen:
         r_string = "\n".join([f"R: {r['default']}" for r in referees])
         l_string = "\n".join([f"R: {l['default']}" for l in linesmen])
-        officials_string = (
-            f"The officials for {context.game_time_of_day}'s game are:\n\n{r_string}\n{l_string}"
-        )
+        officials_string = f"The officials for {context.game_time_of_day}'s game are:\n\n{r_string}\n{l_string}"
         return officials_string
 
     return None

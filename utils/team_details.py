@@ -1,6 +1,7 @@
 TEAM_DETAILS = {
     "NJD": {
         "full_name": "New Jersey Devils",
+        "short_name": "Devils",
         "hashtag": "#NJDevils",
         "timezone": "America/New_York",
         "team_id": 1,
@@ -11,6 +12,7 @@ TEAM_DETAILS = {
     },
     "CAR": {
         "full_name": "Carolina Hurricanes",
+        "short_name": "Hurricanes",
         "hashtag": "#LetsGoCanes",
         "timezone": "America/New_York",
         "team_id": 12,
@@ -21,6 +23,7 @@ TEAM_DETAILS = {
     },
     "WSH": {
         "full_name": "Washington Capitals",
+        "short_name": "Capitals",
         "hashtag": "#ALLCAPS",
         "timezone": "America/New_York",
         "team_id": 15,
@@ -31,6 +34,7 @@ TEAM_DETAILS = {
     },
     "NYI": {
         "full_name": "New York Islanders",
+        "short_name": "Islanders",
         "hashtag": "#Isles",
         "timezone": "America/New_York",
         "team_id": 2,
@@ -41,6 +45,7 @@ TEAM_DETAILS = {
     },
     "TBL": {
         "full_name": "Tampa Bay Lightning",
+        "short_name": "Lightning",
         "hashtag": "#GoBolts",
         "timezone": "America/New_York",
         "team_id": 14,
@@ -51,6 +56,7 @@ TEAM_DETAILS = {
     },
     "NYR": {
         "full_name": "New York Rangers",
+        "short_name": "Rangers",
         "hashtag": "#NYR",
         "timezone": "America/New_York",
         "team_id": 3,
@@ -61,6 +67,7 @@ TEAM_DETAILS = {
     },
     "PHI": {
         "full_name": "Philadelphia Flyers",
+        "short_name": "Flyers",
         "hashtag": "#FueledByPhilly",
         "timezone": "America/New_York",
         "team_id": 4,
@@ -71,6 +78,7 @@ TEAM_DETAILS = {
     },
     "PIT": {
         "full_name": "Pittsburgh Penguins",
+        "short_name": "Penguins",
         "hashtag": "#LetsGoPens",
         "timezone": "America/New_York",
         "team_id": 5,
@@ -81,6 +89,7 @@ TEAM_DETAILS = {
     },
     "BOS": {
         "full_name": "Boston Bruins",
+        "short_name": "Bruins",
         "hashtag": "#NHLBruins",
         "timezone": "America/New_York",
         "team_id": 6,
@@ -91,6 +100,7 @@ TEAM_DETAILS = {
     },
     "BUF": {
         "full_name": "Buffalo Sabres",
+        "short_name": "Sabres",
         "hashtag": "#LetsGoBuffalo",
         "timezone": "America/New_York",
         "team_id": 7,
@@ -101,6 +111,7 @@ TEAM_DETAILS = {
     },
     "TOR": {
         "full_name": "Toronto Maple Leafs",
+        "short_name": "Maple Leafs",
         "hashtag": "#LeafsForever",
         "timezone": "America/Toronto",
         "team_id": 10,
@@ -111,6 +122,7 @@ TEAM_DETAILS = {
     },
     "MTL": {
         "full_name": "Montreal Canadiens",
+        "short_name": "Canadiens",
         "hashtag": "#GoHabsGo",
         "timezone": "America/Toronto",
         "team_id": 8,
@@ -121,6 +133,7 @@ TEAM_DETAILS = {
     },
     "OTT": {
         "full_name": "Ottawa Senators",
+        "short_name": "Senators",
         "hashtag": "#GoSensGo",
         "timezone": "America/Toronto",
         "team_id": 9,
@@ -131,6 +144,7 @@ TEAM_DETAILS = {
     },
     "FLA": {
         "full_name": "Florida Panthers",
+        "short_name": "Panthers",
         "hashtag": "#TimeToHunt",
         "timezone": "America/New_York",
         "team_id": 13,
@@ -141,6 +155,7 @@ TEAM_DETAILS = {
     },
     "DET": {
         "full_name": "Detroit Red Wings",
+        "short_name": "Red Wings",
         "hashtag": "#LGRW",
         "timezone": "America/Detroit",
         "team_id": 17,
@@ -151,6 +166,7 @@ TEAM_DETAILS = {
     },
     "CBJ": {
         "full_name": "Columbus Blue Jackets",
+        "short_name": "Blue Jackets",
         "hashtag": "#CBJ",
         "timezone": "America/New_York",
         "team_id": 29,
@@ -161,6 +177,7 @@ TEAM_DETAILS = {
     },
     "CHI": {
         "full_name": "Chicago Blackhawks",
+        "short_name": "Blackhawks",
         "hashtag": "#Blackhawks",
         "timezone": "America/Chicago",
         "team_id": 16,
@@ -171,6 +188,7 @@ TEAM_DETAILS = {
     },
     "STL": {
         "full_name": "St. Louis Blues",
+        "short_name": "Blues",
         "hashtag": "#stlblues",
         "timezone": "America/Chicago",
         "team_id": 19,
@@ -181,6 +199,7 @@ TEAM_DETAILS = {
     },
     "NSH": {
         "full_name": "Nashville Predators",
+        "short_name": "Predators",
         "hashtag": "#Preds",
         "timezone": "America/Chicago",
         "team_id": 18,
@@ -191,6 +210,7 @@ TEAM_DETAILS = {
     },
     "DAL": {
         "full_name": "Dallas Stars",
+        "short_name": "Stars",
         "hashtag": "#TexasHockey",
         "timezone": "America/Chicago",
         "team_id": 25,
@@ -201,6 +221,7 @@ TEAM_DETAILS = {
     },
     "COL": {
         "full_name": "Colorado Avalanche",
+        "short_name": "Avalanche",
         "hashtag": "#GoAvsGo",
         "timezone": "America/Denver",
         "team_id": 21,
@@ -211,6 +232,7 @@ TEAM_DETAILS = {
     },
     "WPG": {
         "full_name": "Winnipeg Jets",
+        "short_name": "Jets",
         "hashtag": "#GoJetsGo",
         "timezone": "America/Winnipeg",
         "team_id": 52,
@@ -221,6 +243,7 @@ TEAM_DETAILS = {
     },
     "MIN": {
         "full_name": "Minnesota Wild",
+        "short_name": "Wild",
         "hashtag": "#mnwild",
         "timezone": "America/Chicago",
         "team_id": 30,
@@ -231,6 +254,7 @@ TEAM_DETAILS = {
     },
     "VAN": {
         "full_name": "Vancouver Canucks",
+        "short_name": "Canucks",
         "hashtag": "#Canucks",
         "timezone": "America/Vancouver",
         "team_id": 23,
@@ -241,6 +265,7 @@ TEAM_DETAILS = {
     },
     "EDM": {
         "full_name": "Edmonton Oilers",
+        "short_name": "Oilers",
         "hashtag": "#LetsGoOilers",
         "timezone": "America/Edmonton",
         "team_id": 22,
@@ -251,6 +276,7 @@ TEAM_DETAILS = {
     },
     "CGY": {
         "full_name": "Calgary Flames",
+        "short_name": "Flames",
         "hashtag": "#Flames",
         "timezone": "America/Edmonton",
         "team_id": 20,
@@ -261,6 +287,7 @@ TEAM_DETAILS = {
     },
     "LAK": {
         "full_name": "Los Angeles Kings",
+        "short_name": "Kings",
         "hashtag": "#GoKingsGo",
         "timezone": "America/Los_Angeles",
         "team_id": 26,
@@ -271,6 +298,7 @@ TEAM_DETAILS = {
     },
     "ANA": {
         "full_name": "Anaheim Ducks",
+        "short_name": "Ducks",
         "hashtag": "#FlyTogether",
         "timezone": "America/Los_Angeles",
         "team_id": 24,
@@ -281,6 +309,7 @@ TEAM_DETAILS = {
     },
     "SJS": {
         "full_name": "San Jose Sharks",
+        "short_name": "Sharks",
         "hashtag": "#SJSharks",
         "timezone": "America/Los_Angeles",
         "team_id": 28,
@@ -291,6 +320,7 @@ TEAM_DETAILS = {
     },
     "SEA": {
         "full_name": "Seattle Kraken",
+        "short_name": "Kraken",
         "hashtag": "#SeaKraken",
         "timezone": "America/Los_Angeles",
         "team_id": 55,
@@ -301,6 +331,7 @@ TEAM_DETAILS = {
     },
     "VGK": {
         "full_name": "Vegas Golden Knights",
+        "short_name": "Golden Knights",
         "hashtag": "#VegasBorn",
         "timezone": "America/Los_Angeles",
         "team_id": 54,
@@ -310,8 +341,9 @@ TEAM_DETAILS = {
         "secondary_text_color": "#FFFFFF",
     },
     "UTA": {
-        "full_name": "Utah Hockey Club",
-        "hashtag": "#UtahHC",
+        "full_name": "Utah Mammoth",
+        "short_name": "Mammoth",
+        "hashtag": "#TusksUp",
         "timezone": "America/Denver",
         "team_id": 59,
         "primary_color": "#71AFE5",
