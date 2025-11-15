@@ -14,8 +14,10 @@ from socials.types import PostRef
 from .base import SocialPost
 from .bluesky_client import BlueskyClient, BlueskyConfig
 from .threads_client import ThreadsClient, ThreadsConfig
+from .x_client import XClient, XConfig
 
 logger = logging.getLogger(__name__)
+
 
 class SocialPublisher:
     """
@@ -54,7 +56,7 @@ class SocialPublisher:
         self.monitor = monitor
         self.socials = self.cfg.get("socials", {}) or {}
 
-        # Instantiate enabled clients
+        # Bluesky
         self._bsky = None
         if self.socials.get("bluesky", False):
             bc = self.cfg["bluesky"][self.mode]
@@ -66,6 +68,7 @@ class SocialPublisher:
                 )
             )
 
+        # Threads
         self._thr = None
         if self.socials.get("threads", False):
             tc = self.cfg["threads"][self.mode]
@@ -74,12 +77,27 @@ class SocialPublisher:
                 root_cfg=self.cfg,  # used for image hosting by Threads client
             )
 
+        # X / Twitter
+        self._x = None
+        if self.socials.get("x", False) or self.socials.get("twitter", False):
+            xc = self.cfg["x"][self.mode]
+            self._x = XClient(
+                XConfig(
+                    consumer_key=xc["consumer_key"],
+                    consumer_secret=xc["consumer_secret"],
+                    access_token=xc["access_token"],
+                    access_token_secret=xc["access_token_secret"],
+                )
+            )
+
         # Registry of active platforms
         self._platforms: dict[str, object] = {}
         if self._bsky:
             self._platforms["bluesky"] = self._bsky
         if self._thr:
             self._platforms["threads"] = self._thr
+        if self._x:
+            self._platforms["x"] = self._x
 
         # Per-platform “last reply anchor”
         self._last: Dict[str, PostRef] = {}
@@ -111,12 +129,22 @@ class SocialPublisher:
         """
         # NOSOCIAL centrally
         if self.nosocial:
-            self._log_nosocial_preview(message)
-
-            # Simulate refs for each enabled/target platform so callers can seed state/anchors
+            targets = self._resolve_targets(platforms)
             results: dict[str, PostRef] = {}
-            for name in self._resolve_targets(platforms):
+
+            for name in targets:
+                # Per-platform logging
+                if message:
+                    preview = message.strip().replace("\n", " ")[:180]
+                    logger.info("[NOSOCIAL] (%s) Would post → %s", name, preview)
+                    logger.debug("[NOSOCIAL-FULL] (%s)\n%s", name, message)
+                else:
+                    logger.info("[NOSOCIAL] (%s) Would post an image-only update.", name)
+
                 results[name] = PostRef(platform=name, id=f"nosocial-{uuid4()}")
+
+            # Keep the monitor behavior
+            self._log_nosocial_preview(message)
             return results
 
         targets = self._resolve_targets(platforms)
@@ -168,17 +196,22 @@ class SocialPublisher:
         Advances both the publisher anchors and 'state' parents if provided.
         """
         if self.nosocial:
-            self._log_nosocial_preview(message)
+            targets = self._resolve_targets(platforms)
             results: dict[str, PostRef] = {}
 
-            # Simulate refs for each enabled/target platform so callers can seed state/anchors
-            for name in self._resolve_targets(platforms):
-                ref = PostRef(platform=name, id=f"nosocial-{uuid4()}")
-                results[name] = ref
-                # Advance publisher anchor and (optionally) state parent just like real replies
-                self._last[name] = ref
-                if state is not None:
-                    self._set_state_parent(state, name, ref)
+            for name in targets:
+                # Per-platform logging
+                if message:
+                    preview = message.strip().replace("\n", " ")[:180]
+                    logger.info("[NOSOCIAL] (%s) Would reply → %s", name, preview)
+                    logger.debug("[NOSOCIAL-FULL] (%s)\n%s", name, message)
+                else:
+                    logger.info("[NOSOCIAL] (%s) Would reply with image-only update.", name)
+
+                results[name] = PostRef(platform=name, id=f"nosocial-{uuid4()}")
+
+            # Keep monitor behavior unchanged
+            self._log_nosocial_preview(message)
             return results
 
         targets = self._resolve_targets(platforms)
@@ -350,20 +383,14 @@ class SocialPublisher:
 
     # ---------- NOSOCIAL logging ----------
     def _log_nosocial_preview(self, message: str | None) -> None:
-        if message:
-            preview = message.strip().replace("\n", " ")[:180]
-            logger.info(f"[NOSOCIAL] Would post → {preview}")
-            logger.debug(f"[NOSOCIAL-FULL]\n{message}")
-        else:
-            logger.info("[NOSOCIAL] Would post an image-only update.")
-        # Call monitor without guessing parameters
+        # Keep monitor behavior the same
         mon = getattr(self, "monitor", None)
         if mon and hasattr(mon, "record_social_post"):
             try:
-                # Introspect to avoid arg mismatches
+                import inspect
+
                 sig = inspect.signature(mon.record_social_post)
                 kwargs = {}
-                # Only pass kwargs that the monitor method actually accepts
                 if "message" in sig.parameters and message:
                     kwargs["message"] = message
                 mon.record_social_post(**kwargs)

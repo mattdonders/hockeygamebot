@@ -145,6 +145,9 @@ def start_game_loop(context: GameContext):
     # START THE MAIN LOOP
     # ------------------------------------------------------------------------------
 
+    NON_X_PLATFORMS = ["bluesky", "threads"]
+    X_PLATFORMS = ["x"]
+
     while True:
         # Every loop, update game state so the logic below works for switching between them
         updated_game_state = schedule.fetch_game_state(context.game_id)
@@ -184,13 +187,14 @@ def start_game_loop(context: GameContext):
                     context.social.restore_roots_from_cache(roots, state=context.preview_socials)
 
             # Generate and post the game time preview
+            context.preview_socials.team_stats_sent = False
             if not context.preview_socials.core_sent:
                 game_time_post = preview.format_future_game_post(context.game, context)
                 try:
                     # Handles posting + seeding thread roots automatically
                     results = context.social.post_and_seed(
                         message=game_time_post,
-                        platforms="enabled",
+                        platforms=NON_X_PLATFORMS,
                         state=context.preview_socials,
                     )
                     context.preview_socials.core_sent = True
@@ -221,7 +225,7 @@ def start_game_loop(context: GameContext):
                     # Reply into the existing pre-game thread on all enabled platforms
                     context.social.reply(
                         message=season_series_post,
-                        platforms="enabled",
+                        platforms=NON_X_PLATFORMS,
                         state=context.preview_socials,  # keeps roots/parents advancing
                     )
 
@@ -235,29 +239,58 @@ def start_game_loop(context: GameContext):
                 except Exception as e:
                     logger.exception("Failed to post season series preview: %s", e)
 
+            # Post pre-game team stats chart:
+            #   - threaded reply on non-X
+            #   - standalone, X-specific pre-game tweet on X
+
             # Post pre-game team stats chart (reply under the same thread)
-            if not context.preview_socials.team_stats_sent and context.preview_socials.core_sent:
+            logger.info(
+                "Pregame team-stats gate: core_sent=%s, season_series_sent=%s, "
+                "team_stats_sent=%s, enabled_platforms=%s",
+                getattr(context.preview_socials, "core_sent", None),
+                getattr(context.preview_socials, "season_series_sent", None),
+                getattr(context.preview_socials, "team_stats_sent", None),
+                getattr(context.social, "enabled_platforms", None),
+            )
+
+            if not context.preview_socials.team_stats_sent:
                 try:
+                    logger.info("Entering pre-game team stats block for game_id=%s", context.game_id)
+
                     right_rail_data = schedule.fetch_rightrail(context.game_id)
                     teamstats_data = right_rail_data.get("teamSeasonStats")
                     chart_path = teamstats_chart(context, teamstats_data, ingame=False)
 
                     if chart_path:
-                        msg = f"Pre-game team stats for {context.game_time_of_day}'s game."
+                        # Non-X: reply in the existing pre-game thread
+                        msg_non_x = f"Pre-game team stats for {context.game_time_of_day}'s game."
                         context.social.reply(
-                            message=msg,
+                            message=msg_non_x,
                             media=chart_path,
-                            platforms="enabled",
+                            platforms=NON_X_PLATFORMS,
                             alt_text="Pre-game team stats comparison",
                             state=context.preview_socials,
                         )
+
+                        # X: standalone, X-specific pre-game post with the same chart
+                        try:
+                            x_msg = preview.format_x_pregame_post(context.game, context)
+                            context.social.post(
+                                message=x_msg,
+                                media=chart_path,
+                                platforms=X_PLATFORMS,
+                            )
+                            logger.info("Posted X-specific pre-game tweet with team stats chart.")
+                        except Exception as e:
+                            logger.exception("Failed to post X-specific pre-game tweet: %s", e)
+
                         context.preview_socials.team_stats_sent = True
 
                         if cache is not None:
                             cache.mark_pregame_sent("team_stats")
                             cache.save()
 
-                        logger.info("Posted pre-game team stats chart (threaded).")
+                        logger.info("Posted pre-game team stats chart to non-X platforms.")
                     else:
                         logger.info("No team stats chart produced; skipping.")
                 except Exception as e:
@@ -270,7 +303,7 @@ def start_game_loop(context: GameContext):
                     if officials_post:
                         context.social.reply(
                             message=officials_post,
-                            platforms="enabled",
+                            platforms=NON_X_PLATFORMS,
                             state=context.preview_socials,  # keeps roots/parents advancing
                         )
                         context.preview_socials.officials_sent = True
@@ -657,13 +690,16 @@ def handle_was_game_yesterday(game, yesterday, context: GameContext):
     game_recap_msg = f"{game_headline}\n\nGame Recap: {game_recap_url}"
     game_condensed_msg = f"{game_summary}\n\nCondensed Game: {game_condensed_url}"
 
+    # FORNOW: Bluesky + Threads (Non-X Platforms) get separate recap / condensed posts
+    non_x_platforms = ["bluesky", "threads"]
+
     try:
         # TBD: Removed threading from Game Recap / Condensed posts for now
-        context.social.post(message=game_recap_msg, platforms="enabled")
-        context.social.post(message=game_condensed_msg, platforms="enabled")
-        logger.info("Posted Game Recap & Condensed Game Videos to Socials.")
+        context.social.post(message=game_recap_msg, platforms=non_x_platforms)
+        context.social.post(message=game_condensed_msg, platforms=non_x_platforms)
+        logger.info("Posted Game Recap & Condensed Game Videos to non-X platforms.")
     except Exception as e:
-        logger.exception("Failed to post recap/condensed game: %s", e)
+        logger.exception("Failed to post recap/condensed game to non-X platforms: %s", e)
 
     logger.info("Generating Season & L10 Team Stat Charts from Natural Stat Trick.")
     team_season_msg = (
@@ -686,11 +722,36 @@ def handle_was_game_yesterday(game, yesterday, context: GameContext):
         context.social.post(
             message=team_season_msg,
             media=team_season_charts,  # list[str]; Bluesky multi-image, Threads mini-thread
-            platforms="enabled",
+            platforms=non_x_platforms,
         )
         logger.info("Posted season charts successfully.")
     except Exception as e:
         logger.exception("Failed to post season charts: %s", e)
+
+    # X / Twitter: Single Combined Post w/ Charts & Recap Link
+    game_recap_msg = f"{game_headline}\n\nGame Recap: {game_recap_url}"
+    game_condensed_msg = f"{game_summary}\n\nCondensed Game: {game_condensed_url}"
+
+    # X/Twitter: single combined message (headline + stats context + recap link)
+    x_lead_emoji = "🚨" if pref_score > other_score else "😞"
+    x_combined_msg = (
+        f"{x_lead_emoji} {game_headline}\n\n"  # <-- headline + double line break
+        f"Updated season overview & last 10 game stats after the "
+        f"{pref_team_name} {game_result_str} the {other_team_name} by a score of "
+        f"{pref_score} to {other_score}."
+        f"\n\nGame Recap: {game_recap_url}"  # <-- recap link
+        f"\n\n{context.preferred_team.hashtag}"  # <-- hashtag on its own line
+    )
+
+    try:
+        context.social.post(
+            message=x_combined_msg,
+            media=team_season_charts,  # X will render them in a 2x2 grid
+            platforms=["x"],
+        )
+        logger.info("Posted combined recap + charts post to X.")
+    except Exception as e:
+        logger.exception("Failed to post combined recap + charts to X: %s", e)
 
 
 def main():
