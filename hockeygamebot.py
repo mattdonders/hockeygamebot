@@ -187,7 +187,6 @@ def start_game_loop(context: GameContext):
                     context.social.restore_roots_from_cache(roots, state=context.preview_socials)
 
             # Generate and post the game time preview
-            context.preview_socials.team_stats_sent = False
             if not context.preview_socials.core_sent:
                 game_time_post = preview.format_future_game_post(context.game, context)
                 try:
