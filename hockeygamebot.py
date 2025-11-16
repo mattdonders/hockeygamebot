@@ -23,6 +23,7 @@ from core.live import parse_live_game
 from core.models.game_context import GameContext
 from core.models.team import Team
 from definitions import RESOURCES_DIR
+from socials.platforms import NON_X_PLATFORMS, X_PLATFORMS
 from socials.publisher import SocialPublisher
 from utils.config import load_config
 from utils.status_monitor import StatusMonitor
@@ -144,9 +145,6 @@ def start_game_loop(context: GameContext):
     # ------------------------------------------------------------------------------
     # START THE MAIN LOOP
     # ------------------------------------------------------------------------------
-
-    NON_X_PLATFORMS = ["bluesky", "threads"]
-    X_PLATFORMS = ["x"]
 
     while True:
         # Every loop, update game state so the logic below works for switching between them
@@ -689,13 +687,10 @@ def handle_was_game_yesterday(game, yesterday, context: GameContext):
     game_recap_msg = f"{game_headline}\n\nGame Recap: {game_recap_url}"
     game_condensed_msg = f"{game_summary}\n\nCondensed Game: {game_condensed_url}"
 
-    # FORNOW: Bluesky + Threads (Non-X Platforms) get separate recap / condensed posts
-    non_x_platforms = ["bluesky", "threads"]
-
     try:
         # TBD: Removed threading from Game Recap / Condensed posts for now
-        context.social.post(message=game_recap_msg, platforms=non_x_platforms)
-        context.social.post(message=game_condensed_msg, platforms=non_x_platforms)
+        context.social.post(message=game_recap_msg, platforms=NON_X_PLATFORMS)
+        context.social.post(message=game_condensed_msg, platforms=NON_X_PLATFORMS)
         logger.info("Posted Game Recap & Condensed Game Videos to non-X platforms.")
     except Exception as e:
         logger.exception("Failed to post recap/condensed game to non-X platforms: %s", e)
@@ -721,7 +716,7 @@ def handle_was_game_yesterday(game, yesterday, context: GameContext):
         context.social.post(
             message=team_season_msg,
             media=team_season_charts,  # list[str]; Bluesky multi-image, Threads mini-thread
-            platforms=non_x_platforms,
+            platforms=NON_X_PLATFORMS,
         )
         logger.info("Posted season charts successfully.")
     except Exception as e:

@@ -1,6 +1,7 @@
 import logging
 from typing import Dict, List, Optional, Union
 
+from socials.platforms import NON_X_PLATFORMS, X_PLATFORMS
 from utils.team_details import get_team_details_by_id
 
 from .base import Cache, Event
@@ -211,9 +212,6 @@ class GoalEvent(Event):
         Integrates with the restart-safe GameCache (context.cache) so that
         initial goal posts are not duplicated after a process restart.
         """
-
-        NON_X_PLATFORMS = ["bluesky", "threads"]
-        X_PLATFORMS = ["x"]
 
         # Ensure per-event thread map exists (platform -> PostRef)
         if not hasattr(self, "_post_refs"):

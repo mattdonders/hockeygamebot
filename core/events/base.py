@@ -3,6 +3,7 @@ from typing import List, Optional, Union
 
 from core.events.text_utils import period_label, period_label_playoffs
 from core.models.game_context import GameContext
+from socials.platforms import NON_X_PLATFORMS, X_PLATFORMS
 from utils.others import ordinal
 
 logger = logging.getLogger(__name__)
@@ -168,9 +169,6 @@ class Event:
         Delegates to the unified SocialPublisher (Bluesky/Threads parity).
         Never raises; logs exceptions via context.logger if available.
         """
-
-        NON_X_PLATFORMS = ["bluesky", "threads"]
-        X_PLATFORMS = ["x"]
 
         # If parse() returned None or an empty string, there is nothing to post.
         if not message or not str(message).strip():
