@@ -7,6 +7,7 @@ from utils.others import ordinal
 
 logger = logging.getLogger(__name__)
 
+
 class Cache:
     """
     A generic cache for storing and managing objects by type.
@@ -168,6 +169,9 @@ class Event:
         Never raises; logs exceptions via context.logger if available.
         """
 
+        NON_X_PLATFORMS = ["bluesky", "threads"]
+        X_PLATFORMS = ["x"]
+
         # If parse() returned None or an empty string, there is nothing to post.
         if not message or not str(message).strip():
             # This can happen for GenericEvent and other “silent” events.
@@ -212,7 +216,7 @@ class Event:
                 message=text,
                 media=media,
                 alt_text=alt_text or "",
-                platforms="enabled",
+                platforms=NON_X_PLATFORMS,
             )
         except Exception as e:
             # Never crash event parsing

@@ -410,7 +410,7 @@ def start_game_loop(context: GameContext):
                         if final_score_post:  # Validate not None
                             results = context.social.post_and_seed(
                                 message=final_score_post,
-                                platforms="enabled",
+                                platforms=NON_X_PLATFORMS,
                                 state=context.final_socials,
                             )
                             context.final_socials.final_score_sent = True
@@ -429,7 +429,7 @@ def start_game_loop(context: GameContext):
                         if three_stars_post:
                             res = context.social.reply(
                                 message=three_stars_post,
-                                platforms="enabled",
+                                platforms=NON_X_PLATFORMS,
                                 state=context.final_socials,  # uses seeded roots/parents
                             )
                             context.final_socials.three_stars_sent = True
@@ -454,7 +454,7 @@ def start_game_loop(context: GameContext):
                                 res = context.social.reply(
                                     message=chart_message,
                                     media=chart_path,
-                                    platforms="enabled",
+                                    platforms=NON_X_PLATFORMS,
                                     state=context.final_socials,  # auto-picks the current parent
                                 )
                                 context.final_socials.team_stats_sent = True

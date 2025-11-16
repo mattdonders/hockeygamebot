@@ -7,6 +7,7 @@ from .base import Cache, Event
 
 logger = logging.getLogger(__name__)
 
+
 class GoalEvent(Event):
     cache = Cache(__name__)
 
@@ -210,6 +211,10 @@ class GoalEvent(Event):
         Integrates with the restart-safe GameCache (context.cache) so that
         initial goal posts are not duplicated after a process restart.
         """
+
+        NON_X_PLATFORMS = ["bluesky", "threads"]
+        X_PLATFORMS = ["x"]
+
         # Ensure per-event thread map exists (platform -> PostRef)
         if not hasattr(self, "_post_refs"):
             self._post_refs = {}
@@ -261,7 +266,7 @@ class GoalEvent(Event):
                     message=text,
                     media=media,
                     alt_text=alt_text or "",
-                    platforms="enabled",
+                    platforms=NON_X_PLATFORMS,
                 )
 
                 # After a successful initial post, mark this goal as posted in the
