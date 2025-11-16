@@ -11,6 +11,7 @@ from utils.others import safe_remove
 
 logger = logging.getLogger(__name__)
 
+
 def process_removed_goal(goal, context):
     """Remove a goal from all relevant lists and caches."""
     pref_team = context.preferred_team.team_name
@@ -86,6 +87,9 @@ def parse_live_game(context: GameContext):
 
     # We pass the entire list into the factory so missed events can still be created.
     # BUT we gate non-goals with the persistent cache to avoid duplicates across restarts.
+    skipped_non_goals = 0
+    processed_events = 0
+
     for event in all_events:
         event_type = event.get("typeDescKey")
         is_goal = event_type == "goal"
@@ -94,9 +98,14 @@ def parse_live_game(context: GameContext):
         ev_id = event.get("eventId")
         if not is_goal and getattr(context, "cache", None) and ev_id is not None:
             if context.cache.has_seen(ev_id):
-                logger.info("🔍 Skipping cached non-goal: eventType=%s / eventId=%s (restart-safe)", event_type, ev_id)
+                skipped_non_goals += 1
+
+                logger.debug("🔍 Skipping cached non-goal: eventType=%s / eventId=%s (restart-safe)", event_type, ev_id)
                 # Already processed in a previous run/loop; skip creating it again
                 continue
+
+        # Increment Processed Event Count
+        processed_events += 1
 
         # Dispatch to factory (goal events re-evaluate every loop)
         EventFactory.create_event(event, context, new_plays)
@@ -124,6 +133,13 @@ def parse_live_game(context: GameContext):
         flush_every = int(context.config.get("script", {}).get("cache_flush_every_events", 1))
         if flush_every > 1:
             context.cache.save()
+
+    if processed_events or skipped_non_goals:
+        logger.info(
+            "Live parse summary: %s event(s) processed, %s cached non-goal event(s) skipped (restart-safe).",
+            processed_events,
+            skipped_non_goals,
+        )
 
     # After event creation is completed, let's check for deleted goals (usually for challenges)
     # detect_removed_goals(context, all_events)
