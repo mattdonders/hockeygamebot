@@ -161,6 +161,34 @@ class GoalEvent(Event):
             add_hashtags=False,
             add_score=False,
             link=self.highlight_clip_url,
+            event_type="goal_highlight",
+        )
+
+    def check_and_add_gif(self, event_data: dict) -> None:
+        # gif_path = build_goal_gif_if_available(event_data)  # however you wire it
+        gif_path = None
+        if not gif_path:
+            logger.info("No goal GIF available for event %s", event_data.get("eventId"))
+            return
+
+        # Store on the event if you want to reuse it later
+        self.goal_gif_path = gif_path
+
+        logger.info(
+            "GoalEvent[%s]: built GIF at %s, posting threaded reply.",
+            getattr(self, "event_id", "unknown"),
+            gif_path,
+        )
+
+        # Thread under the existing goal post
+        self.post_message(
+            message="",  # or None if you want pure media
+            add_hashtags=False,
+            add_score=False,
+            media=[gif_path],
+            alt_text=f"Shot map for {self.scoring_player_name}'s goal",
+            # 👇 new arg so Publisher can apply X rules
+            event_type="goal_gif",
         )
 
     def was_goal_removed(self, all_plays: list) -> bool:
@@ -202,6 +230,7 @@ class GoalEvent(Event):
         add_score: bool = True,
         media: Optional[Union[str, List[str]]] = None,
         alt_text: str = "",
+        event_type: str | None = None,  # optional event_type for per-event routing
     ) -> None:
         """
         Threaded posting for GoalEvent:
@@ -259,12 +288,16 @@ class GoalEvent(Event):
         try:
             if not self._post_refs:
                 # Initial post on all enabled platforms; store refs for future replies.
-                logger.info("GoalEvent[%s]: initial post across platforms.", getattr(self, "event_id", "unknown"))
+                logger.info(
+                    "GoalEvent[%s]: initial post across platforms.",
+                    getattr(self, "event_id", "unknown"),
+                )
                 results = self.context.social.post(
                     message=text,
                     media=media,
                     alt_text=alt_text or "",
-                    platforms=NON_X_PLATFORMS,
+                    platforms="enabled",
+                    event_type=event_type or "goal",
                 )
 
                 # After a successful initial post, mark this goal as posted in the
@@ -283,13 +316,23 @@ class GoalEvent(Event):
                             e,
                         )
 
+                # Store the X ref separately on the event when we get it back
+                self._x_post_ref = (results or {}).get("x")
+
+                # Because we never store x into _post_refs, X will only receive the initial goal post,
+                # not the later highlight/GIF/whatever replies,
+                # while Bluesky + Threads get the full threaded sequence.
                 for platform, ref in (results or {}).items():
+                    if platform == "x":
+                        continue
                     self._post_refs[platform] = ref
+
                 if not results:
                     logger.warning(
                         "GoalEvent[%s]: no PostRefs returned from initial post.",
                         getattr(self, "event_id", "unknown"),
                     )
+
             else:
                 # Reply per platform to maintain threading; update refs as we go.
                 logger.info(
@@ -297,10 +340,10 @@ class GoalEvent(Event):
                     getattr(self, "event_id", "unknown"),
                     len(self._post_refs),
                 )
+
                 new_refs: Dict[str, any] = {}
                 for platform, parent_ref in list(self._post_refs.items()):
                     # For replies we only send a single media item argument.
-                    # (Threads carousel emulation still happens in .post(); reply() remains single-media.)
                     media_arg: Optional[str] = None
                     if isinstance(media, list) and media:
                         media_arg = media[0]
@@ -328,8 +371,29 @@ class GoalEvent(Event):
                             getattr(self, "event_id", "unknown"),
                             platform,
                         )
-                # Advance stored refs
+
+                # Advance stored refs for non-X platforms
                 self._post_refs.update(new_refs)
+
+                # Handle X GIF reply separately using the stored X PostRef
+                if event_type == "goal_gif" and getattr(self, "_x_post_ref", None) and media:
+                    media_arg: Optional[str] = None
+                    if isinstance(media, list) and media:
+                        media_arg = media[0]
+                    elif isinstance(media, str):
+                        media_arg = media
+
+                    if media_arg:
+                        logger.info(
+                            "GoalEvent[%s]: replying with GIF to X thread.",
+                            getattr(self, "event_id", "unknown"),
+                        )
+                        self.context.social.reply(
+                            message="",
+                            media=media_arg,
+                            platforms=X_PLATFORMS,  # ["x"]
+                            reply_to=self._x_post_ref,
+                        )
         except Exception as e:
             if getattr(self.context, "logger", None):
                 self.context.logger.exception("GoalEvent post failed: %s", e)
