@@ -162,6 +162,7 @@ class Event:
         add_score: bool = True,
         media: Optional[Union[str, List[str]]] = None,
         alt_text: str = "",
+        event_type: str | None = None,  # optional event_type for per-event routing
     ) -> None:
         """
         Fire-and-forget post for regular events (no threading).
