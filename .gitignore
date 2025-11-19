@@ -96,6 +96,14 @@ metrics.json
 # TBD Images
 TBD*.png
 
+# === OUTPUT FILES (rendered images, GIFs, charts) ===
+output/*
+!output/.OUTPUTS-GO-HERE
+
+# Goal GIFs (nested)
+output/goal_gifs/*
+!output/goal_gifs/.GOAL-GIFS-GO-HERE
+
 # ===========================================
 # TESTING
 # ===========================================
