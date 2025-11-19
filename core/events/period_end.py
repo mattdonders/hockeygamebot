@@ -1,4 +1,5 @@
 from core import charts, schedule
+
 from .base import Cache, Event
 
 
@@ -35,7 +36,9 @@ class PeriodEndEvent(Event):
         right_rail_data = schedule.fetch_rightrail(self.context.game_id)
         team_stats_data = right_rail_data.get("teamGameStats")
         if team_stats_data:
-            chart_path = charts.teamstats_chart(self.context, team_stats_data, ingame=True)
+            chart_path = charts.teamstats_chart(
+                self.context, team_stats_data, ingame=True, period_label_short=self.period_label_short
+            )
         else:
             chart_path = None
 
