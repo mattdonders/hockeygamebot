@@ -1,6 +1,7 @@
 import logging
 from typing import Dict, List, Optional, Union
 
+from core.gifs.edge_goal import generate_goal_gif_from_edge
 from socials.platforms import NON_X_PLATFORMS, X_PLATFORMS
 from utils.team_details import get_team_details_by_id
 
@@ -14,6 +15,13 @@ class GoalEvent(Event):
 
     REMOVAL_THRESHOLD = 5  # Configurable threshold for event removal checks
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        # These two silence Pylint AND ensure predictable behavior
+        self.goal_gif: str | None = None
+        self.goal_gif_generated: bool = False
+
     def parse(self):
         """
         Parse a goal event and return a formatted message.
@@ -24,6 +32,7 @@ class GoalEvent(Event):
         event_owner_team_id = details.get("eventOwnerTeamId")
         is_preferred = event_owner_team_id == self.context.preferred_team.team_id
         details["is_preferred"] = is_preferred
+        self.is_preferred = is_preferred
 
         # Add Team Details to Goal Object (better logging)
         event_team_details = get_team_details_by_id(event_owner_team_id)
@@ -164,30 +173,65 @@ class GoalEvent(Event):
             event_type="goal_highlight",
         )
 
-    def check_and_add_gif(self, event_data: dict) -> None:
-        # gif_path = build_goal_gif_if_available(event_data)  # however you wire it
-        gif_path = None
-        if not gif_path:
-            logger.info("No goal GIF available for event %s", event_data.get("eventId"))
+    def check_and_add_gif(self, context: "GameContext") -> None:
+        """
+        Generate and post an EDGE goal GIF for this event, if enabled.
+        Safe to call multiple times; only generates once per goal.
+        """
+        cfg = (getattr(context, "config", {}) or {}).get("goal_gifs", {})
+        if not cfg.get("enabled", False):
             return
 
-        # Store on the event if you want to reuse it later
-        self.goal_gif_path = gif_path
+        # If we've already generated a GIF for this goal in this run, skip.
+        if getattr(self, "goal_gif_generated", False):
+            return
 
-        logger.info(
-            "GoalEvent[%s]: built GIF at %s, posting threaded reply.",
-            getattr(self, "event_id", "unknown"),
-            gif_path,
-        )
+        preferred_only = cfg.get("preferred_team_only", True)
+        is_preferred_goal = getattr(self, "is_preferred", False)
+        if preferred_only and not is_preferred_goal:
+            return
 
-        # Thread under the existing goal post
+        season = str(getattr(context, "season_id"))
+        game_id = str(getattr(context, "game_id"))
+        event_id = str(getattr(self, "event_id"))
+        home_abbr = getattr(context, "home_abbr", "")
+        away_abbr = getattr(context, "away_abbr", "")
+
+        goal_sweater = getattr(self, "scoring_sweater", None)
+        goal_player_id = getattr(self, "scoring_player_id", None)
+
+        try:
+            gif_path = generate_goal_gif_from_edge(
+                season=season,
+                game_id=game_id,
+                event_id=event_id,
+                home_abbr=home_abbr,
+                away_abbr=away_abbr,
+                goal_sweater=goal_sweater,
+                goal_player_id=goal_player_id,
+                width=int(cfg.get("width", 1200)),
+                fps=int(cfg.get("fps", 18)),
+                playback_speed=float(cfg.get("playback_speed", 0.9)),
+                trail_length=int(cfg.get("trail", 1)),
+                interp_extra_frames=int(cfg.get("interp_extra_frames", 1)),
+                flip_vertical=bool(cfg.get("flip_vertical", True)),
+                marker_scale=float(cfg.get("marker_scale", 1.8)),
+            )
+        except Exception:
+            logger.exception("Exception while generating goal GIF for event %s", event_id)
+            return
+
+        if not gif_path:
+            return
+
+        # Remember that we've generated it so we don't do the work again.
+        self.goal_gif = str(gif_path)
+        self.goal_gif_generated = True
+
+        logger.info("Posting goal GIF reply for event %s from %s", event_id, gif_path)
         self.post_message(
-            message="",  # or None if you want pure media
-            add_hashtags=False,
-            add_score=False,
+            message="",
             media=[gif_path],
-            alt_text=f"Shot map for {self.scoring_player_name}'s goal",
-            # 👇 new arg so Publisher can apply X rules
             event_type="goal_gif",
         )
 

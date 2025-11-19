@@ -1,17 +1,19 @@
 import logging
 import traceback
+
+import utils.others as otherutils
 from core.events.base import Event
+from core.events.faceoff import FaceoffEvent
 from core.events.game_end import GameEndEvent
+from core.events.generic import GenericEvent
 from core.events.goal import GoalEvent
 from core.events.penalty import PenaltyEvent
-from core.events.faceoff import FaceoffEvent
+from core.events.period_end import PeriodEndEvent
 from core.events.shootout import ShootoutEvent
 from core.events.stoppage import StoppageEvent
-from core.events.period_end import PeriodEndEvent
-from core.events.generic import GenericEvent
-import utils.others as otherutils
 
 logger = logging.getLogger(__name__)
+
 
 class EventFactory:
     """
@@ -61,6 +63,11 @@ class EventFactory:
             if not event_object.highlight_clip_url:
                 event_object.check_and_add_highlight(event_data)
 
+            # Check for Goal GIFs
+            # The GIF flag check is done inside the check_and_add_gif method & returns
+            # TODO: Apply this logic (check inside function) to highlights as well
+            event_object.check_and_add_gif(context)
+
         if not event_object:
             # Initialize empty event image
             event_img = None
@@ -108,6 +115,7 @@ class EventFactory:
                         logger.info("New GoalEvent creation - checking for highlights.")
                         event_object: GoalEvent  # IDE Typing Hint
                         event_object.check_and_add_highlight(event_data)
+                        event_object.check_and_add_gif(context)
                 else:
                     logger.warning(
                         "Unable to create / parse %s event (type: %s) for ID: %s / SortOrder: %s.",

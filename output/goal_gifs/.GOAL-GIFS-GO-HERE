@@ -1,0 +1,7 @@
+This directory stores auto-generated NHL EDGE goal GIFs.
+
+Structure:
+  output/goal_gifs/<season>/<game_id>/goal_<game_id>_ev<event_id>.gif
+
+These files MUST NOT be committed to Git.
+Only this placeholder file should remain tracked.

@@ -18,6 +18,18 @@ from .x_client import XClient, XConfig
 
 logger = logging.getLogger(__name__)
 
+# Which event types are allowed to post to X by default.
+# These can be overridden via config["x"][mode]["event_allowlist"] later.
+DEFAULT_X_EVENT_ALLOWLIST = {
+    "pregame",
+    "game_start",
+    "goal",
+    "goal_gif",
+    "period_summary",
+    "final_summary",
+    "three_stars",
+}
+
 
 class SocialPublisher:
     """
@@ -99,6 +111,18 @@ class SocialPublisher:
         if self._x:
             self._platforms["x"] = self._x
 
+        # X event allow-list: which logical "events" are allowed to hit X.
+        # Can be overridden in config.yaml under:
+        # x:
+        #   prod:
+        #     event_allowlist: ["goal", "pregame", ...]
+        x_mode_cfg = (self.cfg.get("x") or {}).get(self.mode, {}) or {}
+        override = x_mode_cfg.get("event_allowlist") or x_mode_cfg.get("allowed_events")
+        if override:
+            self._x_event_allowlist = {str(e) for e in override}
+        else:
+            self._x_event_allowlist = set(DEFAULT_X_EVENT_ALLOWLIST)
+
         # Per-platform “last reply anchor”
         self._last: Dict[str, PostRef] = {}
 
@@ -122,6 +146,7 @@ class SocialPublisher:
         platforms: str | Iterable[str] = "enabled",
         alt_text: str | None = None,
         state: Any | None = None,  # accepted but intentionally ignored in post()
+        event_type: str | None = None,  # optional event_type for per-event routing
     ) -> dict[str, PostRef]:
         """
         Create a new post on 1+ platforms. Does NOT update reply anchors.
@@ -130,6 +155,7 @@ class SocialPublisher:
         # NOSOCIAL centrally
         if self.nosocial:
             targets = self._resolve_targets(platforms)
+            targets = self._filter_targets_for_event(targets, event_type)
             results: dict[str, PostRef] = {}
 
             for name in targets:
@@ -148,6 +174,7 @@ class SocialPublisher:
             return results
 
         targets = self._resolve_targets(platforms)
+        targets = self._filter_targets_for_event(targets, event_type)
         results: dict[str, PostRef] = {}
 
         # Normalize media into local vs hosted lists without losing items
@@ -190,11 +217,17 @@ class SocialPublisher:
         reply_to: PostRef | None = None,
         alt_text: str | None = None,
         state: Any | None = None,  # NEW: use/advance per-platform parents from state
+        event_type: str | None = None,
     ) -> dict[str, PostRef]:
         """
         Reply to the current anchor (publisher's _last or provided state) or to an explicit PostRef.
         Advances both the publisher anchors and 'state' parents if provided.
+        Includes event_type controls routing (e.g. X-only events, non-X summary, etc.).
         """
+
+        targets = self._resolve_targets(platforms)
+        targets = self._filter_targets_for_event(targets, event_type)
+
         if self.nosocial:
             targets = self._resolve_targets(platforms)
             results: dict[str, PostRef] = {}
@@ -269,12 +302,20 @@ class SocialPublisher:
         platforms: str | Iterable[str] = "enabled",
         alt_text: str | None = None,
         state: Any | None = None,  # NEW: also seed state roots/parents
+        event_type: str | None = None,
     ) -> dict[str, PostRef]:
         """
         post() and store returned PostRef(s) as new per-platform reply anchors.
         If 'state' is provided, it seeds both roots and parents per platform.
         """
-        results = self.post(message=message, media=media, platforms=platforms, alt_text=alt_text)
+        results = self.post(
+            message=message,
+            media=media,
+            platforms=platforms,
+            alt_text=alt_text,
+            state=state,
+            event_type=event_type,
+        )
         for name, ref in results.items():
             self._last[name] = ref
         if state is not None:
@@ -380,6 +421,30 @@ class SocialPublisher:
             client = self._platforms.get(name)
             if client:
                 yield name, client
+
+    def _filter_targets_for_event(
+        self,
+        targets: list[str],
+        event_type: str | None,
+    ) -> list[str]:
+        """
+        Apply simple per-event routing rules, currently only for X.
+
+        If event_type is provided and X is in the targets but that
+        event_type is not allow-listed, X is removed from the fan-out.
+        """
+        if not targets or not event_type:
+            return targets
+
+        if "x" in targets and event_type not in getattr(self, "_x_event_allowlist", set()):
+            logger.debug(
+                "Filtering X out for event_type=%s (not in allow-list %s)",
+                event_type,
+                getattr(self, "_x_event_allowlist", None),
+            )
+            return [t for t in targets if t != "x"]
+
+        return targets
 
     # ---------- NOSOCIAL logging ----------
     def _log_nosocial_preview(self, message: str | None) -> None:
