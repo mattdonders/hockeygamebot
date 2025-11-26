@@ -18,10 +18,10 @@ import io
 import json
 import logging
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import requests
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw, ImageFont, ImageSequence
 
 logger = logging.getLogger(__name__)
 
@@ -75,6 +75,130 @@ EDGE_HTTP_HEADERS = {
 }
 
 
+import json
+import logging
+from typing import Any, Dict, List, Optional
+
+import requests
+
+try:
+    import brotli  # type: ignore
+except Exception:
+    brotli = None
+
+logger = logging.getLogger(__name__)
+
+
+def load_sprites_json_overkill(
+    json_path: Optional[str],
+    season: Optional[str],
+    game_id: Optional[str],
+    event_id: Optional[str],
+) -> List[Dict[str, Any]]:
+    """
+    Load sprites JSON either from a local file or from the EDGE sprites API.
+
+    This version is defensive against:
+    - Cloudflare / NHL returning bogus 'content-encoding: br'
+    - occasional real Brotli encoding
+    """
+    # --- Local file path (evXXX.json) ---------------------------------
+    if json_path:
+        with open(json_path, "r", encoding="utf-8") as f:
+            return json.load(f)
+
+    # --- Remote fetch from EDGE sprites API ---------------------------
+    if not (season and game_id and event_id):
+        raise SystemExit("Either --json or (--season, --game, --event) must be provided.")
+
+    url = f"https://wsr.nhle.com/sprites/{season}/{game_id}/ev{event_id}.json"
+    logger.info("Fetching sprites JSON from %s", url)
+
+    # Headers tuned to match a real browser-ish request and avoid CF weirdness
+    headers = {
+        "Accept": "*/*",
+        "Accept-Language": "en-US,en;q=0.9",
+        "Origin": "https://www.nhl.com",
+        "Referer": "https://www.nhl.com/",
+        "User-Agent": (
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) "
+            "Chrome/142.0.0.0 Safari/537.36"
+        ),
+    }
+
+    try:
+        resp = requests.get(url, headers=headers, timeout=10)
+    except Exception as e:
+        logger.error("Sprites request failed for %s: %r", url, e)
+        return []
+
+    if resp.status_code != 200:
+        logger.warning("Sprites request returned non-200 status=%s for %s", resp.status_code, url)
+        return []
+
+    # Raw bytes + what the server *claims* about encoding
+    raw = resp.content
+    ce = (resp.headers.get("Content-Encoding") or "").lower()
+
+    # --- Decode body robustly (like inspect_sprites.py) -----------------------
+    if "br" in ce:
+        try:
+            decoded_bytes = brotli.decompress(raw)
+            logger.info("Brotli decode OK for sprites: bytes=%d", len(decoded_bytes))
+        except Exception as e:
+            logger.warning(
+                "Brotli decompression failed (%r). " "Treating body as plain UTF-8 JSON instead.",
+                e,
+            )
+            decoded_bytes = raw
+    else:
+        decoded_bytes = raw
+
+    try:
+        text = decoded_bytes.decode("utf-8", errors="replace")
+    except Exception as e:
+        logger.error(
+            "Failed to decode sprites body as UTF-8: %r (len=%d)",
+            e,
+            len(decoded_bytes),
+        )
+        return []
+
+    try:
+        data: Union[List[Any], Dict[str, Any]] = json.loads(text)
+    except Exception as e:
+        logger.error(
+            "Failed to parse sprites JSON (%r). First 200 chars=%r",
+            e,
+            text[:200],
+        )
+        return []
+
+    # --- Normalize to a list of frames ---------------------------------------
+    if isinstance(data, list):
+        logger.info("Sprites JSON is a top-level list with %d frame(s)", len(data))
+        logger.info("Sprites Data: %s", data)
+        return data
+
+    if isinstance(data, dict):
+        # Try common keys if NHL ever wraps it differently
+        for key in ("frames", "events", "data"):
+            val = data.get(key)
+            if isinstance(val, list):
+                logger.info("Sprites JSON dict[%s] is a list with %d frame(s)", key, len(val))
+                return val
+
+        logger.warning(
+            "Sprites JSON is a dict but no list-like 'frames'/'events'/'data' found. " "Keys=%s",
+            list(data.keys()),
+        )
+        return []
+
+    logger.warning("Sprites JSON is unexpected type %r; returning empty.", type(data).__name__)
+    return []
+
+
 def load_sprites_json(
     json_path: Optional[str],
     season: Optional[str],
@@ -83,16 +207,23 @@ def load_sprites_json(
 ) -> List[Dict[str, Any]]:
     """
     Load sprites JSON either from a local file or from the EDGE sprites API.
+
+    This version is defensive against:
+    - Cloudflare / NHL returning bogus 'content-encoding: br'
+    - occasional real Brotli encoding
     """
+    # --- Local file path (evXXX.json) ---------------------------------
     if json_path:
         with open(json_path, "r", encoding="utf-8") as f:
             return json.load(f)
 
+    # --- Remote fetch from EDGE sprites API ---------------------------
     if not (season and game_id and event_id):
         raise SystemExit("Either --json or (--season, --game, --event) must be provided.")
 
     url = f"https://wsr.nhle.com/sprites/{season}/{game_id}/ev{event_id}.json"
     logger.info("Fetching sprites JSON from %s", url)
+
     try:
         resp = requests.get(url, headers=EDGE_HTTP_HEADERS, timeout=15)
     except Exception as e:
@@ -100,17 +231,69 @@ def load_sprites_json(
         raise
 
     if resp.status_code == 403:
-        # More helpful than a raw HTTPError
-        logging.warning(
-            "ERROR: 403 Forbidden when fetching sprites JSON from %s. "
-            "The NHL sprites endpoint may not exist for this event, "
-            "might require browser-like headers or may be temporarily blocked.",
+        logger.warning(
+            "403 Forbidden when fetching sprites JSON from %s. "
+            "Sprites may not exist for this event or Cloudflare may be blocking.",
             url,
         )
         resp.raise_for_status()
 
     resp.raise_for_status()
-    return resp.json()
+
+    # --- Manual handling of (possibly bogus) content-encoding ---------
+    raw = resp.content
+    ce = (resp.headers.get("Content-Encoding") or "").lower()
+
+    decoded_bytes = raw
+
+    if "br" in ce:
+        if brotli is None:
+            logger.warning(
+                "Sprites response claims 'br' encoding but brotli is not installed. "
+                "Attempting to parse raw bytes as UTF-8 JSON."
+            )
+        else:
+            try:
+                decoded_bytes = brotli.decompress(raw)
+            except Exception as exc:  # bogus 'br' header, likely plain JSON
+                logger.warning(
+                    "Brotli decompression failed (%s). " "Falling back to raw bytes as UTF-8 JSON.",
+                    exc,
+                )
+                decoded_bytes = raw
+    elif "gzip" in ce:
+        import gzip
+
+        try:
+            decoded_bytes = gzip.decompress(raw)
+        except Exception as exc:
+            logger.warning(
+                "Gzip decompression failed (%s). Falling back to raw bytes as UTF-8 JSON.",
+                exc,
+            )
+            decoded_bytes = raw
+
+    text = decoded_bytes.decode("utf-8", errors="replace")
+
+    try:
+        data = json.loads(text)
+    except Exception as exc:
+        preview = text[:400].replace("\n", " ")
+        logger.error(
+            "Failed to decode sprites JSON from %s: %s. Preview=%r",
+            url,
+            exc,
+            preview,
+        )
+        raise
+
+    if not isinstance(data, list):
+        logger.warning(
+            "Unexpected sprites JSON type %s (expected list).",
+            type(data).__name__,
+        )
+
+    return data
 
 
 # ----------------------------------------------------------------------
@@ -310,9 +493,6 @@ def draw_rink_base(
 # ----------------------------------------------------------------------
 # Frame interpolation
 # ----------------------------------------------------------------------
-# ----------------------------------------------------------------------
-# Frame interpolation
-# ----------------------------------------------------------------------
 def interpolate_frames(
     frames: List[Dict[str, Any]],
     extra_frames: int,
@@ -324,7 +504,8 @@ def interpolate_frames(
     This version uses a Catmull–Rom spline for x/y to create smooth,
     NHL-like motion. It only interpolates objects that appear in BOTH
     frames A and B (stable identity via playerId or 'puck'), and falls
-    back to the original positions when identity changes.
+    back to the original positions when identity changes or when any
+    of the neighbor frames are missing valid x/y coordinates.
 
     extra_frames:
         number of additional synthetic frames between each original pair.
@@ -361,6 +542,15 @@ def interpolate_frames(
                 key = "puck"
             mapping[key] = obj
         return mapping
+
+    def safe_xy(obj: Optional[Dict[str, Any]]) -> Optional[Tuple[float, float]]:
+        """Safely extract (x, y) from an object; return None if missing/bad."""
+        if not obj:
+            return None
+        try:
+            return float(obj["x"]), float(obj["y"])
+        except (KeyError, TypeError, ValueError):
+            return None
 
     result: List[Dict[str, Any]] = []
 
@@ -402,22 +592,41 @@ def interpolate_frames(
                 track_key = f"player_{pid}" if pid else "puck"
 
                 if track_key in stable_keys:
-                    # Build spline control points from neighbouring frames.
-                    p0 = map_prev.get(track_key, map_a[track_key])
-                    p1 = map_a[track_key]
-                    p2 = map_b[track_key]
-                    p3 = map_next.get(track_key, map_b[track_key])
+                    # Build spline control points from neighbouring frames,
+                    # but fall back if any are missing/bad.
+                    p0 = map_prev.get(track_key)
+                    p1 = map_a.get(track_key)
+                    p2 = map_b.get(track_key)
+                    p3 = map_next.get(track_key)
 
-                    x0, y0 = float(p0["x"]), float(p0["y"])
-                    x1, y1 = float(p1["x"]), float(p1["y"])
-                    x2, y2 = float(p2["x"]), float(p2["y"])
-                    x3, y3 = float(p3["x"]), float(p3["y"])
+                    xy0 = safe_xy(p0)
+                    xy1 = safe_xy(p1)
+                    xy2 = safe_xy(p2)
+                    xy3 = safe_xy(p3)
 
-                    obj["x"] = catmull_rom(x0, x1, x2, x3, t)
-                    obj["y"] = catmull_rom(y0, y1, y2, y3, t)
-                    # (all other fields, e.g. playerId/teamAbbrev, stay as in A)
+                    # We *must* have A and B; if not, skip interpolation
+                    if not xy1 or not xy2:
+                        new_onice[k] = obj  # keep A's position
+                    else:
+                        # For endpoints, fall back to A/B if neighbors missing
+                        x1, y1 = xy1
+                        x2, y2 = xy2
+                        x0, y0 = xy0 if xy0 is not None else (x1, y1)
+                        x3, y3 = xy3 if xy3 is not None else (x2, y2)
 
-                # Otherwise: identity changed → keep A's position (no morph)
+                        try:
+                            obj["x"] = catmull_rom(x0, x1, x2, x3, t)
+                            obj["y"] = catmull_rom(y0, y1, y2, y3, t)
+                        except Exception:
+                            # Any math issue → fall back to A's position
+                            logger.debug(
+                                "Interpolate: fallback to A position for key=%s at step=%s",
+                                track_key,
+                                step,
+                            )
+                            obj["x"], obj["y"] = x1, y1
+
+                # Either way, store this object
                 new_onice[k] = obj
 
             new_frame["onIce"] = new_onice
@@ -497,6 +706,13 @@ def render_frames(
         puck_pos: Optional[Tuple[int, int]] = None
 
         for obj in frame.get("onIce", {}).values():
+            # Some objects in EDGE feeds can occasionally lack x/y.
+            x_val = obj.get("x")
+            y_val = obj.get("y")
+            if x_val is None or y_val is None:
+                logger.debug("render_frames: skipping object without x/y: %s", obj)
+                continue
+
             x = tx(obj["x"])
             y = ty(obj["y"])
 
@@ -610,6 +826,134 @@ def render_frames(
         loop=0,
         optimize=True,
     )
+
+
+def compress_gif(
+    input_path: Union[str, Path],
+    output_path: Union[str, Path, None] = None,
+    *,
+    target_width: int = 560,
+    frame_step: int = 4,
+    max_colors: int = 64,
+) -> Path:
+    """
+    Create a compressed GIF from an existing GIF, suitable for size-constrained platforms.
+
+    Strategy (tuned against ~4 MB, 1200px-wide EDGE goal GIFs):
+
+    - Downscale width to `target_width` (keeping aspect ratio).
+    - Keep every `frame_step`-th frame (e.g. 4 -> use 1 of every 4 frames).
+    - Quantize each frame to at most `max_colors` colors using an adaptive palette.
+    - Preserve approximate total playback time by multiplying each kept frame's
+      duration by `frame_step`.
+
+    With the defaults:
+        target_width = 560
+        frame_step   = 4
+        max_colors   = 64
+
+    a typical 4–5 MB GIF often shrinks to well under 1 MB, depending on content.
+
+    You can tweak the knobs if needed:
+
+      - Smaller `target_width` (e.g. 480)  → smaller file, more pixelated.
+      - Larger `frame_step` (e.g. 5)       → smaller file, choppier motion.
+      - Smaller `max_colors` (e.g. 32)     → smaller file, more banding.
+
+    Returns:
+        Path to the compressed GIF on disk.
+    """
+    src = Path(input_path)
+    if output_path is None:
+        # goal_2025020354_ev442.gif -> goal_2025020354_ev442_compressed.gif
+        output_path = src.with_name(f"{src.stem}_compressed{src.suffix}")
+    dst = Path(output_path)
+
+    logger.info(
+        "GIF compression: src=%s, dst=%s, target_width=%d, frame_step=%d, max_colors=%d",
+        src,
+        dst,
+        target_width,
+        frame_step,
+        max_colors,
+    )
+
+    # Open original GIF
+    im = Image.open(src)
+    orig_w, orig_h = im.size
+
+    # Compute new size preserving aspect ratio
+    if target_width <= 0 or target_width >= orig_w:
+        new_w, new_h = orig_w, orig_h
+    else:
+        scale = target_width / float(orig_w)
+        new_w = int(orig_w * scale)
+        new_h = int(orig_h * scale)
+
+    new_size = (new_w, new_h)
+    logger.debug(
+        "GIF compression: original_size=%sx%s, new_size=%sx%s",
+        orig_w,
+        orig_h,
+        new_w,
+        new_h,
+    )
+
+    out_frames: list[Image.Image] = []
+    durations: list[int] = []
+
+    # Iterate over frames, keeping every `frame_step`-th frame.
+    for idx, frame in enumerate(ImageSequence.Iterator(im)):
+        if idx % frame_step != 0:
+            continue
+
+        # Convert to RGBA, resize, then quantize to a limited palette.
+        fr = frame.convert("RGBA")
+        if new_size != (orig_w, orig_h):
+            fr = fr.resize(new_size, Image.LANCZOS)
+
+        # Use an adaptive palette to keep puck/trail/colors reasonably clean.
+        fr = fr.convert("P", palette=Image.ADAPTIVE, colors=max_colors)
+
+        out_frames.append(fr)
+
+        # Preserve approximate total playback time by stretching durations.
+        base_duration = frame.info.get("duration", 60)  # ms; default ~60ms if missing
+        durations.append(max(1, int(base_duration * frame_step)))
+
+    if not out_frames:
+        raise ValueError(f"No frames produced from {src} (frame_step={frame_step}?)")
+
+    # Use a single duration value or a per-frame list; Pillow accepts both.
+    # Here we use the average to keep it simple and consistent.
+    avg_duration = int(sum(durations) / len(durations))
+
+    logger.info(
+        "GIF compression: frames_in=%d, frames_out=%d, avg_duration=%d ms",
+        getattr(im, "n_frames", None) or len(durations),
+        len(out_frames),
+        avg_duration,
+    )
+
+    # Save the compressed GIF
+    out_frames[0].save(
+        dst,
+        save_all=True,
+        append_images=out_frames[1:],
+        duration=avg_duration,
+        loop=0,
+        optimize=True,
+        disposal=2,
+    )
+
+    final_size = dst.stat().st_size
+    logger.info(
+        "GIF compression: wrote %s (%.2f KB)",
+        dst,
+        final_size / 1024.0,
+    )
+
+    return dst
 
 
 # ----------------------------------------------------------------------

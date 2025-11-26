@@ -108,6 +108,45 @@ class ThreadsClient(SocialClient):
         logger.debug("Threads: IMAGE response: %s", res)
         return res
 
+    def _create_video(
+        self,
+        text: Optional[str],
+        video_url: str,
+        reply_to_id: Optional[str] = None,
+    ) -> dict:
+        """
+        Create a VIDEO container for Threads.
+
+        Threads Graph API:
+        - media_type: VIDEO
+        - video_url: publicly accessible URL for the video
+        - text: optional caption
+        - reply_to_id: optional parent post id
+        """
+        data: dict[str, str] = {
+            "media_type": "VIDEO",
+            "video_url": video_url,
+        }
+        if text:
+            data["text"] = text
+        if reply_to_id:
+            data["reply_to_id"] = reply_to_id
+
+        logger.info(
+            "Threads: creating VIDEO container (reply_to_id=%s)",
+            reply_to_id,
+        )
+        r = requests.post(
+            f"{THREADS_BASE}/me/threads",
+            params={"access_token": self.token},
+            data=data,
+            timeout=30,
+        )
+        r.raise_for_status()
+        res = r.json()
+        logger.debug("Threads: VIDEO response: %s", res)
+        return res
+
     def _create_carousel(
         self,
         text: Optional[str],
@@ -175,8 +214,8 @@ class ThreadsClient(SocialClient):
     def _publish_with_retry(
         self,
         creation_id: str,
-        max_attempts: int = 8,
-        base_delay: float = 0.6,
+        max_attempts: int = 10,
+        base_delay: float = 2,
     ) -> dict:
         attempt = 1
         last_err: Exception | None = None
@@ -186,13 +225,15 @@ class ThreadsClient(SocialClient):
             except requests.HTTPError as e:
                 if e.response is not None and e.response.status_code == 400:
                     last_err = e
+                    sleep_time = base_delay * attempt
                     logger.warning(
-                        "Threads: container %s not ready (attempt %d/%d), retrying...",
+                        "Threads: container %s not ready (attempt %d/%d), sleeping for %s seconds & retrying...",
                         creation_id,
                         attempt,
                         max_attempts,
+                        sleep_time,
                     )
-                    time.sleep(base_delay * attempt)
+                    time.sleep(sleep_time)
                     attempt += 1
                     continue
                 # other HTTP error – bubble up
@@ -213,7 +254,7 @@ class ThreadsClient(SocialClient):
         p = Path(path_or_url)
         if p.exists():
             hosted = get_public_url(self.root_cfg, p)
-            logger.info("Threads: hosted local image %s -> %s", p, hosted)
+            logger.info("Threads: hosted local media %s -> %s", p, hosted)
             return hosted
         return path_or_url
 
@@ -239,10 +280,86 @@ class ThreadsClient(SocialClient):
     # ---------------------------
     # SocialClient API
     # ---------------------------
-    def post(self, post: SocialPost, reply_to_ref: PostRef | None = None) -> PostRef:
+
+    def post(self, post: SocialPost, reply_to_ref: PostRef | None = None) -> PostRef | None:
+        """
+        Create a Threads post.
+
+        For now, we SKIP posts whose media is a GIF, because the Threads API
+        treats GIFs as static images and that looks broken in the feed.
+        """
+        # --- GIF detection (local media only for now) ----------------------
+        has_gif = False
+
+        if getattr(post, "local_image", None) is not None:
+            try:
+                if Path(post.local_image).suffix.lower() == ".gif":
+                    has_gif = True
+            except TypeError:
+                # local_image might already be a Path
+                if isinstance(post.local_image, Path) and post.local_image.suffix.lower() == ".gif":
+                    has_gif = True
+
+        if getattr(post, "local_images", None):
+            for img in post.local_images:
+                try:
+                    suffix = Path(img).suffix.lower()
+                except TypeError:
+                    suffix = img.suffix.lower() if isinstance(img, Path) else ""
+                if suffix == ".gif":
+                    has_gif = True
+                    break
+
+        if has_gif:
+            logger.info(
+                "ThreadsClient: skipping GIF media post (GIFs render as static images via API). " "text=%r",
+                (post.text or "")[:80],
+            )
+            return None
+
+        # --- existing behavior ---------------------------------------------
         reply_to_id = reply_to_ref.id if (reply_to_ref and reply_to_ref.platform == "threads") else None
 
         text = sanitize_for_threads(post.text or "")
+
+        # --- VIDEO detection (local media only) ----------------------------
+        video_exts = {".mp4", ".mov", ".m4v", ".webm"}
+        video_path: Optional[str] = None
+
+        if getattr(post, "local_image", None) is not None:
+            try:
+                p = Path(post.local_image)
+            except TypeError:
+                p = post.local_image if isinstance(post.local_image, Path) else None
+            if p is not None and p.suffix.lower() in video_exts:
+                video_path = str(p)
+
+        if video_path is None and getattr(post, "local_images", None):
+            for media in post.local_images:
+                try:
+                    p = Path(media)
+                except TypeError:
+                    p = media if isinstance(media, Path) else None
+                if p is not None and p.suffix.lower() in video_exts:
+                    video_path = str(p)
+                    break
+
+        if video_path is not None:
+            video_url = self._ensure_hosted_url(video_path)
+            created = self._create_video(
+                text=text,
+                video_url=video_url,
+                reply_to_id=reply_to_id,
+            )
+            pub = self._publish_with_retry(created["id"])
+            published_id = pub.get("id") or created.get("id")
+            return PostRef(
+                platform="threads",
+                id=str(published_id),
+                published=True,
+                raw={"created": created, "publish": pub},
+            )
+
         image_urls = self._collect_images(post)
         logger.info(
             "Threads: post requested (reply_to_id=%s, images=%d, text_len=%d)",

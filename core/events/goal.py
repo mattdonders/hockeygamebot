@@ -2,7 +2,8 @@ import logging
 from typing import Dict, List, Optional, Union
 
 from core.gifs.edge_goal import generate_goal_gif_from_edge
-from socials.platforms import NON_X_PLATFORMS, X_PLATFORMS
+from core.gifs.goal_video import ensure_goal_video
+from socials.platforms import GIF_PLATFORMS, NON_X_PLATFORMS, VIDEO_PLATFORMS, X_PLATFORMS
 from utils.team_details import get_team_details_by_id
 
 from .base import Cache, Event
@@ -20,6 +21,7 @@ class GoalEvent(Event):
 
         # These two silence Pylint AND ensure predictable behavior
         self.goal_gif: str | None = None
+        self.goal_gif_video: str | None = None
         self.goal_gif_generated: bool = False
 
     def parse(self):
@@ -175,31 +177,70 @@ class GoalEvent(Event):
 
     def check_and_add_gif(self, context: "GameContext") -> None:
         """
-        Generate and post an EDGE goal GIF for this event, if enabled.
-        Safe to call multiple times; only generates once per goal.
+        Generate and post an EDGE goal GIF for this GoalEvent.
+
+        This version uses **INFO-level logging for EVERY branch** so that
+        re-runs produce a fully traceable audit trail.
         """
+
         cfg = (getattr(context, "config", {}) or {}).get("goal_gifs", {})
+        event_id = getattr(self, "event_id", "?")
+
+        # ----------------------------------------------------------------------
+        # 1. GIF disabled
+        # ----------------------------------------------------------------------
         if not cfg.get("enabled", False):
+            logger.info(
+                "[GIF] Skipping event %s — goal_gifs.enabled = False in config.",
+                event_id,
+            )
             return
 
-        # If we've already generated a GIF for this goal in this run, skip.
+        # ----------------------------------------------------------------------
+        # 2. Already generated this run
+        # ----------------------------------------------------------------------
         if getattr(self, "goal_gif_generated", False):
+            logger.info(
+                "[GIF] Skipping event %s — GIF already generated earlier in this run.",
+                event_id,
+            )
             return
 
+        # ----------------------------------------------------------------------
+        # 3. Preferred team restriction
+        # ----------------------------------------------------------------------
         preferred_only = cfg.get("preferred_team_only", True)
         is_preferred_goal = getattr(self, "is_preferred", False)
+
         if preferred_only and not is_preferred_goal:
+            logger.info(
+                "[GIF] Skipping event %s — not preferred team and preferred_team_only=True.",
+                event_id,
+            )
             return
 
+        # ----------------------------------------------------------------------
+        # 4. Extract core params
+        # ----------------------------------------------------------------------
         season = str(getattr(context, "season_id"))
         game_id = str(getattr(context, "game_id"))
-        event_id = str(getattr(self, "event_id"))
         home_abbr = getattr(context, "home_abbr", "")
         away_abbr = getattr(context, "away_abbr", "")
 
         goal_sweater = getattr(self, "scoring_sweater", None)
         goal_player_id = getattr(self, "scoring_player_id", None)
 
+        logger.info(
+            "[GIF] Generating GIF for event %s — %s vs %s (game=%s)",
+            event_id,
+            away_abbr,
+            home_abbr,
+            game_id,
+        )
+
+        # ----------------------------------------------------------------------
+        # 5. Attempt GIF generation
+        # ----------------------------------------------------------------------
         try:
             gif_path = generate_goal_gif_from_edge(
                 season=season,
@@ -218,22 +259,100 @@ class GoalEvent(Event):
                 marker_scale=float(cfg.get("marker_scale", 1.8)),
             )
         except Exception:
-            logger.exception("Exception while generating goal GIF for event %s", event_id)
+            logger.exception(
+                "❌ [GIF] Exception while generating goal GIF for event %s.",
+                event_id,
+            )
             return
 
+        # ----------------------------------------------------------------------
+        # 5a. Also generate an MP4 video variant for video-friendly platforms.
+        # ----------------------------------------------------------------------
+        goal_video_path = None
+        try:
+            goal_video_path = ensure_goal_video(gif_path)
+            logger.info(
+                "🎞️ [GIF] Generated MP4 variant for event %s → %s",
+                event_id,
+                goal_video_path,
+            )
+        except Exception:
+            logger.exception(
+                "⚠️ [GIF] Failed to generate MP4 variant for event %s; will fall back to GIF on all platforms.",
+                event_id,
+            )
+
+        # ----------------------------------------------------------------------
+        # 6. GIF generator returned nothing
+        # ----------------------------------------------------------------------
         if not gif_path:
+            logger.info(
+                "⚠️ [GIF] Generator returned no file for event %s — skipping GIF post.",
+                event_id,
+            )
             return
 
-        # Remember that we've generated it so we don't do the work again.
+        # ----------------------------------------------------------------------
+        # 7. Mark as generated
+        # ----------------------------------------------------------------------
         self.goal_gif = str(gif_path)
+        self.goal_gif_video = str(goal_video_path) if goal_video_path else None
         self.goal_gif_generated = True
 
-        logger.info("Posting goal GIF reply for event %s from %s", event_id, gif_path)
-        self.post_message(
-            message="",
-            media=[gif_path],
-            event_type="goal_gif",
+        logger.info(
+            "✅ [GIF] Successfully generated GIF for event %s → %s",
+            event_id,
+            gif_path,
         )
+
+        # ------------------------------------------------------------------
+        # 8. Build caption text for the GIF reply
+        # ------------------------------------------------------------------
+        scorer = getattr(self, "scoring_player_name", "Unknown scorer")
+        team = getattr(self, "team_name", "Unknown team")
+        shot_type = getattr(self, "shot_type", None) or "shot"
+        period_label = getattr(self, "period_label", "the period")
+        time_remaining = getattr(self, "time_remaining", "")
+
+        if is_preferred_goal:
+            opening = f"EDGE VIZ: {scorer} scores for the {team}!"
+        else:
+            opening = f"EDGE VIZ: {scorer} strikes for the {team}."
+
+        shot_label = (shot_type or "shot").lower()
+
+        # Example: "Tip-in from the puck-tracking view (07:06 in the 1st)."
+        detail = f"{shot_label.capitalize()} from the puck-tracking view"
+        if time_remaining and period_label:
+            detail += f" ({time_remaining} in the {period_label})."
+        elif period_label:
+            detail += f" ({period_label})."
+        else:
+            detail += "."
+
+        gif_caption = f"{opening}\n{detail}"
+
+        # ----------------------------------------------------------------------
+        # 9. Attempt posting
+        # ----------------------------------------------------------------------
+        try:
+            logger.info("[GIF] Posting GIF for event %s (w/ GIF Path: %s)", event_id, gif_path)
+            self.post_message(
+                message=gif_caption,  # GIF-only reply
+                media=[gif_path],
+                event_type="goal_gif",
+                add_hashtags=True,
+                add_score=False,
+            )
+            logger.info(
+                "📤 [GIF] Posted GIF reply for event %s across all platforms.",
+                event_id,
+            )
+        except Exception:
+            logger.exception(
+                "❌ [GIF] Posting failed for event %s (platform-level error).",
+                event_id,
+            )
 
     def was_goal_removed(self, all_plays: list) -> bool:
         """
@@ -266,6 +385,24 @@ class GoalEvent(Event):
     # Social posting / threading with restart-safe goal cache
     # ------------------------------------------------------------------
 
+    def _pick_media_for_platform(self, platform: str, event_type: str, base_media: str) -> str:
+        if event_type == "goal_gif":
+            gif_path = self.goal_gif or base_media
+            video_path = getattr(self, "goal_gif_video", None)
+
+            logger.info(
+                "Media selection (%s, %s): %s -> %s",
+                platform,
+                event_type,
+                base_media,
+                video_path if (platform in VIDEO_PLATFORMS and video_path) else gif_path,
+            )
+
+            if platform in VIDEO_PLATFORMS and video_path:
+                return video_path
+            return gif_path
+        return base_media
+
     def post_message(
         self,
         message: str,
@@ -289,6 +426,9 @@ class GoalEvent(Event):
         # Ensure per-event thread map exists (platform -> PostRef)
         if not hasattr(self, "_post_refs"):
             self._post_refs = {}
+
+        if not hasattr(self, "_root_refs"):
+            self._root_refs = {}
 
         # Restart-safe guard: if this would be treated as an initial post
         # (no in-memory refs yet), consult the per-game cache to avoid
@@ -331,7 +471,9 @@ class GoalEvent(Event):
 
         try:
             if not self._post_refs:
+                # ------------------------------------------------------------------
                 # Initial post on all enabled platforms; store refs for future replies.
+                # ------------------------------------------------------------------
                 logger.info(
                     "GoalEvent[%s]: initial post across platforms.",
                     getattr(self, "event_id", "unknown"),
@@ -370,6 +512,9 @@ class GoalEvent(Event):
                     if platform == "x":
                         continue
                     self._post_refs[platform] = ref
+                    # record the root ref once
+                    if platform not in self._root_refs:
+                        self._root_refs[platform] = ref
 
                 if not results:
                     logger.warning(
@@ -378,28 +523,50 @@ class GoalEvent(Event):
                     )
 
             else:
+                # ------------------------------------------------------------------
                 # Reply per platform to maintain threading; update refs as we go.
+                # This is where we pick GIF vs MP4 per platform for goal_gif events.
+                # ------------------------------------------------------------------
                 logger.info(
                     "GoalEvent[%s]: replying to existing thread on %d platform(s).",
                     getattr(self, "event_id", "unknown"),
                     len(self._post_refs),
                 )
 
+                effective_event_type = event_type or "goal"
                 new_refs: Dict[str, any] = {}
+
                 for platform, parent_ref in list(self._post_refs.items()):
+                    # Decide which parent to reply to.
+                    reply_parent = parent_ref
+                    if effective_event_type == "goal_gif" and platform == "threads":
+                        # For GIF/MP4 on Threads, always reply to the root goal post
+                        reply_parent = self._root_refs.get(platform, parent_ref)
+
                     # For replies we only send a single media item argument.
-                    media_arg: Optional[str] = None
+                    base_media: Optional[str] = None
                     if isinstance(media, list) and media:
-                        media_arg = media[0]
+                        base_media = media[0]
                     elif isinstance(media, str):
-                        media_arg = media
+                        base_media = media
+
+                    media_arg: Optional[str] = None
+                    if base_media:
+                        media_arg = self._pick_media_for_platform(
+                            platform=platform,
+                            event_type=effective_event_type,
+                            base_media=base_media,
+                        )
+
+                    logging.info("Media Arg for %s: %s", platform, media_arg)
 
                     res = self.context.social.reply(
                         message=text,
                         media=media_arg,
                         platforms=[platform],
-                        reply_to=parent_ref,
+                        reply_to=reply_parent,
                         alt_text=alt_text or "",
+                        event_type=effective_event_type,
                     )
                     if platform in res:
                         new_refs[platform] = res[platform]
@@ -419,8 +586,9 @@ class GoalEvent(Event):
                 # Advance stored refs for non-X platforms
                 self._post_refs.update(new_refs)
 
-                # Handle X GIF reply separately using the stored X PostRef
-                if event_type == "goal_gif" and getattr(self, "_x_post_ref", None) and media:
+                # Handle X GIF reply separately using the stored X PostRef.
+                # This remains GIF-only; X_PLATFORMS is typically ["x"].
+                if effective_event_type == "goal_gif" and getattr(self, "_x_post_ref", None) and media:
                     media_arg: Optional[str] = None
                     if isinstance(media, list) and media:
                         media_arg = media[0]

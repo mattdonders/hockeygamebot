@@ -1,3 +1,6 @@
+# pylint: disable=wrong-import-position
+
+
 import argparse
 import http.server
 import logging

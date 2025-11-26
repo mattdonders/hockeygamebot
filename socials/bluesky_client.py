@@ -1,13 +1,21 @@
 # socials/bluesky_client.py
+# pylint: disable=wrong-import-position
+
 from __future__ import annotations
 
 import io
 import json
 import logging
 import mimetypes
+import warnings
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
+
+# Silence noisy Pydantic v2 + atproto_client schema warnings
+from pydantic.warnings import UnsupportedFieldAttributeWarning
+
+warnings.filterwarnings("ignore", category=UnsupportedFieldAttributeWarning)
 
 from atproto import Client, client_utils
 from atproto import models as at_models
@@ -20,6 +28,13 @@ from socials.types import PostRef
 from .base import SocialClient, SocialPost
 
 logger = logging.getLogger(__name__)
+
+
+class BlueskyBlobTooLarge(Exception):
+    """Raised when an image/gif exceeds Bluesky's blob size limit."""
+
+    pass
+
 
 @dataclass
 class BlueskyConfig:
@@ -57,6 +72,10 @@ class BlueskyClient(SocialClient):
       - Handles image uploads.
       - Replies using a robust ReplyRef builder (prefers CID; falls back if needed).
     """
+
+    # Bluesky currently limits blobs to ~1,000,000 bytes (~976.56 KiB).
+    # Use a slightly lower safety margin to avoid 400 BlobTooLarge errors.
+    MAX_BLOB_BYTES: int = 975 * 1024
 
     def __init__(self, cfg: BlueskyConfig):
         self.cfg = cfg
@@ -150,6 +169,18 @@ class BlueskyClient(SocialClient):
         for i, p in enumerate(paths):
             data = Path(p).read_bytes()
 
+            # Hard cap: Bluesky blobs must be < ~1MB, otherwise we get BlobTooLarge.
+            if len(data) > self.MAX_BLOB_BYTES:
+                logging.warning(
+                    "BlueskyClient: image %s is %.2f MB (> ~0.95 MB limit); "
+                    "skipping entire Bluesky post for this event.",
+                    p,
+                    len(data) / (1024 * 1024),
+                )
+
+                # Signal to post() that this should not be sent at all.
+                raise BlueskyBlobTooLarge(f"Image {p} too large for Bluesky: {len(data)} bytes")
+
             # Extract dimensions for aspect ratio (falls back if PIL can’t read)
             width = height = None
             try:
@@ -175,6 +206,46 @@ class BlueskyClient(SocialClient):
             )
 
         return at_models.AppBskyEmbedImages.Main(images=images)
+
+    def _upload_video(self, video_path: str | Path, alt_text: str | None):
+        """
+        Build an embed for a single video file (MP4, MOV, WEBM).
+
+        Bluesky currently supports one video per post. We keep the same
+        ~1 MB safety cap we use for images, but our EDGE MP4s are ~500 KB
+        so this should be comfortably under the limit.
+        """
+        p = Path(video_path)
+
+        if not p.exists():
+            logger.warning("BlueskyClient: video path does not exist: %s", p)
+            raise FileNotFoundError(p)
+
+        data = p.read_bytes()
+
+        # Same conservative cap as images – if this ever bites us we can
+        # bump it, but for now our EDGE MP4s are tiny.
+        if len(data) > self.MAX_BLOB_BYTES:
+            logging.warning(
+                "BlueskyClient: video %s is %.2f MB (> ~0.95 MB limit); "
+                "skipping entire Bluesky post for this event.",
+                p,
+                len(data) / (1024 * 1024),
+            )
+            raise BlueskyBlobTooLarge(f"Video {p} too large for Bluesky: {len(data)} bytes")
+
+        # Upload the blob
+        uploaded = self.client.upload_blob(data)
+
+        # NOTE: Aspect ratio is optional for AppBskyEmbedVideo.Main, so we
+        # omit it for now and let the client lay it out. If we want to be
+        # precise later we can stash width/height alongside the MP4.
+        alt = alt_text or ""
+
+        return at_models.AppBskyEmbedVideo.Main(
+            alt=alt,
+            video=uploaded.blob,
+        )
 
     def _reply_ref_from_parent_uri(self, parent_uri: str) -> at_models.AppBskyFeedPost.ReplyRef | None:
         """
@@ -211,12 +282,52 @@ class BlueskyClient(SocialClient):
         except Exception:
             return None
 
+    def _build_media_embed(self, media, alt_text: str | list[str] | None):
+        """
+        Decide whether to treat the provided media as images (GIF/PNG/JPEG)
+        or a single video (MP4/MOV/WEBM), then build the appropriate embed.
+
+        - If any path has a video extension -> use the first video file.
+        - Otherwise, fall back to the existing image embed behavior.
+        """
+        if isinstance(media, (list, tuple)):
+            paths = list(media)
+        else:
+            paths = [media]
+
+        video_exts = {".mp4", ".mov", ".m4v", ".webm"}
+        image_exts = {".png", ".jpg", ".jpeg", ".gif", ".webp"}
+
+        # Normalize alt text for the video case (single string)
+        video_alt: str | None
+        if isinstance(alt_text, list):
+            video_alt = alt_text[0] if alt_text else None
+        else:
+            video_alt = alt_text
+
+        video_path: Path | None = None
+        for raw in paths:
+            p = Path(raw)
+            suffix = p.suffix.lower()
+            if suffix in video_exts:
+                video_path = p
+                break
+
+        if video_path is not None:
+            # Bluesky only supports a single video per post right now.
+            return self._upload_video(video_path, video_alt)
+
+        # If we get here, treat everything as images (existing behavior)
+        return self._upload_image(media, alt_text)
+
     # ---------------- Public API ----------------
-    def post(self, post: SocialPost, reply_to_ref: PostRef | None = None) -> PostRef:
+    def post(self, post: SocialPost, reply_to_ref: PostRef | None = None) -> PostRef | None:
         """
         Create a Bluesky post (text and optional image(s)). Returns a PostRef.
+
         - If local_image is a list/tuple -> send as multi-image post via embed.
         - If single image -> send with correct aspect ratio.
+        - If image is too large for Bluesky, we SKIP the post entirely (return None).
         """
         # 1) Text + facets
         text, facets = self._facets_for_text(post.text or "")
@@ -226,16 +337,30 @@ class BlueskyClient(SocialClient):
         if reply_to_ref and getattr(reply_to_ref, "uri", None):
             reply_ref = self._reply_ref_from_parent_uri(reply_to_ref.uri)
 
-        # 3) Images
-        image_payload = None
+        # 3) Media (images or video)
+        media_payload = None
         if getattr(post, "local_images", None):
-            image_payload = post.local_images
+            media_payload = post.local_images
         elif getattr(post, "local_image", None):
-            image_payload = post.local_image
+            media_payload = post.local_image
+
         embed = None
-        if image_payload:
-            # If list/tuple -> multi-image embed (up to 4). If single -> single-image.
-            embed = self._upload_image(image_payload, getattr(post, "alt_text", "") or "")
+        if media_payload:
+            try:
+                embed = self._build_media_embed(
+                    media_payload,
+                    getattr(post, "alt_text", "") or "",
+                )
+            except BlueskyBlobTooLarge as exc:
+                logger.warning(
+                    "BlueskyClient: media too large for Bluesky, skipping post. error=%s text=%r",
+                    exc,
+                    (post.text or "")[:80],
+                )
+                return None
+            except Exception:
+                logger.exception("BlueskyClient: failed to upload media; falling back to text-only post")
+                embed = None
 
         # 4) Send (try helper; fall back to raw createRecord)
         try:
@@ -248,7 +373,8 @@ class BlueskyClient(SocialClient):
             uri = str(getattr(created, "uri", "") or created.get("uri"))
             cid = str(getattr(created, "cid", "") or created.get("cid"))
         except Exception:
-            record = {
+            # Fallback path: construct record manually
+            record: dict[str, object] = {
                 "$type": "app.bsky.feed.post",
                 "text": text,
                 "createdAt": datetime.utcnow().isoformat() + "Z",

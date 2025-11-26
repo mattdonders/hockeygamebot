@@ -88,13 +88,31 @@ class EventFactory:
 
                 event_object = event_class(event_data, context)
 
-                # CHANGE: Parse now returns None for failed to create objects
-                # We can "force fail (via False)" events that are missing some data (maybe via retry)
-                events_returning_image = PeriodEndEvent
-                if isinstance(event_object, events_returning_image):
-                    event_img, event_message = event_object.parse()
+                # Instantiate Empty Event Image
+                event_img = None
+
+                # Let parse() return either:
+                # - message (str / False / None), or
+                # - (image_path, message)
+                parse_result = event_object.parse()
+                event_message = None
+
+                if isinstance(parse_result, tuple) and len(parse_result) == 2:
+                    event_img, event_message = parse_result
                 else:
-                    event_message = event_object.parse()
+                    event_message = parse_result
+
+                if event_message is None:
+                    # True error: we couldn't parse this into a usable event at all.
+                    logger.error(
+                        "Error creating %s event (type: %s) for ID: %s / SortOrder: %s.",
+                        event_class.__name__,
+                        event_type,
+                        event_id,
+                        sort_order,
+                    )
+                    logger.warning(event_data)
+                    return None
 
                 if event_message is not False:
                     event_class.cache.add(event_object)
@@ -104,11 +122,12 @@ class EventFactory:
                     disable_add_score_events = (GoalEvent, PeriodEndEvent)
                     add_score = not isinstance(event_object, disable_add_score_events)
 
-                    # Post message with the determined add_score value
-                    if event_img:
-                        event_object.post_message(event_message, add_score=add_score, media=event_img)
-                    else:
-                        event_object.post_message(event_message, add_score=add_score)
+                    # Always pass media; post_message handles media=None just fine
+                    event_object.post_message(
+                        event_message,
+                        add_score=add_score,
+                        media=event_img,
+                    )
 
                     # For GoalEvents, we want to Check & Add Highlight Clip (even on event creation)
                     if event_class == GoalEvent:
@@ -117,14 +136,14 @@ class EventFactory:
                         event_object.check_and_add_highlight(event_data)
                         event_object.check_and_add_gif(context)
                 else:
-                    logger.warning(
-                        "Unable to create / parse %s event (type: %s) for ID: %s / SortOrder: %s.",
+                    # No social output by design (e.g. GenericEvent)
+                    logger.info(
+                        "%s created with no social message (type: %s, ID: %s, SortOrder: %s).",
                         event_class.__name__,
                         event_type,
                         event_id,
                         sort_order,
                     )
-                    logger.warning(event_data)
             except Exception as error:
                 logger.error(
                     "Error creating %s event (type: %s) for ID: %s / SortOrder: %s.",
