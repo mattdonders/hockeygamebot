@@ -12,6 +12,35 @@ DEFAULT_LOGO_DIR = PROJECT_ROOT / "resources" / "logos"
 DEFAULT_GIF_ROOT = PROJECT_ROOT / "output" / "goal_gifs"
 
 
+def clean_frame(frame):
+    """
+    Remove invalid/malformed player entries from a raw frame dict.
+    A valid player entry must have non-empty playerId and numeric x,y coords.
+    """
+    cleaned = dict(frame)  # shallow copy
+    cleaned_on_ice = {}
+
+    for pid, pdata in frame.get("onIce", {}).items():
+        x = pdata.get("x")
+        y = pdata.get("y")
+        player_id = pdata.get("playerId")
+
+        # Filter conditions for invalid players
+        if (
+            not player_id  # empty string, None, 0, etc
+            or x is None
+            or y is None
+            or not isinstance(x, (int, float))
+            or not isinstance(y, (int, float))
+        ):
+            continue  # skip this bad player
+
+        cleaned_on_ice[pid] = pdata
+
+    cleaned["onIce"] = cleaned_on_ice
+    return cleaned
+
+
 def generate_goal_gif_from_edge(
     *,
     season: str,
@@ -68,9 +97,26 @@ def generate_goal_gif_from_edge(
                 event_id=event_id,
             )
 
+        # Cleanup Frames w/o Coordinates or PlayerIDs
+        frames = [f for f in frames if "onIce" in f and isinstance(f["onIce"], dict)]
+        # frames = [clean_frame(f) for f in frames if isinstance(f, dict)]
+
         if not frames:
-            logger.error("No frames returned by load_sprites_json()")
+            logger.error(
+                "No frames returned by load_sprites_json() " "for season=%s game=%s event=%s",
+                season,
+                game_id,
+                event_id,
+            )
             return None
+
+        logger.info(
+            "Loaded %d sprite frame(s) for season=%s game=%s event=%s",
+            len(frames),
+            season,
+            game_id,
+            event_id,
+        )
 
         logger.info(
             "Rendering goal GIF for season=%s game=%s event=%s -> %s",

@@ -9,6 +9,7 @@ class PeriodEndEvent(Event):
     """
 
     cache = Cache(__name__)
+    logical_event_type = "period_summary"
 
     def parse(self):
         """

@@ -13,6 +13,8 @@ from socials.types import PostRef
 
 from .base import SocialPost
 from .bluesky_client import BlueskyClient, BlueskyConfig
+from .mastodon_client import MastodonClient, MastodonConfig
+from .telegram_client import TelegramClient, TelegramConfig
 from .threads_client import ThreadsClient, ThreadsConfig
 from .x_client import XClient, XConfig
 
@@ -102,6 +104,29 @@ class SocialPublisher:
                 )
             )
 
+        # Telegram
+        self._tg = None
+        if self.socials.get("telegram", False):
+            tc = self.cfg["telegram"][self.mode]
+            self._tg = TelegramClient(
+                TelegramConfig(
+                    bot_token=tc["bot_token"],
+                    chat_id=str(tc["chat_id"]),
+                )
+            )
+
+        # Mastodon
+        self._mdn = None
+        if self.socials.get("mastodon", False):
+            mc = self.cfg["mastodon"][self.mode]
+            self._mdn = MastodonClient(
+                MastodonConfig(
+                    base_url=mc.get("base_url", "https://mastodon.social"),
+                    access_token=mc["access_token"],
+                    visibility=mc.get("visibility", "unlisted"),
+                )
+            )
+
         # Registry of active platforms
         self._platforms: dict[str, object] = {}
         if self._bsky:
@@ -110,6 +135,10 @@ class SocialPublisher:
             self._platforms["threads"] = self._thr
         if self._x:
             self._platforms["x"] = self._x
+        if self._tg:
+            self._platforms["telegram"] = self._tg
+        if self._mdn:
+            self._platforms["mastodon"] = self._mdn
 
         # X event allow-list: which logical "events" are allowed to hit X.
         # Can be overridden in config.yaml under:
@@ -140,7 +169,7 @@ class SocialPublisher:
     def post(
         self,
         message: str | None = None,
-        media: str | list[str] | None = None,
+        media: str | Path | list[str | Path] | None = None,
         reply_root: PostRef | None = None,  # kept for backward compat (unused by adapters)
         reply_parent: PostRef | None = None,  # if provided, used only when platform matches
         platforms: str | Iterable[str] = "enabled",
@@ -151,6 +180,10 @@ class SocialPublisher:
         """
         Create a new post on 1+ platforms. Does NOT update reply anchors.
         'state' is accepted for API symmetry but not used here.
+
+        NOTE: This method is now best-effort per platform: if one client raises,
+        we log and continue posting to the remaining platforms instead of failing
+        the entire fan-out.
         """
         # NOSOCIAL centrally
         if self.nosocial:
@@ -178,19 +211,39 @@ class SocialPublisher:
         results: dict[str, PostRef] = {}
 
         # Normalize media into local vs hosted lists without losing items
+        def _as_str(p: object) -> str | None:
+            if isinstance(p, Path):
+                return str(p)
+            if isinstance(p, str):
+                return p
+            return None
+
         local_paths: list[str] = []
         hosted_urls: list[str] = []
+
         if isinstance(media, list):
             for m in media:
-                if isinstance(m, str) and m.startswith(("http://", "https://")):
-                    hosted_urls.append(m)
-                elif m:
-                    local_paths.append(str(m))
-        elif isinstance(media, str):
-            if media.startswith(("http://", "https://")):
-                hosted_urls.append(media)
-            else:
-                local_paths.append(media)
+                m_str = _as_str(m)
+                if not m_str:
+                    continue
+                if m_str.startswith(("http://", "https://")):
+                    hosted_urls.append(m_str)
+                else:
+                    local_paths.append(m_str)
+        elif media is not None:
+            m_str = _as_str(media)
+            if m_str:
+                if m_str.startswith(("http://", "https://")):
+                    hosted_urls.append(m_str)
+                else:
+                    local_paths.append(m_str)
+
+        # Helpful Logging - Normalized Media Strings / Locations
+        logger.info(
+            "MEDIA NORMALIZED: local=%s hosted=%s",
+            [str(p) for p in local_paths],
+            hosted_urls,
+        )
 
         for name, client in self._iter_clients(targets):
             rp = reply_parent if (reply_parent and reply_parent.platform == name) else None
@@ -203,7 +256,16 @@ class SocialPublisher:
                 images=hosted_urls if len(hosted_urls) > 1 or (hosted_urls and local_paths) else None,
                 alt_text=alt_text,
             )
-            ref: PostRef = client.post(sp, reply_to_ref=rp)
+
+            try:
+                ref: PostRef | None = client.post(sp, reply_to_ref=rp)
+            except Exception:
+                logger.exception(
+                    "SocialPublisher.post: %s.post(...) raised; skipping this platform.",
+                    name,
+                )
+                continue
+
             if ref:
                 results[name] = ref
 
@@ -212,7 +274,7 @@ class SocialPublisher:
     def reply(
         self,
         message: str,
-        media: str | list[str] | None = None,
+        media: str | Path | list[str | Path] | None = None,
         platforms: str | Iterable[str] = "enabled",
         reply_to: PostRef | None = None,
         alt_text: str | None = None,
@@ -223,13 +285,16 @@ class SocialPublisher:
         Reply to the current anchor (publisher's _last or provided state) or to an explicit PostRef.
         Advances both the publisher anchors and 'state' parents if provided.
         Includes event_type controls routing (e.g. X-only events, non-X summary, etc.).
+
+        NOTE: This method is now best-effort per platform: if one client raises,
+        we log and continue replying on the remaining platforms.
         """
 
         targets = self._resolve_targets(platforms)
         targets = self._filter_targets_for_event(targets, event_type)
 
         if self.nosocial:
-            targets = self._resolve_targets(platforms)
+            # Use the already-filtered targets here
             results: dict[str, PostRef] = {}
 
             for name in targets:
@@ -247,7 +312,34 @@ class SocialPublisher:
             self._log_nosocial_preview(message)
             return results
 
-        targets = self._resolve_targets(platforms)
+        # Normalize media once, like in post()
+        def _as_str(p: object) -> str | None:
+            if isinstance(p, Path):
+                return str(p)
+            if isinstance(p, str):
+                return p
+            return None
+
+        local_paths: list[str] = []
+        hosted_urls: list[str] = []
+
+        if isinstance(media, list):
+            for m in media:
+                m_str = _as_str(m)
+                if not m_str:
+                    continue
+                if m_str.startswith(("http://", "https://")):
+                    hosted_urls.append(m_str)
+                else:
+                    local_paths.append(m_str)
+        elif media is not None:
+            m_str = _as_str(media)
+            if m_str:
+                if m_str.startswith(("http://", "https://")):
+                    hosted_urls.append(m_str)
+                else:
+                    local_paths.append(m_str)
+
         results: dict[str, PostRef] = {}
 
         for name, client in self._iter_clients(targets):
@@ -255,7 +347,7 @@ class SocialPublisher:
             # 1) explicit reply_to (must match platform)
             # 2) parent from state (if available)
             # 3) publisher's last anchor
-            parent = None
+            parent: PostRef | None = None
             if reply_to and reply_to.platform == name:
                 parent = reply_to
             elif state is not None:
@@ -263,20 +355,6 @@ class SocialPublisher:
             if parent is None:
                 parent = self._last.get(name)
 
-            # normalize media like in post()
-            local_paths: list[str] = []
-            hosted_urls: list[str] = []
-            if isinstance(media, list):
-                for m in media:
-                    if isinstance(m, str) and m.startswith(("http://", "https://")):
-                        hosted_urls.append(m)
-                    elif m:
-                        local_paths.append(str(m))
-            elif isinstance(media, str):
-                if media.startswith(("http://", "https://")):
-                    hosted_urls.append(media)
-                elif media:
-                    local_paths.append(media)
             sp = SocialPost(
                 text=message,
                 local_image=Path(local_paths[0]) if len(local_paths) == 1 else None,
@@ -285,7 +363,16 @@ class SocialPublisher:
                 images=hosted_urls if len(hosted_urls) > 1 or (hosted_urls and local_paths) else None,
                 alt_text=alt_text,
             )
-            ref: PostRef = client.post(sp, reply_to_ref=parent)
+
+            try:
+                ref: PostRef | None = client.post(sp, reply_to_ref=parent)
+            except Exception:
+                logger.exception(
+                    "SocialPublisher.reply: %s.post(...) raised; skipping this platform.",
+                    name,
+                )
+                continue
+
             if ref:
                 results[name] = ref
                 # advance publisher anchor and (optionally) state parent
@@ -433,17 +520,33 @@ class SocialPublisher:
         If event_type is provided and X is in the targets but that
         event_type is not allow-listed, X is removed from the fan-out.
         """
+        # Case 1: nothing to do (no targets or no event_type)
         if not targets or not event_type:
+            logger.debug(
+                "[ROUTER] event_type=%r → no filtering applied; targets=%s",
+                event_type,
+                targets,
+            )
             return targets
 
+        # Case 2: X is present and event_type is NOT allow-listed → strip X
         if "x" in targets and event_type not in getattr(self, "_x_event_allowlist", set()):
-            logger.debug(
-                "Filtering X out for event_type=%s (not in allow-list %s)",
+            new_targets = [t for t in targets if t != "x"]
+            logger.info(
+                "[ROUTER] event_type=%r is NOT allowed on X → removing X " "(before=%s, after=%s; allowlist=%s)",
                 event_type,
+                targets,
+                new_targets,
                 getattr(self, "_x_event_allowlist", None),
             )
-            return [t for t in targets if t != "x"]
+            return new_targets
 
+        # Case 3: either X not in targets, or event_type is allow-listed → keep as-is
+        logger.debug(
+            "[ROUTER] event_type=%r → X kept or not present; targets=%s",
+            event_type,
+            targets,
+        )
         return targets
 
     # ---------- NOSOCIAL logging ----------

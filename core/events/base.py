@@ -209,13 +209,25 @@ class Event:
         if link:
             text += f"\n\n{link}"
 
-        # Fan out to Bluesky + Threads (Publisher handles platform quirks + multi-image)
+        # NEW: resolve effective event_type
+        effective_event_type = event_type or getattr(self, "logical_event_type", None)
+
+        # NEW: decide which platforms to hit
+        if effective_event_type:
+            # First-class event: allow X (subject to allowlist)
+            effective_platforms = "enabled"
+        else:
+            # Background / generic event: keep old behavior = non-X only
+            effective_platforms = NON_X_PLATFORMS
+
+        # Fan out to 'Effective Platforms' (Publisher handles platform quirks + multi-image)
         try:
             self.context.social.post(
                 message=text,
                 media=media,
                 alt_text=alt_text or "",
-                platforms=NON_X_PLATFORMS,
+                platforms=effective_platforms,
+                event_type=effective_event_type,  # pass it through
             )
         except Exception as e:
             # Never crash event parsing
