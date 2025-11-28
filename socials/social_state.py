@@ -3,11 +3,12 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
-from typing import Optional, Dict, Any
+from typing import Any, Dict, Optional
 
 from socials.types import PostRef
 
 logger = logging.getLogger(__name__)
+
 
 @dataclass
 class StartOfGameSocial:
@@ -105,10 +106,11 @@ class StartOfGameSocial:
     @property
     def all_pregame_sent(self) -> bool:
         """
-        Returns True when the core preview set is posted.
-        Tweak the checklist as you see fit.
+        Returns True when the core pre-game content set is posted.
+        (Core preview text, season series context, and team stats chart.)
+        Officials are tracked separately.
         """
-        pregame_checks = ("core_sent", "season_series_sent", "officials_sent")
+        pregame_checks = ("core_sent", "season_series_sent", "team_stats_sent")
         status = {attr: getattr(self, attr) for attr in pregame_checks}
         if not all(status.values()):
             logger.info("Pregame Socials Status: %s", status)

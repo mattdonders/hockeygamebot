@@ -167,12 +167,10 @@ def start_game_loop(context: GameContext):
         if context.game_state in ["PRE", "FUT"]:
             logger.info("Handling a preview game state: %s", context.game_state)
 
-            # Load the Cache from GameContext
             cache = getattr(context, "cache", None)
 
-            # If we have a cache, sync preview flags + rehydrate thread roots
+            # --- Hydrate pre-game state from cache (flags + roots) ---
             if cache is not None:
-                # 1) align sent flags from cache -> StartOfGameSocial
                 mapping = [
                     ("core", "core_sent"),
                     ("season_series", "season_series_sent"),
@@ -183,121 +181,68 @@ def start_game_loop(context: GameContext):
                     if hasattr(context.preview_socials, attr) and cache.is_pregame_sent(kind):
                         setattr(context.preview_socials, attr, True)
 
-                # 2) restore per-platform thread roots (PostRefs) so replies stay in the same thread
                 roots = cache.get_pregame_root_refs()
                 if roots:
                     context.social.restore_roots_from_cache(roots, state=context.preview_socials)
 
-            # Generate and post the game time preview
-            if not context.preview_socials.core_sent:
-                game_time_post = preview.format_future_game_post(context.game, context)
-                try:
-                    # Handles posting + seeding thread roots automatically
-                    results = context.social.post_and_seed(
-                        message=game_time_post,
-                        platforms=NON_X_PLATFORMS,
-                        state=context.preview_socials,
-                    )
-                    context.preview_socials.core_sent = True
-
-                    # Save Pre-Game Sent State into Cache
-                    if cache is not None:
-                        cache.mark_pregame_sent("core", results)
-                        cache.save()
-
-                    logger.info("Posted and seeded pre-game thread roots.")
-                except Exception as e:
-                    logger.exception("Failed to post preview: %s", e)
-
-            if not context.preview_socials.season_series_sent:
-                try:
-                    team_schedule = schedule.fetch_schedule(context.preferred_team.abbreviation, context.season_id)
-                    home_team = context.game["homeTeam"]["abbrev"]
-                    away_team = context.game["awayTeam"]["abbrev"]
-                    opposing_team = away_team if home_team == context.preferred_team.abbreviation else home_team
-
-                    season_series_post = preview.format_season_series_post(
-                        team_schedule,
-                        context.preferred_team.abbreviation,
-                        opposing_team,
-                        context,
-                    )
-
-                    # Reply into the existing pre-game thread on all enabled platforms
-                    context.social.reply(
-                        message=season_series_post,
-                        platforms=NON_X_PLATFORMS,
-                        state=context.preview_socials,  # keeps roots/parents advancing
-                    )
-
-                    context.preview_socials.season_series_sent = True
-
-                    if cache is not None:
-                        cache.mark_pregame_sent("season_series")
-                        cache.save()
-
-                    logger.info("Posted season series preview (threaded).")
-                except Exception as e:
-                    logger.exception("Failed to post season series preview: %s", e)
-
-            # Post pre-game team stats chart:
-            #   - threaded reply on non-X
-            #   - standalone, X-specific pre-game tweet on X
-
-            # Post pre-game team stats chart (reply under the same thread)
-            logger.info(
-                "Pregame team-stats gate: core_sent=%s, season_series_sent=%s, "
-                "team_stats_sent=%s, enabled_platforms=%s",
-                getattr(context.preview_socials, "core_sent", None),
-                getattr(context.preview_socials, "season_series_sent", None),
-                getattr(context.preview_socials, "team_stats_sent", None),
-                getattr(context.social, "enabled_platforms", None),
+            # --- Unified pre-game core post (core + season series + team stats) ---
+            unified_pregame_sent = (
+                getattr(context.preview_socials, "core_sent", False)
+                and getattr(context.preview_socials, "season_series_sent", False)
+                and getattr(context.preview_socials, "team_stats_sent", False)
             )
 
-            if not context.preview_socials.team_stats_sent:
-                try:
-                    logger.info("Entering pre-game team stats block for game_id=%s", context.game_id)
+            if not unified_pregame_sent:
+                logger.info("Unified pre-game post not yet sent; generating content.")
 
+                chart_path = None
+                try:
                     right_rail_data = schedule.fetch_rightrail(context.game_id)
                     teamstats_data = right_rail_data.get("teamSeasonStats")
-                    chart_path = teamstats_chart(context, teamstats_data, ingame=False)
-
-                    if chart_path:
-                        # Non-X: reply in the existing pre-game thread
-                        msg_non_x = f"Pre-game team stats for {context.game_time_of_day}'s game."
-                        context.social.reply(
-                            message=msg_non_x,
-                            media=chart_path,
-                            platforms=NON_X_PLATFORMS,
-                            alt_text="Pre-game team stats comparison",
-                            state=context.preview_socials,
-                        )
-
-                        # X: standalone, X-specific pre-game post with the same chart
-                        try:
-                            x_msg = preview.format_x_pregame_post(context.game, context)
-                            context.social.post(
-                                message=x_msg,
-                                media=chart_path,
-                                platforms=X_PLATFORMS,
-                            )
-                            logger.info("Posted X-specific pre-game tweet with team stats chart.")
-                        except Exception as e:
-                            logger.exception("Failed to post X-specific pre-game tweet: %s", e)
-
-                        context.preview_socials.team_stats_sent = True
-
-                        if cache is not None:
-                            cache.mark_pregame_sent("team_stats")
-                            cache.save()
-
-                        logger.info("Posted pre-game team stats chart to non-X platforms.")
+                    if teamstats_data:
+                        chart_path = teamstats_chart(context, teamstats_data, ingame=False)
+                        logger.info("Generated pre-game team stats chart at %s", chart_path)
                     else:
-                        logger.info("No team stats chart produced; skipping.")
+                        logger.info("No teamSeasonStats in right rail; skipping chart.")
                 except Exception as e:
-                    logger.exception("Failed to post pre-game team stats chart: %s", e)
+                    logger.exception("Failed to generate pre-game team stats chart: %s", e)
 
-            # Post officials (reply under the same thread)
+                try:
+                    # Use X-style pre-game copy as the unified pre-game message
+                    pregame_message = preview.format_pregame_post(context.game, context)
+                except Exception as e:
+                    logger.exception(
+                        "Failed to format unified pre-game message with format_pregame_post; "
+                        "falling back to format_future_game_post: %s",
+                        e,
+                    )
+                    pregame_message = preview.format_future_game_post(context.game, context)
+
+                try:
+                    results = context.social.post_and_seed(
+                        message=pregame_message,
+                        media=chart_path,
+                        platforms="enabled",  # all enabled platforms, including X
+                        event_type="pregame",
+                        state=context.preview_socials,
+                    )
+
+                    # Since we've collapsed the pieces, mark all three as sent
+                    context.preview_socials.core_sent = True
+                    context.preview_socials.season_series_sent = True
+                    context.preview_socials.team_stats_sent = True
+
+                    if cache is not None:
+                        cache.mark_pregame_sent("core", results)
+                        cache.mark_pregame_sent("season_series")
+                        cache.mark_pregame_sent("team_stats")
+                        cache.save()
+
+                    logger.info("Posted unified pre-game post with chart (if available).")
+                except Exception as e:
+                    logger.exception("Failed to post unified pre-game preview: %s", e)
+
+            # --- Officials remain a separate, non-X threaded reply ---
             if not context.preview_socials.officials_sent:
                 try:
                     officials_post = preview.generate_referees_post(context)
@@ -305,7 +250,7 @@ def start_game_loop(context: GameContext):
                         context.social.reply(
                             message=officials_post,
                             platforms=NON_X_PLATFORMS,
-                            state=context.preview_socials,  # keeps roots/parents advancing
+                            state=context.preview_socials,
                         )
                         context.preview_socials.officials_sent = True
 
@@ -319,7 +264,7 @@ def start_game_loop(context: GameContext):
                 except Exception as e:
                     logger.exception("Failed to post officials preview: %s", e)
 
-            # Use our auto-sleep calculator now
+            # --- Sleep until closer to game time ---
             if hasattr(context, "monitor"):
                 context.monitor.set_status("SLEEPING")
             preview.preview_sleep_calculator(context)
