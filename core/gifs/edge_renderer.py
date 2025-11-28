@@ -23,6 +23,11 @@ from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 import requests
 from PIL import Image, ImageDraw, ImageFont, ImageSequence
 
+try:
+    import brotli  # type: ignore
+except Exception:
+    brotli = None
+
 logger = logging.getLogger(__name__)
 
 
@@ -58,6 +63,15 @@ logger.debug("INTER_REGULAR: %s", INTER_REGULAR)
 
 
 # ----------------------------------------------------------------------
+# Custom SpriteErrorClass to Handle 403s
+# ----------------------------------------------------------------------
+class SpritesForbiddenError(RuntimeError):
+    """Raised when EDGE sprite JSON returns HTTP 403 (not available for this event)."""
+
+    pass
+
+
+# ----------------------------------------------------------------------
 # Data loading
 # ----------------------------------------------------------------------
 
@@ -73,20 +87,6 @@ EDGE_HTTP_HEADERS = {
     # NHL site is the natural referer for these sprite requests
     "Referer": "https://www.nhl.com/",
 }
-
-
-import json
-import logging
-from typing import Any, Dict, List, Optional
-
-import requests
-
-try:
-    import brotli  # type: ignore
-except Exception:
-    brotli = None
-
-logger = logging.getLogger(__name__)
 
 
 def load_sprites_json_overkill(
@@ -232,11 +232,11 @@ def load_sprites_json(
 
     if resp.status_code == 403:
         logger.warning(
-            "403 Forbidden when fetching sprites JSON from %s. "
-            "Sprites may not exist for this event or Cloudflare may be blocking.",
+            "403 Forbidden when fetching sprites JSON from %s. Sprites may not exist *yet* for this event.",
             url,
         )
-        resp.raise_for_status()
+        # Soft fail: return an empty list so callers can treat this as "not ready"
+        return []
 
     resp.raise_for_status()
 

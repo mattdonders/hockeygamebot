@@ -154,6 +154,13 @@ class Event:
         """Short form: '2nd', 'OT', or 'SO'."""
         return self._period_label(short=True)
 
+    @property
+    def is_ot(self) -> bool:
+        """Whether this event occurred during overtime."""
+        period_label = getattr(self, "period_label", "") or ""
+        upper = period_label.upper()
+        return "OT" in upper or "OVERTIME" in upper
+
     def post_message(
         self,
         message: str,

@@ -102,8 +102,8 @@ def generate_goal_gif_from_edge(
         # frames = [clean_frame(f) for f in frames if isinstance(f, dict)]
 
         if not frames:
-            logger.error(
-                "No frames returned by load_sprites_json() " "for season=%s game=%s event=%s",
+            logger.info(
+                "[GIF] No sprite frames available yet for season=%s game=%s event=%s - sprites may not be ready.",
                 season,
                 game_id,
                 event_id,
