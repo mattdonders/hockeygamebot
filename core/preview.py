@@ -116,7 +116,7 @@ def format_future_game_post(game, context: GameContext):
     # Generate the message
     broadcast_info = ", ".join(local_broadcasts + national_broadcasts)
     post = (
-        f"Tune in {context.game_time_of_day} when the {home_team} take on the {away_team} at {venue}.\n\n"
+        f"Tune in {context.game_time_of_day} as the {home_team} take on the {away_team} at {venue}.\n\n"
         f"{clock} {game_time_local}\n"
         f"📺 {broadcast_info}\n"
         f"#️⃣ {context.preferred_team.hashtag} | {context.game_hashtag}"
@@ -291,7 +291,7 @@ def format_season_series_post(schedule, preferred_team_abbreviation, opposing_te
         )
 
 
-def format_x_pregame_post(game, context: GameContext) -> str:
+def format_pregame_post(game, context: GameContext) -> str:
     """
     Format the X-only pre-game post.
 
@@ -388,7 +388,7 @@ def generate_referees_post(context: GameContext):
 
     if referees and linesmen:
         r_string = "\n".join([f"R: {r['default']}" for r in referees])
-        l_string = "\n".join([f"R: {l['default']}" for l in linesmen])
+        l_string = "\n".join([f"L: {l['default']}" for l in linesmen])
         officials_string = f"The officials for {context.game_time_of_day}'s game are:\n\n{r_string}\n{l_string}"
         return officials_string
 
