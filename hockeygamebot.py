@@ -21,6 +21,7 @@ import utils.others as otherutils
 from core import charts, final
 from core.charts import teamstats_chart
 from core.events.event_cache import GameCache
+from core.events.goal import GoalEvent
 from core.integrations import nst
 from core.live import parse_live_game
 from core.models.game_context import GameContext
@@ -363,6 +364,10 @@ def start_game_loop(context: GameContext):
                 time.sleep(live_sleep_time)
 
         elif context.game_state in ["OFF", "FINAL"]:
+            # Set Constants for Stay-Away to Send Highlights and GOAL GIFs / MP4s
+            PENDING_GOAL_RETRIES = 4
+            PENDING_GOAL_SLEEP = 20  # seconds
+
             logger.info("Game is now over and / or 'Official' - run end of game functions with increased sleep time.")
 
             # Set status to RUNNING for final game processing
@@ -478,6 +483,9 @@ def start_game_loop(context: GameContext):
                     and context.final_socials.three_stars_sent
                     and context.final_socials.team_stats_sent
                 ):
+                    logger.info("⏳ Running a few intervals to wait for any pending GIFs!")
+                    wait_for_goal_gifs(context)
+
                     logger.info("🎉 All final content posted successfully!")
                     end_game_loop(context)
                     return  # Exit the function
@@ -511,6 +519,49 @@ def start_game_loop(context: GameContext):
             logger.error(f"Unknown game state: {context.game_state}")
             print(context.game_state)
             sys.exit()
+
+
+def wait_for_goal_gifs(context: GameContext):
+    PENDING_GOAL_RETRIES = 4
+    PENDING_GOAL_SLEEP = 20
+
+    for attempt in range(PENDING_GOAL_RETRIES):
+        all_events = getattr(context, "events", []) or []
+
+        pending_goals = [
+            e
+            for e in all_events
+            if isinstance(e, GoalEvent)
+            and getattr(e, "is_preferred", False)
+            and not getattr(e, "goal_gif_generated", False)
+        ]
+
+        if not pending_goals:
+            logger.info("All preferred goal GIFs are now generated or skipped.")
+            return
+
+        logger.info(
+            "Pending GIF attempt %d/%d — %d preferred goals still missing GIFs.",
+            attempt + 1,
+            PENDING_GOAL_RETRIES,
+            len(pending_goals),
+        )
+
+        for goal in pending_goals:
+            try:
+                goal.check_and_add_gif(context)
+            except Exception as e:
+                logger.exception(
+                    "Error while retrying GIF for GoalEvent[%s]: %s",
+                    getattr(goal, "event_id", "unknown"),
+                    e,
+                )
+
+        if attempt < PENDING_GOAL_RETRIES - 1:
+            logger.info("Sleeping %ss before next GIF retry attempt...", PENDING_GOAL_SLEEP)
+            time.sleep(PENDING_GOAL_SLEEP)
+
+    logger.warning("Some preferred goal GIFs are still pending after maximum retries.")
 
 
 def end_game_loop(context: GameContext):

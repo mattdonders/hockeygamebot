@@ -24,6 +24,76 @@ class GoalEvent(Event):
         self.goal_gif_video: str | None = None
         self.goal_gif_generated: bool = False
 
+    def _build_goal_title_text(self) -> str:
+        """Builds the headline line: GOAL / OT GOAL / empty net, etc."""
+        is_preferred = getattr(self, "is_preferred", False)
+        period_type = getattr(self, "period_type", "").upper()  # "REG", "OT", etc.
+        empty_net = self.details.get("goalieInNetId") is None
+
+        pref_team = self.context.preferred_team.full_name
+        other_team = self.context.other_team.full_name
+
+        pref_goals = self.preferred_score
+        other_goals = self.other_score
+
+        if is_preferred:
+            goal_emoji = "🚨" * max(pref_goals, 1)
+
+            # NOTE: OT here is just "overtime goal", not necessarily "winner"
+            if period_type == "OT":
+                title_core = f"{pref_team} OVERTIME GOAL!!"
+            elif empty_net:
+                title_core = f"{pref_team} empty net GOAL!"
+            elif pref_goals == 7:
+                title_core = f"{pref_team} TOUCHDOWN!"
+            else:
+                title_core = f"{pref_team} GOAL!"
+        else:
+            goal_emoji = "👎" * max(other_goals, 1)
+            title_core = f"{other_team} goal."
+
+        return f"{title_core} {goal_emoji}"
+
+    def _build_goal_main_text(self) -> str:
+        """Builds the descriptive text: who scored, how, when, and assists."""
+        scorer = getattr(self, "scoring_player_name", "Unknown scorer")
+        season_total = getattr(self, "scoring_player_total", None)
+
+        shot_type = (self.shot_type or "shot").lower()
+        time_remaining = self.time_remaining
+        period_label = self.period_label
+
+        # Scoring line – season total if you have it
+        if season_total is not None:
+            scoring_line = (
+                f"{scorer} ({season_total}) scores on a {shot_type} shot with "
+                f"{time_remaining} remaining in {period_label}."
+            )
+        else:
+            scoring_line = (
+                f"{scorer} scores on a {shot_type} shot with " f"{time_remaining} remaining in {period_label}."
+            )
+
+        # Assists — based on fields you’re already populating
+        num_assists = 0
+        if getattr(self, "assist1_name", None):
+            num_assists += 1
+        if getattr(self, "assist2_name", None):
+            num_assists += 1
+
+        if num_assists == 1:
+            assists_text = f"🍎 {self.assist1_name} ({self.assist1_total})"
+        elif num_assists == 2:
+            assists_text = (
+                f"🍎 {self.assist1_name} ({self.assist1_total})\n" f"🍏 {self.assist2_name} ({self.assist2_total})"
+            )
+        else:
+            assists_text = None
+
+        if assists_text:
+            return f"{scoring_line}\n\n{assists_text}"
+        return scoring_line
+
     def parse(self):
         """
         Parse a goal event and return a formatted message.
@@ -83,43 +153,75 @@ class GoalEvent(Event):
             logger.warning("Goal data not fully available - force fail & will retry next loop.")
             return False
 
-        # Get Video Highlight Fields
+        # Build Goal Message
+        title = self._build_goal_title_text()
+        body = self._build_goal_main_text()
 
-        # Check if Empty Net Goal
-        empty_net_goal = details.get("goalieInNetId") is None
-
-        if is_preferred:
-            goal_emoji = "🚨" * self.preferred_score
-            goal_message = (
-                f"{self.context.preferred_team.full_name} GOAL! {goal_emoji}\n\n"
-                f"{self.scoring_player_name} ({self.scoring_player_total}) scores on a {self.shot_type} shot "
-                f"with {self.time_remaining} remaining in {self.period_label}.\n\n"
-            )
-        else:
-            goal_emoji = "👎" * self.other_score
-            goal_message = (
-                f"{self.context.other_team.full_name} goal. {goal_emoji}\n\n"
-                f"{self.scoring_player_name} ({self.scoring_player_total}) scores on a {self.shot_type} shot "
-                f"with {self.time_remaining} remaining in {self.period_label}.\n\n"
-            )
-
-        # Dynamically add assists if they exist
-        assists = []
-        if self.assist1_name:
-            assists.append(f"🍎 {self.assist1_name} ({self.assist1_total})")
-        if self.assist2_name:
-            assists.append(f"🍏 {self.assist2_name} ({self.assist2_total})")
-
-        if assists:
-            goal_message += "\n".join(assists) + "\n\n"
-
-        # Add team scores
-        goal_message += (
+        score_line = (
             f"{self.context.preferred_team.full_name}: {self.preferred_score}\n"
             f"{self.context.other_team.full_name}: {self.other_score}"
         )
 
+        goal_message = f"{title}\n\n{body}\n\n{score_line}"
+
         return goal_message
+
+        scorer = self.scoring_player_name
+        season_total = self.scoring_player_total  # this is (X) in your existing copy
+        shot_type = (self.shot_type or "shot").lower()
+        time_remaining = self.time_remaining
+        period_label = self.period_label
+
+        # Per-game count if available
+        game_total = self.details.get("scoringPlayerGameTotal")
+        if game_total == 2:
+            goal_count_text = "With his second goal of the game,"
+        elif game_total == 3:
+            goal_count_text = "🎩🎩🎩 HAT TRICK!"
+        elif game_total and game_total >= 4:
+            goal_count_text = f"{game_total} GOALS!!"
+        else:
+            goal_count_text = None
+
+        # Main scoring text (no distance yet, but we can add later)
+        if self.details.get("secondaryType") == "deflected":
+            goal_scoring_text = (
+                f"{scorer} ({season_total}) deflects a shot past the goalie with "
+                f"{time_remaining} remaining in {period_label}."
+            )
+        else:
+            goal_scoring_text = (
+                f"{scorer} ({season_total}) scores on a {shot_type} shot with "
+                f"{time_remaining} remaining in {period_label}."
+            )
+
+        # Assists
+        num_assists = 0
+        if self.assist1_name:
+            num_assists += 1
+        if self.assist2_name:
+            num_assists += 1
+
+        if num_assists == 1:
+            goal_assist_text = f"🍎 {self.assist1_name} ({self.assist1_total})"
+        elif num_assists == 2:
+            goal_assist_text = (
+                f"🍎 {self.assist1_name} ({self.assist1_total})\n" f"🍏 {self.assist2_name} ({self.assist2_total})"
+            )
+        else:
+            goal_assist_text = None
+
+        # Stitch together
+        if goal_count_text and goal_assist_text:
+            goal_main_text = f"{goal_count_text} {goal_scoring_text}\n\n{goal_assist_text}"
+        elif goal_count_text:
+            goal_main_text = f"{goal_count_text} {goal_scoring_text}"
+        elif goal_assist_text:
+            goal_main_text = f"{goal_scoring_text}\n\n{goal_assist_text}"
+        else:
+            goal_main_text = goal_scoring_text
+
+        return goal_main_text
 
     def check_scoring_changes(self, data: dict):
         logger.info("Checking for scoring changes (team: %s, event ID: %s).", self.team_name, self.event_id)
@@ -151,12 +253,24 @@ class GoalEvent(Event):
         """
         # Extract highlight clip URL from event_data
         highlight_clip_url = event_data.get("details", {}).get("highlightClipSharingUrl")
+        event_id = event_data.get("eventId")
+
         if not highlight_clip_url:
             logger.info("No highlight clip URL found for event ID %s.", event_data.get("eventId"))
             return
 
-        if highlight_clip_url == "https://www.nhl.com/video/":
-            logger.info("Invalid highlight clip URL found for event ID %s.", event_data.get("eventId"))
+        normalized = highlight_clip_url.rstrip("/").lower()
+        invalid_roots = {
+            "https://nhl.com/video",
+            "https://www.nhl.com/video",
+        }
+
+        if normalized in invalid_roots:
+            logger.info(
+                "Invalid highlight clip root URL %s found for event ID %s — skipping.",
+                highlight_clip_url,
+                event_id,
+            )
             return
 
         # Normalize and store
@@ -166,6 +280,7 @@ class GoalEvent(Event):
 
         # Construct message and post as a reply within the existing goal thread (if present)
         message = f"🎥 HIGHLIGHT: {self.scoring_player_name} scores for the {self.team_name}!"
+
         # Threading is handled by GoalEvent.post_message(): if refs exist → reply; else → initial post
         self.post_message(
             message,
@@ -266,9 +381,19 @@ class GoalEvent(Event):
             return
 
         # ----------------------------------------------------------------------
+        # 5A. Bail out if we still don't have a GIF
+        # ----------------------------------------------------------------------
+        if not gif_path:
+            logger.info(
+                "⚠️ [GIF] Generator returned no file for event %s — skipping GIF post.",
+                event_id,
+            )
+            return
+
+        # ----------------------------------------------------------------------
         # 5a. Also generate an MP4 video variant for video-friendly platforms.
         # ----------------------------------------------------------------------
-        goal_video_path = None
+        goal_video_path: Optional[Path] = None
         try:
             goal_video_path = ensure_goal_video(gif_path)
             logger.info(
@@ -324,7 +449,7 @@ class GoalEvent(Event):
         # Example: "Tip-in from the puck-tracking view (07:06 in the 1st)."
         detail = f"{shot_label.capitalize()} from the puck-tracking view"
         if time_remaining and period_label:
-            detail += f" ({time_remaining} in the {period_label})."
+            detail += f" ({time_remaining} remaining in {period_label})."
         elif period_label:
             detail += f" ({period_label})."
         else:
@@ -543,6 +668,10 @@ class GoalEvent(Event):
                         # For GIF/MP4 on Threads, always reply to the root goal post
                         reply_parent = self._root_refs.get(platform, parent_ref)
 
+                    # NEW: skip X here for goal_gif, we handle it separately
+                    if effective_event_type == "goal_gif" and platform in X_PLATFORMS:
+                        continue
+
                     # For replies we only send a single media item argument.
                     base_media: Optional[str] = None
                     if isinstance(media, list) and media:
@@ -601,7 +730,7 @@ class GoalEvent(Event):
                             getattr(self, "event_id", "unknown"),
                         )
                         self.context.social.reply(
-                            message="",
+                            message=text,
                             media=media_arg,
                             platforms=X_PLATFORMS,  # ["x"]
                             reply_to=self._x_post_ref,

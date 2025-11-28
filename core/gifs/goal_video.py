@@ -76,7 +76,7 @@ def gif_to_mp4(
         "-pix_fmt",
         "yuv420p",
         "-vf",
-        "scale=trunc(iw/2)*2:trunc(ih/2)*2",
+        "scale=trunc(iw/2)*2:trunc(ih/2)*2,setsar=1",
         "-c:v",
         "libx264",
         "-preset",

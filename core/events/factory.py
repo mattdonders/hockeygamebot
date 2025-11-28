@@ -1,3 +1,4 @@
+import json
 import logging
 import traceback
 
@@ -103,16 +104,28 @@ class EventFactory:
                     event_message = parse_result
 
                 if event_message is None:
-                    # True error: we couldn't parse this into a usable event at all.
-                    logger.error(
-                        "Error creating %s event (type: %s) for ID: %s / SortOrder: %s.",
-                        event_class.__name__,
-                        event_type,
-                        event_id,
-                        sort_order,
-                    )
-                    logger.warning(event_data)
-                    return None
+                    if event_class is GenericEvent:
+                        logger.info(
+                            "GenericEvent: no message for %s (ID: %s, SortOrder: %s).",
+                            event_type,
+                            event_id,
+                            sort_order,
+                        )
+                        return None
+                    else:
+                        logger.error(
+                            "Error creating %s event (type: %s) for ID: %s / SortOrder: %s — parse() returned None.",
+                            event_class.__name__,
+                            event_type,
+                            event_id,
+                            sort_order,
+                        )
+                        try:
+                            preview = json.dumps(event_data, default=str)
+                            logger.error("Event payload preview (first 800 chars): %s", preview[:800])
+                        except Exception:
+                            logger.error("Failed to serialize event_data for logging.")
+                        return None
 
                 if event_message is not False:
                     event_class.cache.add(event_object)
@@ -152,9 +165,13 @@ class EventFactory:
                     event_id,
                     sort_order,
                 )
-                # logger.error(response)
-                logger.error(error)
-                logger.error(traceback.format_exc())
+                logger.error("Exception: %r", error)
+                try:
+                    preview = json.dumps(event_data, default=str)
+                    logger.error("Event payload preview (first 800 chars): %s", preview[:800])
+                except Exception:
+                    logger.error("Failed to serialize event_data for logging.")
+                logger.error("Traceback:\n%s", traceback.format_exc())
                 return
 
         if sort_order < 9000:
