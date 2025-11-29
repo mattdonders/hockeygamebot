@@ -57,8 +57,11 @@ class EventFactory:
         if event_class == GoalEvent and event_object is not None and not new_plays:
             event_object: GoalEvent  # Type Hinting for IDE
 
-            # Scoring Changes Checked Here
-            event_object.check_scoring_changes(event_data)
+            # Scoring changes are detected here and, if stable, posted as a
+            # threaded reply by the GoalEvent itself.
+            change = event_object.check_scoring_changes(event_data)
+            if change.get("changed"):
+                event_object.handle_scoring_change(change)
 
             # Check for Highlight URLs
             if not event_object.highlight_clip_url:
