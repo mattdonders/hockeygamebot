@@ -23,6 +23,8 @@ from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 import requests
 from PIL import Image, ImageDraw, ImageFont, ImageSequence
 
+from utils.team_details import TEAM_DETAILS
+
 try:
     import brotli  # type: ignore
 except Exception:
@@ -46,12 +48,6 @@ BASE_PLAYER_RADIUS_FACTOR = 0.018  # was 0.018 – slightly bigger now
 # BASE_PUCK_RADIUS_FACTOR = 0.0075
 BASE_PUCK_RADIUS_FACTOR = 0.0085  # slightly bigger puck
 
-# Team colors for outlines/text; extend as needed
-TEAM_COLORS: Dict[str, str] = {
-    "NJD": "#CE1126",
-    "CHI": "#CF0A2C",
-    "CAR": "#CC0000",
-}
 
 # FONTS
 BASE_DIR = Path(__file__).resolve().parents[2]
@@ -69,6 +65,35 @@ class SpritesForbiddenError(RuntimeError):
     """Raised when EDGE sprite JSON returns HTTP 403 (not available for this event)."""
 
     pass
+
+
+# ----------------------------------------------------------------------
+# Helpers to get Team Colors
+# ----------------------------------------------------------------------
+
+
+def _get_team_primary_color(team_abbr: str) -> str:
+    """Return the primary color for a team, defaulting to red if unknown."""
+    details = TEAM_DETAILS.get(team_abbr.upper())
+    if details:
+        return details.get("primary_color", "#CC0000")
+    return "#CC0000"
+
+
+def _get_team_primary_text_color(team_abbr: str) -> str:
+    """Return the primary text color for a team (for home markers)."""
+    details = TEAM_DETAILS.get(team_abbr.upper())
+    if details:
+        return details.get("primary_text_color", "white")
+    return "white"
+
+
+def _get_team_secondary_text_color(team_abbr: str) -> str:
+    """Return the secondary text color for a team (for away markers)."""
+    details = TEAM_DETAILS.get(team_abbr.upper())
+    if details:
+        return details.get("secondary_text_color", "white")
+    return "white"
 
 
 # ----------------------------------------------------------------------
@@ -474,7 +499,7 @@ def draw_rink_base(
     # HOME team on the LEFT boards (rotate 90°)
     if home_abbr:
         text = home_abbr.upper()
-        color = TEAM_COLORS.get(text, "red")
+        color = _get_team_primary_color(text)
         cx = int(width * 0.02)  # small inset from left edge
         cy = height // 2
         draw_rotated_text(img, text, (cx, cy), 90, abbr_font, color)
@@ -482,7 +507,7 @@ def draw_rink_base(
     # AWAY team on the RIGHT boards (rotate 270°)
     if away_abbr:
         text = away_abbr.upper()
-        color = TEAM_COLORS.get(text, "red")
+        color = _get_team_primary_color(text)
         cx = width - int(width * 0.02)
         cy = height // 2
         draw_rotated_text(img, text, (cx, cy), 270, abbr_font, color)
@@ -698,6 +723,10 @@ def render_frames(
     # Normalized home/away abbrevs for comparisons
     home_abbr_norm = (home_abbr or "").upper()
     away_abbr_norm = (away_abbr or "").upper()
+    logging.info("Home Abbreviation: %s", home_abbr_norm)
+    logging.info("Home Primary Color: %s", _get_team_primary_color(home_abbr_norm))
+    logging.info("Away Abbreviation: %s", away_abbr_norm)
+    logging.info("Away Primary Color: %s", _get_team_primary_color(away_abbr_norm))
 
     for frame in frames_sorted:
         img = base_rink.copy()
@@ -729,7 +758,7 @@ def render_frames(
                 puck_trail.append(puck_pos)
                 continue
 
-            primary_color = TEAM_COLORS.get(team_abbrev, "#CC0000")
+            primary_color = _get_team_primary_color(team_abbrev)
 
             # --- home vs away color scheme -----------------------------
             # HOME: filled with team color, white numbers
@@ -737,7 +766,7 @@ def render_frames(
             if team_abbrev == home_abbr_norm:
                 fill_color = primary_color
                 outline_color = primary_color
-                text_color = "white"
+                text_color = _get_team_primary_text_color(team_abbrev)
             elif team_abbrev == away_abbr_norm:
                 fill_color = "white"
                 outline_color = primary_color
@@ -954,124 +983,3 @@ def compress_gif(
     )
 
     return dst
-
-
-# ----------------------------------------------------------------------
-# CLI
-# ----------------------------------------------------------------------
-def parse_args() -> argparse.Namespace:
-    p = argparse.ArgumentParser(description="Render NHL EDGE sprites JSON into a GIF using a rink background image.")
-    p.add_argument("--json", help="Path to local sprites JSON (evXXX.json).")
-    p.add_argument("--season", help="Season ID, e.g., 20252026.")
-    p.add_argument("--game", help="Game ID, e.g., 2025020268.")
-    p.add_argument("--event", help="Event/goal id, e.g., 1077.")
-    p.add_argument("-o", "--output", help="Output GIF path.")
-
-    p.add_argument(
-        "--rink-bg",
-        required=True,
-        help="Path to rink background PNG (e.g., rink_bg.png).",
-    )
-
-    p.add_argument("--home-abbr", help="Home team abbreviation (for logo + left-side label).")
-    p.add_argument("--away-abbr", help="Away team abbreviation (for right-side label).")
-    p.add_argument(
-        "--logo-dir",
-        help="Directory containing local team logos as PNG (e.g., CHI.png).",
-    )
-
-    p.add_argument(
-        "--width",
-        type=int,
-        default=None,
-        help=("Target GIF width in pixels (background is scaled; " "default = use original bg width)."),
-    )
-    p.add_argument(
-        "--fps",
-        type=int,
-        default=12,
-        help="Frames per second for GIF playback (lower = slower).",
-    )
-    p.add_argument(
-        "--trail",
-        type=int,
-        default=30,
-        help="Number of puck positions to keep in the trail.",
-    )
-    p.add_argument(
-        "--flip-vertical",
-        action="store_true",
-        help="Flip coordinates vertically (mirror over horizontal center line).",
-    )
-    p.add_argument(
-        "--marker-scale",
-        type=float,
-        default=1.0,
-        help="Scale factor for player/puck marker sizes (1.0 = default).",
-    )
-    p.add_argument(
-        "--goal-sweater",
-        help="Sweater number of goal scorer (e.g., 86) for double-ring highlight.",
-    )
-    p.add_argument(
-        "--goal-player-id",
-        type=int,
-        help="playerId of goal scorer for double-ring highlight.",
-    )
-    p.add_argument(
-        "--playback-speed",
-        type=float,
-        default=1.0,
-        help=("Playback speed multiplier: " "1.0 = normal, 0.5 = half-speed (slower), 2.0 = double-speed (faster)."),
-    )
-    p.add_argument(
-        "--interp-extra-frames",
-        type=int,
-        default=0,
-        help=("Number of interpolated frames to insert between each original " "pair (0 = off, 1–3 recommended)."),
-    )
-    return p.parse_args()
-
-
-def main() -> None:
-    args = parse_args()
-
-    frames = load_sprites_json(
-        json_path=args.json,
-        season=args.season,
-        game_id=args.game,
-        event_id=args.event,
-    )
-
-    if args.output:
-        out_path = Path(args.output)
-    else:
-        if args.game and args.event:
-            fname = f"goal_{args.game}_ev{args.event}.gif"
-        else:
-            base = Path(args.json or "goal").stem
-            fname = f"{base}.gif"
-        out_path = Path(fname)
-
-    render_frames(
-        frames=frames,
-        output_path=out_path,
-        rink_bg_path=args.rink_bg,
-        target_width=args.width,
-        trail_length=args.trail,
-        fps=args.fps,
-        playback_speed=args.playback_speed,
-        interp_extra_frames=args.interp_extra_frames,
-        flip_vertical=args.flip_vertical,
-        home_abbr=args.home_abbr,
-        away_abbr=args.away_abbr,
-        season=args.season,
-        logo_dir=args.logo_dir,
-        marker_scale=args.marker_scale,
-        goal_sweater=args.goal_sweater,
-        goal_player_id=args.goal_player_id,
-    )
-
-
-if __name__ == "__main__":
-    main()
