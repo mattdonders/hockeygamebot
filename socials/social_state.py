@@ -3,8 +3,9 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
+from core.milestones import MilestoneHit
 from socials.types import PostRef
 
 logger = logging.getLogger(__name__)
@@ -56,6 +57,11 @@ class StartOfGameSocial:
     # This is for starting lineups
     starters_msg: Optional[str] = None
     starters_sent: bool = False
+
+    # --- Milestone hits you already tracked ---
+    milestone_hits: List["MilestoneHit"] = field(default_factory=list)
+    milestone_watches: List["MilestoneHit"] = field(default_factory=list)
+    milestones_sent: bool = False
 
     # --- Misc debug / last responses ---
     last_payloads: Dict[str, Any] = field(default_factory=dict)

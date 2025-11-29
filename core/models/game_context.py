@@ -1,8 +1,10 @@
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Any, Dict, Optional
+from typing import Any, ClassVar, Dict, Optional
 
 import pytz
 
+from core.milestones import MilestoneService
 from core.models.clock import Clock
 from core.models.team import Team
 from socials.bluesky import BlueskyClient
@@ -64,6 +66,9 @@ class GameContext:
         __init__: Initializes the `GameContext` with configuration and shared resources.
     """
 
+    # Track the "current" / active context (one per process)
+    _active: ClassVar["GameContext | None"] = None
+
     def __init__(self, config: dict, social: SocialPublisher, nosocial: bool = False, debugsocial: bool = False):
         self.config = config
         self.social = social  # unified SocialPublisher (Bluesky+Threads)
@@ -94,6 +99,8 @@ class GameContext:
         self.preferred_homeaway = None
 
         self.combined_roster = None
+        self.preferred_roster = None
+        self.other_roster = None
         self.gametime_rosters_set = False
         self.game_hashtag = None
         self.preferred_team_hashtag = None
@@ -107,6 +114,8 @@ class GameContext:
         # Social Media Related Trackers
         self.preview_socials = StartOfGameSocial()
         self.final_socials = EndOfGameSocial()
+
+        self.milestone_service: Optional[MilestoneService] = None
 
     # -------------------------
     # Helpers
@@ -149,3 +158,15 @@ class GameContext:
         now = datetime.now().astimezone(pytz.timezone(self.preferred_team.timezone))
         countdown = (self.game_time_local - now).total_seconds()
         return 0 if countdown < 0 else countdown
+
+        # ---------- Active context helpers ----------
+
+    @classmethod
+    def set_active(cls, context: "GameContext") -> None:
+        cls._active = context
+
+    @classmethod
+    def get_active(cls) -> "GameContext":
+        if cls._active is None:
+            raise RuntimeError("No active GameContext has been set")
+        return cls._active
