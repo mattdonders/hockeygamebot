@@ -1,0 +1,144 @@
+script:
+  log_file_name: NJDevilsGameBot
+  event_timeout: 300
+  preview_sleep_time: 1800
+  pregame_sleep_time: 15
+  live_sleep_time: 4
+  intermission_sleep_time: 60
+  final_sleep_time: 10
+  post_mode: debug   # prod | debug
+  dry_run: false     # preferred going forward
+
+  # Deprecated (still read if present; logs a warning):
+  # mode: debug     # prod | debug
+  # nosocial: false
+
+  cache_dir: ./data/cache
+  cache_flush_every_events: 1   # save after each processed event; set >1 to batch
+  cache_flush_every_seconds: 0  # 0 disables time-based flushing
+
+default:
+  team_name: New Jersey Devils
+
+socials:
+  bluesky: true
+  threads: true
+  x: true
+  mastodon: true
+  telegram: true
+
+social_defaults:
+  tags: ["#NHL", "#NJDevilsLive"]
+  link_template: ""
+
+goal_gifs:
+  enabled: true
+  preferred_team_only: true
+  x_max_per_game: 99
+  width: 1200
+  fps: 18
+  playback_speed: 0.9
+  interp_extra_frames: 1
+  trail: 1
+  flip_vertical: true
+  marker_scale: 1.8
+  ffmpeg_binary: /opt/homebrew/bin/ffmpeg
+
+milestones:
+  games_played: [1, 100, 500, 1000]
+  goals:      [1, 50, 100, 200, 300, 400, 500, 600, 700, 800, 900, 1000]
+  assists:    [1, 50, 100, 200, 300, 400, 500, 600, 700, 800, 900, 1000]
+  points:     [50, 100, 200, 300, 400, 500, 600, 700, 800, 900, 1000]
+  pp_goals:   [99999]  # disabled
+  pp_points:  [99999]  # disabled
+  shutouts:   [1, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100]  # goalie stat
+  wins:       [1, 50, 100, 200, 300, 400, 500]  # goalie stat
+
+  max_watches: 3  # max watches per post (sorted by closest to milestone)
+  watch_margins:
+    games_played: 0
+    goals: 3        # “within 2 goals”
+    assists: 2
+    points: 2
+    pp_goals: 0     # disabled
+    pp_points: 0    # disabled
+    wins: 1         # goalies: 1 win away
+    shutouts: 1
+
+# ---- Platforms ----
+
+telegram:
+  prod:
+    username: ""
+    bot_token: ""
+    chat_id: ""
+  debug:
+    username: ""
+    bot_token: ""
+    chat_id: ""
+
+mastodon:
+  prod:
+    base_url: "https://mastodon.social"
+    username: ""
+    access_token: ""
+    visibility: "public"     # public / unlisted
+  debug:
+    base_url: "https://mastodon.social"
+    username: ""
+    access_token: ""
+    visibility: "unlisted"
+
+x:
+  prod:
+    consumer_key: ""
+    consumer_secret: ""
+    access_token: ""
+    access_token_secret: ""
+
+  debug:
+    consumer_key: ""
+    consumer_secret: ""
+    access_token: ""
+    access_token_secret: ""
+
+bluesky:
+  prod:
+    handle: your-handle.bsky.social
+    app_password: ""
+    service_url: null
+  debug:
+    handle: your-debug-handle.bsky.social
+    app_password: ""
+    service_url: null
+
+threads:
+  prod:
+    app_id: ""
+    app_secret: ""
+    access_token: ""
+    ig_business_account_id: YOUR_IG_BIZ_ID  # some SDKs require this
+  debug:
+    app_id: ""
+    app_secret: ""
+    access_token: ""
+    ig_business_account_id: YOUR_DEV_IG_BIZ_ID
+
+
+# ---- Image Hosting (for Threads) ----
+image_hosting:
+  provider: backblaze   # "backblaze" or "github"
+
+  backblaze:
+    region: "us-west-000"         # B2 region
+    bucket: "hockeygamebot-media" # public bucket
+    access_key_id: ""
+    secret_access_key: ""
+    prefix: "hockeygamebot"             # optional "folder" in bucket
+
+  github:
+    token: ""                   # PAT with repo:write
+    owner: ""                   # user/org
+    repo: ""                    # public repo
+    branch: "main"
+    subdir: "media"             # path inside repo (optional)

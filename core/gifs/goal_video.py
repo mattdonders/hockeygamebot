@@ -2,13 +2,67 @@
 from __future__ import annotations
 
 import logging
+import os
+import shutil
 import subprocess
 from pathlib import Path
 from typing import Optional, Sequence, Union
 
+from core.models.game_context import GameContext
+
 logger = logging.getLogger(__name__)
 
 PathLike = Union[str, Path]
+
+FFMPEG_FALLBACK = "/opt/homebrew/bin/ffmpeg"
+
+
+import logging
+
+# core/gifs/goal_video.py
+import os
+import shutil
+
+from core.models.game_context import GameContext
+
+logger = logging.getLogger(__name__)
+
+FFMPEG_FALLBACK = "/opt/homebrew/bin/ffmpeg"
+
+
+def _resolve_ffmpeg_binary() -> str:
+    # 1) Try config.yaml: goal_gifs.ffmpeg_binary
+    config_ffmpeg = None
+    try:
+        context = GameContext.get_active()
+        goal_gifs_cfg = context.config.get("goal_gifs", {})
+        config_ffmpeg = goal_gifs_cfg.get("ffmpeg_binary")
+    except Exception as exc:
+        logger.debug("No active GameContext or config when resolving ffmpeg: %r", exc)
+
+    if config_ffmpeg:
+        if os.path.exists(config_ffmpeg) and os.access(config_ffmpeg, os.X_OK):
+            logger.debug("Using ffmpeg from config: %s", config_ffmpeg)
+            return config_ffmpeg
+        logger.warning(
+            "Configured ffmpeg binary is invalid or not executable: %s",
+            config_ffmpeg,
+        )
+
+    # 2) PATH
+    path_bin = shutil.which("ffmpeg")
+    if path_bin:
+        logger.debug("Using ffmpeg from PATH: %s", path_bin)
+        return path_bin
+
+    # 3) Fallback (your Homebrew path)
+    if os.path.exists(FFMPEG_FALLBACK):
+        logger.debug("Using ffmpeg fallback path: %s", FFMPEG_FALLBACK)
+        return FFMPEG_FALLBACK
+
+    raise RuntimeError(
+        "ffmpeg binary not found. Set goal_gifs.ffmpeg_binary in config.yaml " "or ensure ffmpeg is on PATH."
+    )
 
 
 def gif_to_mp4(
@@ -53,6 +107,7 @@ def gif_to_mp4(
         FileNotFoundError: if gif_path does not exist.
         RuntimeError: if ffmpeg exits with a non-zero code.
     """
+    ffmpeg_bin = _resolve_ffmpeg_binary()
     gif_path = Path(gif_path)
 
     if not gif_path.exists():
@@ -67,7 +122,7 @@ def gif_to_mp4(
     # NOTE: we deliberately do not set -r (fps) here; ffmpeg will respect
     # the timing information embedded in the GIF.
     cmd: list[str] = [
-        "ffmpeg",
+        ffmpeg_bin,
         "-y",  # overwrite existing output
         "-i",
         str(gif_path),
