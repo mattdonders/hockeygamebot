@@ -1,8 +1,9 @@
 import logging
-from typing import Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Union
 
 from core.gifs.edge_goal import generate_goal_gif_from_edge
 from core.gifs.goal_video import ensure_goal_video
+from core.milestones import MilestoneService
 from socials.platforms import GIF_PLATFORMS, NON_X_PLATFORMS, VIDEO_PLATFORMS, X_PLATFORMS
 from utils.team_details import get_team_details_by_id
 
@@ -14,6 +15,7 @@ logger = logging.getLogger(__name__)
 class GoalEvent(Event):
     cache = Cache(__name__)
 
+    SCORING_CHANGE_STABILITY: int = 5  # loops required before posting a scoring change
     REMOVAL_THRESHOLD = 5  # Configurable threshold for event removal checks
 
     def __init__(self, *args, **kwargs):
@@ -23,6 +25,10 @@ class GoalEvent(Event):
         self.goal_gif: str | None = None
         self.goal_gif_video: str | None = None
         self.goal_gif_generated: bool = False
+
+        # Used for Goal / Scoring Changes (In-Memory Cache)
+        self._pending_scoring: dict | None = None
+        self._pending_scoring_count: int = 0
 
     def _build_goal_title_text(self) -> str:
         """Builds the headline line: GOAL / OT GOAL / empty net, etc."""
@@ -153,6 +159,39 @@ class GoalEvent(Event):
             logger.warning("Goal data not fully available - force fail & will retry next loop.")
             return False
 
+        # --- Milestone integration -------------------------------------------
+        milestone_prefix = ""
+        milestone_service: MilestoneService = getattr(self.context, "milestone_service", None)
+
+        if milestone_service is not None:
+            try:
+                hits = milestone_service.handle_goal_event(
+                    scoring_player_id=self.scoring_player_id,
+                    primary_assist_id=self.assist1_player_id,
+                    secondary_assist_id=self.assist2_player_id,
+                    is_power_play=False,
+                )
+
+                if hits:
+
+                    def _name_resolver(pid: int) -> str:
+                        roster = getattr(self.context, "combined_roster", {}) or {}
+                        entry = roster.get(pid)
+                        if isinstance(entry, dict):
+                            return entry.get("name") or str(pid)
+                        return str(pid)
+
+                    milestone_prefix = milestone_service.format_hits(
+                        hits,
+                        player_name_resolver=_name_resolver,
+                    )
+                    if milestone_prefix:
+                        logger.info("Milestone hit on goal: %s", milestone_prefix)
+            except Exception:
+                logger.exception(
+                    "MilestoneService: error while handling goal event; ignoring milestones for this goal."
+                )
+
         # Build Goal Message
         title = self._build_goal_title_text()
         body = self._build_goal_main_text()
@@ -162,87 +201,369 @@ class GoalEvent(Event):
             f"{self.context.other_team.full_name}: {self.other_score}"
         )
 
-        goal_message = f"{title}\n\n{body}\n\n{score_line}"
+        if milestone_prefix:
+            goal_message = f"{milestone_prefix}\n\n{title}\n\n{body}\n\n{score_line}"
+        else:
+            goal_message = f"{title}\n\n{body}\n\n{score_line}"
+
+        # Persist the initial scorer/assist IDs so that scoring-change detection
+        # is restart-safe and milestone accounting can de-duplicate later.
+        self._snapshot_initial_scoring_ids()
 
         return goal_message
 
-        scorer = self.scoring_player_name
-        season_total = self.scoring_player_total  # this is (X) in your existing copy
-        shot_type = (self.shot_type or "shot").lower()
-        time_remaining = self.time_remaining
-        period_label = self.period_label
+    def _snapshot_initial_scoring_ids(self) -> None:
+        """Persist the initial scorer/assist IDs for this goal into GameCache.
 
-        # Per-game count if available
-        game_total = self.details.get("scoringPlayerGameTotal")
-        if game_total == 2:
-            goal_count_text = "With his second goal of the game,"
-        elif game_total == 3:
-            goal_count_text = "🎩🎩🎩 HAT TRICK!"
-        elif game_total and game_total >= 4:
-            goal_count_text = f"{game_total} GOALS!!"
-        else:
-            goal_count_text = None
+        This gives us a baseline for later scoring-change detection and ensures
+        restart safety for both change debouncing and milestone accounting.
+        """
+        cache = getattr(self.context, "cache", None)
+        if cache is None:
+            return
 
-        # Main scoring text (no distance yet, but we can add later)
-        if self.details.get("secondaryType") == "deflected":
-            goal_scoring_text = (
-                f"{scorer} ({season_total}) deflects a shot past the goalie with "
-                f"{time_remaining} remaining in {period_label}."
+        scoring = {
+            "scorer_id": getattr(self, "scoring_player_id", None),
+            "assist1_id": getattr(self, "assist1_player_id", None),
+            "assist2_id": getattr(self, "assist2_player_id", None),
+        }
+
+        credited_ids = [
+            pid
+            for pid in (
+                scoring.get("scorer_id"),
+                scoring.get("assist1_id"),
+                scoring.get("assist2_id"),
             )
-        else:
-            goal_scoring_text = (
-                f"{scorer} ({season_total}) scores on a {shot_type} shot with "
-                f"{time_remaining} remaining in {period_label}."
+            if pid
+        ]
+
+        try:
+            cache.update_goal_snapshot(
+                self.event_id, scoring=scoring, initial_scoring=scoring, credited_player_ids=credited_ids
+            )
+        except Exception as e:
+            logger.warning(
+                "GoalEvent[%s]: failed to snapshot initial scoring ids: %s",
+                getattr(self, "event_id", "unknown"),
+                e,
             )
 
-        # Assists
-        num_assists = 0
-        if self.assist1_name:
-            num_assists += 1
-        if self.assist2_name:
-            num_assists += 1
+    def check_scoring_changes(self, data: dict) -> Dict[str, object]:
+        """Compare current scorer/assist IDs with the latest PBP payload.
 
-        if num_assists == 1:
-            goal_assist_text = f"🍎 {self.assist1_name} ({self.assist1_total})"
-        elif num_assists == 2:
-            goal_assist_text = (
-                f"🍎 {self.assist1_name} ({self.assist1_total})\n" f"🍏 {self.assist2_name} ({self.assist2_total})"
-            )
-        else:
-            goal_assist_text = None
+        This does **not** mutate the event. It returns a change descriptor that
+        `handle_scoring_change` can consume.
 
-        # Stitch together
-        if goal_count_text and goal_assist_text:
-            goal_main_text = f"{goal_count_text} {goal_scoring_text}\n\n{goal_assist_text}"
-        elif goal_count_text:
-            goal_main_text = f"{goal_count_text} {goal_scoring_text}"
-        elif goal_assist_text:
-            goal_main_text = f"{goal_scoring_text}\n\n{goal_assist_text}"
-        else:
-            goal_main_text = goal_scoring_text
+        The return dict always contains the following keys:
 
-        return goal_main_text
+        - changed: bool
+        - scorer_changed / assist1_changed / assist2_changed: bool
+        - old_scorer_id / new_scorer_id
+        - old_assist1_id / new_assist1_id
+        - old_assist2_id / new_assist2_id
+        """
+        logger.info(
+            "Checking for scoring changes (team: %s, event ID: %s).",
+            getattr(self, "team_name", "unknown"),
+            getattr(self, "event_id", "unknown"),
+        )
 
-    def check_scoring_changes(self, data: dict):
-        logger.info("Checking for scoring changes (team: %s, event ID: %s).", self.team_name, self.event_id)
-        details = data.get("details", {})
+        details = data.get("details", {}) or {}
+
+        old_scorer = getattr(self, "scoring_player_id", None)
+        old_a1 = getattr(self, "assist1_player_id", None)
+        old_a2 = getattr(self, "assist2_player_id", None)
 
         new_scorer = details.get("scoringPlayerId")
         new_a1 = details.get("assist1PlayerId")
         new_a2 = details.get("assist2PlayerId")
 
-        scorer_change = new_scorer != self.scoring_player_id
-        assist_change = [new_a1, new_a2] != [self.assist1_player_id, self.assist2_player_id]
+        # If the feed temporarily returns no scoring IDs at all, don't treat
+        # that as a real scoring change. True overturns are handled via
+        # `was_goal_removed` when the entire event disappears.
+        if new_scorer is None and new_a1 is None and new_a2 is None:
+            return {
+                "changed": False,
+                "scorer_changed": False,
+                "assist1_changed": False,
+                "assist2_changed": False,
+                "old_scorer_id": old_scorer,
+                "new_scorer_id": new_scorer,
+                "old_assist1_id": old_a1,
+                "new_assist1_id": new_a1,
+                "old_assist2_id": old_a2,
+                "new_assist2_id": new_a2,
+            }
 
-        return {
-            "scorer_changed": scorer_change,
-            "assist_changed": assist_change,
-            "new": {
-                "scorer_id": new_scorer,
-                "assist1_id": new_a1,
-                "assist2_id": new_a2,
-            },
+        scorer_changed = new_scorer != old_scorer
+        assist1_changed = new_a1 != old_a1
+        assist2_changed = new_a2 != old_a2
+
+        changed = scorer_changed or assist1_changed or assist2_changed
+
+        change = {
+            "changed": changed,
+            "scorer_changed": scorer_changed,
+            "assist1_changed": assist1_changed,
+            "assist2_changed": assist2_changed,
+            "old_scorer_id": old_scorer,
+            "new_scorer_id": new_scorer,
+            "old_assist1_id": old_a1,
+            "new_assist1_id": new_a1,
+            "old_assist2_id": old_a2,
+            "new_assist2_id": new_a2,
         }
+
+        logger.debug(
+            "Scoring change diff for event %s: %r",
+            getattr(self, "event_id", "unknown"),
+            change,
+        )
+        return change
+
+    def _build_scoring_change_text(self, change: Dict[str, object]) -> str:
+        """Return a human-friendly text for a scoring-change update."""
+        new_scorer_id = change.get("new_scorer_id")
+        old_scorer_id = change.get("old_scorer_id")
+
+        scorer_changed = change.get("scorer_changed")
+        assist1_changed = change.get("assist1_changed")
+        assist2_changed = change.get("assist2_changed")
+
+        parts: List[str] = []
+
+        # Scorer text
+        if scorer_changed:
+            new_name = self._safe_player_name(new_scorer_id)
+            old_name = self._safe_player_name(old_scorer_id)
+            parts.append(f"SCORING CHANGE: Goal now credited to {new_name} (previously {old_name}).")
+        else:
+            # No scorer change – still worth noting if assists changed.
+            parts.append("SCORING CHANGE:")
+
+        # Assist text (if changed)
+        assist_changes: List[str] = []
+        if assist1_changed:
+            new_a1 = self._safe_player_name(change.get("new_assist1_id"))
+            old_a1 = self._safe_player_name(change.get("old_assist1_id"))
+            if new_a1 and old_a1:
+                assist_changes.append(f"Primary assist now {new_a1} (was {old_a1})")
+            elif new_a1 and not old_a1:
+                assist_changes.append(f"Primary assist added for {new_a1}")
+            elif not new_a1 and old_a1:
+                assist_changes.append(f"Primary assist removed from {old_a1}")
+
+        if assist2_changed:
+            new_a2 = self._safe_player_name(change.get("new_assist2_id"))
+            old_a2 = self._safe_player_name(change.get("old_assist2_id"))
+            if new_a2 and old_a2:
+                assist_changes.append(f"Secondary assist now {new_a2} (was {old_a2})")
+            elif new_a2 and not old_a2:
+                assist_changes.append(f"Secondary assist added for {new_a2}")
+            elif not new_a2 and old_a2:
+                assist_changes.append(f"Secondary assist removed from {old_a2}")
+
+        if assist_changes:
+            parts.append(" / ".join(assist_changes))
+
+        # Add a compact scoreline to remind users which goal this is about.
+        try:
+            pref = self.context.preferred_team
+            other = self.context.other_team
+            parts.append(f"{pref.abbreviation}: {pref.score} / {other.abbreviation}: {other.score}")
+        except Exception:
+            pass
+
+        return " ".join(p for p in parts if p)
+
+    def _safe_player_name(self, player_id: Optional[int]) -> str:
+        """Resolve a player ID to a stable display name for scoring-change posts."""
+        if not player_id:
+            return "Unknown"
+
+        roster = getattr(self.context, "combined_roster", {}) or {}
+        entry = roster.get(player_id)
+        if isinstance(entry, dict):
+            name = entry.get("name")
+            if name:
+                return name
+
+        # Fallback: leave as ID if we truly can't resolve.
+        return str(player_id)
+
+    def handle_scoring_change(self, change: Dict[str, object]) -> None:
+        """Apply a confirmed scoring change and, if stable, post an update.
+
+        This is called from the event factory when an existing GoalEvent is
+        seen again on a loop with **no new plays** and the PBP payload
+        indicates a scorer/assist change.
+
+        Debounce behavior:
+        - Uses in-memory attributes `_pending_scoring` and
+          `_pending_scoring_count` to require the same candidate scoring triple
+          to appear `SCORING_CHANGE_STABILITY` times in a row before we accept it.
+        - Only when the change is accepted do we write to GameCache.goal_snapshots.
+        """
+        if not change.get("changed"):
+            return
+
+        cache = getattr(self.context, "cache", None)
+        snapshot: Dict[str, Any] = cache.get_goal_snapshot(self.event_id) if cache else {}
+
+        # ----- Figure out the current accepted scoring triple ----------------
+        current_scoring = snapshot.get("scoring") or {
+            "scorer_id": getattr(self, "scoring_player_id", None),
+            "assist1_id": getattr(self, "assist1_player_id", None),
+            "assist2_id": getattr(self, "assist2_player_id", None),
+        }
+
+        new_scoring = {
+            "scorer_id": change.get("new_scorer_id"),
+            "assist1_id": change.get("new_assist1_id"),
+            "assist2_id": change.get("new_assist2_id"),
+        }
+
+        # If the "new" triple is identical to the accepted triple, nothing to do.
+        if new_scoring == current_scoring:
+            logger.debug(
+                "GoalEvent[%s]: scoring change payload matches accepted scoring; " "no update needed.",
+                getattr(self, "event_id", "unknown"),
+            )
+            return
+
+        # ----- Debounce using in-memory pending state ------------------------
+        pending_scoring = getattr(self, "_pending_scoring", None)
+        pending_count = getattr(self, "_pending_scoring_count", 0)
+
+        if pending_scoring == new_scoring:
+            pending_count += 1
+        else:
+            pending_scoring = new_scoring
+            pending_count = 1
+
+        # Persist back to the instance so it survives across iterations in
+        # this process (but not across restarts).
+        self._pending_scoring = pending_scoring
+        self._pending_scoring_count = pending_count
+
+        logger.debug(
+            "GoalEvent[%s]: pending scoring change=%r (count=%d/%d).",
+            getattr(self, "event_id", "unknown"),
+            pending_scoring,
+            pending_count,
+            self.SCORING_CHANGE_STABILITY,
+        )
+
+        if pending_count < self.SCORING_CHANGE_STABILITY:
+            # Not stable yet; wait for more consistent loops before posting.
+            return
+
+        # At this point the new scoring is considered stable. Reset pending state.
+        self._pending_scoring = None
+        self._pending_scoring_count = 0
+
+        # ----- Update in-memory scoring IDs ----------------------------------
+        logger.info(
+            "GoalEvent[%s]: accepting scoring change; new scoring=%r (previous=%r).",
+            getattr(self, "event_id", "unknown"),
+            new_scoring,
+            current_scoring,
+        )
+
+        self.scoring_player_id = new_scoring["scorer_id"]
+        self.assist1_player_id = new_scoring["assist1_id"]
+        self.assist2_player_id = new_scoring["assist2_id"]
+
+        # ----- Milestones: figure out who is newly credited -------------------
+        milestone_hits: List[Any] = []
+        milestone_service = getattr(self.context, "milestone_service", None)
+
+        already_credited: set[int] = set(snapshot.get("credited_player_ids") or [])
+
+        newly_credited_ids: set[int] = {
+            pid
+            for pid in (
+                new_scoring.get("scorer_id"),
+                new_scoring.get("assist1_id"),
+                new_scoring.get("assist2_id"),
+            )
+            if pid
+        }
+        newly_credited_ids.difference_update(already_credited)
+
+        if milestone_service is not None and newly_credited_ids:
+            try:
+                scorer_ids: List[int] = []
+                assist_ids: List[int] = []
+
+                if new_scoring.get("scorer_id") in newly_credited_ids:
+                    scorer_ids.append(new_scoring["scorer_id"])
+
+                for key in ("assist1_id", "assist2_id"):
+                    pid = new_scoring.get(key)
+                    if pid in newly_credited_ids:
+                        assist_ids.append(pid)
+
+                milestone_hits = milestone_service.handle_scoring_change(
+                    new_scorer_ids=scorer_ids,
+                    new_assist_ids=assist_ids,
+                    is_power_play=False,  # PP milestones disabled for now
+                )
+            except Exception:
+                logger.exception(
+                    "MilestoneService: error while handling scoring change; " "ignoring milestones for this change.",
+                )
+                milestone_hits = []
+
+        # ----- Persist durable scoring state into GameCache -------------------
+        updated_credited = set(already_credited)
+        updated_credited.update(
+            pid
+            for pid in (
+                new_scoring.get("scorer_id"),
+                new_scoring.get("assist1_id"),
+                new_scoring.get("assist2_id"),
+            )
+            if pid
+        )
+
+        if cache is not None:
+            try:
+                cache.update_goal_snapshot(
+                    self.event_id,
+                    scoring=new_scoring,
+                    credited_player_ids=sorted(updated_credited),
+                )
+            except Exception as e:
+                logger.warning(
+                    "GoalEvent[%s]: failed to update goal snapshot after scoring change: %s",
+                    getattr(self, "event_id", "unknown"),
+                    e,
+                )
+
+        # ----- Build and send the scoring-change post ------------------------
+        change_text = self._build_scoring_change_text(change)
+
+        milestone_prefix = ""
+        if milestone_hits:
+            try:
+                # We can keep this simple and rely on the existing formatter.
+                milestone_prefix = milestone_service.format_hits(milestone_hits)
+            except Exception:
+                logger.exception(
+                    "GoalEvent[%s]: failed to format milestone hits for scoring change.",
+                    getattr(self, "event_id", "unknown"),
+                )
+                milestone_prefix = ""
+
+        if milestone_prefix:
+            post_text = f"{milestone_prefix}\n\n{change_text}"
+        else:
+            post_text = change_text
+
+        # Use the existing threading/hashtag/scoreline behavior in Event.post_message
+        self.post_message(post_text, add_hashtags=True, add_score=True, event_type="scoring_change")
 
     def check_and_add_highlight(self, event_data):
         """
@@ -339,8 +660,8 @@ class GoalEvent(Event):
         # ----------------------------------------------------------------------
         season = str(getattr(context, "season_id"))
         game_id = str(getattr(context, "game_id"))
-        home_abbr = getattr(context, "home_abbr", "")
-        away_abbr = getattr(context, "away_abbr", "")
+        home_abbr = getattr(context.home_team, "abbreviation", "")
+        away_abbr = getattr(context.away_team, "abbreviation", "")
 
         goal_sweater = getattr(self, "scoring_sweater", None)
         goal_player_id = getattr(self, "scoring_player_id", None)
