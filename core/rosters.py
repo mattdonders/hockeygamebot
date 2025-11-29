@@ -105,3 +105,29 @@ def load_combined_roster(game, preferred_team, other_team, season_id):
     # print(combined_roster)
 
     return combined_roster
+
+
+def get_preferred_roster(preferred_team, season_id):
+    """
+    Load the roster for the preferred team involved in the game.
+    """
+    preferred_team_roster_data = load_roster(preferred_team.abbreviation, season_id)
+
+    # Flatten roster
+    preferred_roster = flatten_roster(preferred_team_roster_data)
+
+    return preferred_roster
+
+
+def load_team_rosters(preferred_team, other_team, season_id):
+    """
+    Load rosters for both the preferred and other teams, and combine them.
+    """
+    pref_data = load_roster(preferred_team.abbreviation, season_id)
+    other_data = load_roster(other_team.abbreviation, season_id)
+
+    preferred_roster = flatten_roster(pref_data)
+    other_roster = flatten_roster(other_data)
+
+    combined_roster = {**preferred_roster, **other_roster}
+    return preferred_roster, other_roster, combined_roster

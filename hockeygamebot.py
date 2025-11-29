@@ -11,7 +11,9 @@ import threading
 import time
 import warnings
 from datetime import datetime, timedelta
+from pathlib import Path
 
+import requests
 from matplotlib import font_manager
 
 import core.preview as preview
@@ -22,12 +24,13 @@ from core import charts, final
 from core.charts import teamstats_chart
 from core.events.event_cache import GameCache
 from core.events.goal import GoalEvent
-from core.integrations import nst
+from core.integrations import injuries, nst
 from core.live import parse_live_game
+from core.milestones import MilestoneService
 from core.models.game_context import GameContext
 from core.models.team import Team
 from definitions import RESOURCES_DIR
-from socials.platforms import NON_X_PLATFORMS, X_PLATFORMS
+from socials.platforms import NON_X_PLATFORMS
 from socials.publisher import SocialPublisher
 from utils.config import load_config
 from utils.status_monitor import StatusMonitor
@@ -263,6 +266,29 @@ def start_game_loop(context: GameContext):
                         logger.info("No officials info available; skipping.")
                 except Exception as e:
                     logger.exception("Failed to post officials preview: %s", e)
+
+            # --- Milestone Watch / Preview Post ---
+            if context.milestone_service is not None and not context.preview_socials.milestones_sent:
+                try:
+                    milestone_msg = preview.generate_pregame_milestones_post(context)
+                    if milestone_msg:
+                        context.social.reply(
+                            message=milestone_msg,
+                            platforms="enabled",  # all enabled platforms, including X
+                            state=context.preview_socials,
+                        )
+                        context.preview_socials.milestones_sent = True
+
+                        if cache is not None:
+                            cache.mark_pregame_sent("milestones")
+                            cache.save()
+
+                        logger.info(
+                            "Posted pre-game milestone preview for %d hits.",
+                            len(context.preview_socials.milestone_hits),
+                        )
+                except Exception:
+                    logger.exception("Failed to post pre-game milestone preview.")
 
             # --- Sleep until closer to game time ---
             if hasattr(context, "monitor"):
@@ -595,7 +621,140 @@ def handle_is_game_today(game, target_date, preferred_team, season_id, context: 
     context.venue = game["venue"]["default"]
 
     # Load Combined Rosters into Game Context
-    context.combined_roster = rosters.load_combined_roster(game, preferred_team, other_team, season_id)
+    preferred_roster, other_roster, combined_roster = rosters.load_team_rosters(preferred_team, other_team, season_id)
+    context.combined_roster = combined_roster
+    context.preferred_roster = preferred_roster
+    context.other_roster = other_roster
+
+    cache_dir = context.config.get("script", {}).get("cache_dir", "./data/cache")
+    cache_dir_path = Path(cache_dir)
+    season_dir = cache_dir_path / str(season_id)
+    season_dir.mkdir(parents=True, exist_ok=True)
+
+    # Fetch injury info for the preferred team (season-ending year)
+    # season_id in your code is likely like "20252026" -> we need 2026
+    season_end_year = int(str(season_id)[-4:])
+
+    try:
+        injury_records = injuries.get_team_injuries_from_hockey_reference(
+            preferred_team.abbreviation,
+            season_end_year,
+            cache_root=season_dir,
+        )
+        injured_names = injuries.build_injured_name_set(injury_records)
+        logger.info(
+            "Injuries: Hockey-Reference reports %d injured players for %s",
+            len(injury_records),
+            preferred_team.abbreviation,
+        )
+    except Exception:
+        logger.exception("Injuries: failed to fetch/parse Hockey-Reference injuries")
+        injury_records = []
+        injured_names = set()
+
+    # Cache the Injury Set in Context for Later Use
+    context.injured_players = injured_names
+
+    for injury in injury_records:
+        logger.info(f"{injury}")
+
+    # Per-game milestone snapshot cache
+    milestone_cache_path = season_dir / f"{game_id}_milestones.json"
+    logger.info("Milestone snapshot cache path: %s", milestone_cache_path)
+
+    # Extract player IDs from preferred roster for milestone checks
+    player_ids = list(preferred_roster.keys())
+
+    # Initialize MilestoneService and preload roster
+    # This will be used during live game parsing to check for milestones on goals/assists
+    try:
+        thresholds = context.config.get("milestones", {})
+        milestone_session = requests.Session()
+
+        context.milestone_service = MilestoneService(
+            thresholds=thresholds,
+            session=milestone_session,
+            snapshot_cache_path=milestone_cache_path,
+        )
+
+        # Preload snapshots for everyone on the combined roster.
+        # This will be cheap on re-runs because it uses the per-game cache.
+        context.milestone_service.preload_for_roster(player_ids)
+
+        # Debug logging of baselines (what you're already doing)
+        context.milestone_service.log_roster_baselines(
+            player_ids,
+            player_name_resolver=lambda pid: context.preferred_roster.get(pid, str(pid)),
+        )
+
+        # Compute pregame milestones (games-played *hits* + stat *watches*)
+        milestones_gp, milestones_watches = context.milestone_service.get_pregame_milestones_for_roster(
+            player_ids,
+            player_name_resolver=lambda pid: context.preferred_roster.get(pid, str(pid)),
+        )
+
+        # Filter out Injury Players (by Name) so we don't generate milestone previews for them
+        def is_injured(pid: int) -> bool:
+            # Out preferred_roster maps {player_id: "Full Name"}
+            name = context.preferred_roster.get(pid, "")
+            name_norm = name.lower().strip()
+            logging.info("Checking if player is injured: %s (ID: %s)", name_norm, pid)
+            return name_norm in injured_names
+
+        filtered_milestones_gp = []
+        for ms in milestones_gp:
+            if is_injured(ms.player_id):
+                logger.info(
+                    "Skipping milestone HIT for injured player: %s (%s)",
+                    context.preferred_roster.get(ms.player_id, str(ms.player_id)),
+                    ms.label,
+                )
+                continue
+            filtered_milestones_gp.append(ms)
+
+        filtered_milestones_watches = []
+        for watch in milestones_watches:
+            if is_injured(watch.player_id):
+                logger.info(
+                    "Skipping milestone WATCH for injured player: %s (%s)",
+                    context.preferred_roster.get(watch.player_id, str(watch.player_id)),
+                    watch.label,
+                )
+                continue
+            filtered_milestones_watches.append(watch)
+
+        # Clip Max Watches by our Threshold
+        max_watches = thresholds.get("max_watches", 3)
+        milestones_watches = sorted(milestones_watches, key=lambda w: w.remaining)[:max_watches]
+
+        # Save on the social state for later formatting
+        context.preview_socials.milestone_hits = filtered_milestones_gp
+        context.preview_socials.milestone_watches = filtered_milestones_watches
+
+        for ms in filtered_milestones_gp:
+            logging.info("%s", str(ms))
+
+        for ms in filtered_milestones_watches:
+            logging.info("%s", str(ms))
+
+        # Persist any new snapshots fetched for this game
+        context.milestone_service.flush_snapshot_cache()
+
+        logger.info(
+            "MilestoneService initialized and roster preloaded for %d players.",
+            len(player_ids),
+        )
+    except Exception:
+        logger.exception("Failed to initialize or preload MilestoneService; milestones will be disabled for this game.")
+        context.milestone_service = None
+
+    finally:
+        # Always try to flush snapshots if we created the service at all
+        if context.milestone_service is not None:
+            try:
+                context.milestone_service.flush_snapshot_cache()
+            except Exception:
+                logger.exception("Failed to flush milestone snapshot cache.")
 
     # Initialize restart-safe cache
     cache_dir = context.config.get("script", {}).get("cache_dir", "./data/cache")
@@ -868,6 +1027,9 @@ def main():
         nosocial=publisher.nosocial,
         debugsocial=debug_social_flag,
     )
+
+    # Set Active (Global) Game Context
+    GameContext.set_active(context)
 
     # After creating monitor
     monitor = StatusMonitor()

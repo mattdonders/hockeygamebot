@@ -1,10 +1,12 @@
 import logging
 import time
 from datetime import datetime, timezone
+from typing import Optional
 
 import requests
 
 from core import schedule
+from core.milestones import MilestoneHit, MilestoneWatch
 from core.models.game_context import GameContext
 from core.schedule import fetch_schedule
 from utils.others import categorize_broadcasts, clock_emoji, convert_utc_to_localteam
@@ -373,6 +375,57 @@ def format_pregame_post(game, context: GameContext) -> str:
     post = f"{core_line}\n\n" "Matchup Notes 👇\n\n" f"{body}\n\n" f"{time_line}\n" f"{tv_line}\n" f"{hashtag_line}"
 
     return post
+
+
+def generate_pregame_milestones_post(context: GameContext) -> Optional[str]:
+    """
+    Build a pre-game milestones post from any hits discovered during preload.
+
+    Returns:
+        A text post, or None if there are no milestone hits or the service
+        isn't available.
+    """
+    service = context.milestone_service
+    hits: list[MilestoneHit] = getattr(context.preview_socials, "milestone_hits", []) or []
+    watches: list[MilestoneWatch] = getattr(context.preview_socials, "milestone_watches", []) or []
+
+    if service is None or (not hits and not watches):
+        return None
+
+    # Resolve IDs -> names from the combined roster
+    def resolve_name(player_id: int) -> str:
+        # combined_roster right now is {player_id: "Name"}
+        return context.combined_roster.get(player_id, str(player_id))
+
+    # This gives you nice, compact player+label lines
+    summary_body = service.format_hits(hits, player_name_resolver=resolve_name)
+
+    team_name = context.preferred_team.full_name if context.preferred_team else "Tonight's game"
+
+    lines: list[str] = []
+    lines.append(f"Milestone watch tonight for {team_name} 👀🏒")
+
+    # Exact milestones (e.g. “594th NHL game”)
+    if hits:
+        lines.append("")  # blank line
+        lines.append("Tonight’s milestones:")
+        for hit in hits:
+            name = context.preferred_roster.get(hit.player_id, str(hit.player_id))
+            lines.append(f"• {name} — {hit.label}")
+
+    # Upcoming milestones (e.g. “2 goals away from 100th NHL goal”)
+    if watches:
+        lines.append("")  # blank line
+        lines.append("On milestone watch:")
+        for watch in watches:
+            name = context.preferred_roster.get(watch.player_id, str(watch.player_id))
+            lines.append(f"• {name} — {watch.label}")
+
+    # Optional: hashtags
+    lines.append("")
+    lines.append(f"{context.preferred_team.hashtag} | {context.game_hashtag}")
+
+    return "\n".join(lines)
 
 
 def generate_referees_post(context: GameContext):
