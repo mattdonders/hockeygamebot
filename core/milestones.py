@@ -186,6 +186,35 @@ class MilestoneService:
 
         return hits
 
+    def handle_postgame_goalie_milestones(
+        self,
+        goalie_id: int,
+        *,
+        won: bool,
+        got_shutout: bool,
+    ) -> List[MilestoneHit]:
+        """
+        Apply post-game goalie milestones (wins, shutouts) for a single goalie.
+
+        This is intended to be called once, after the game goes FINAL, once we
+        know who got the decision and whether it was a shutout.
+        """
+        hits: List[MilestoneHit] = []
+
+        state = self._ensure_state(goalie_id)
+
+        # Wins
+        if won:
+            state.wins += 1
+            hits.extend(self._check_stat(goalie_id, "wins", state.wins))
+
+        # Shutouts
+        if got_shutout:
+            state.shutouts += 1
+            hits.extend(self._check_stat(goalie_id, "shutouts", state.shutouts))
+
+        return hits
+
     def handle_scoring_change(
         self,
         new_scorer_ids: Iterable[int],
@@ -604,7 +633,7 @@ class MilestoneService:
         if value in thresholds:
             # You can customize these labels further if you want.
             human_name = stat.replace("_", " ").rstrip("s")  # "pp_goal", "point"
-            label = f"{value}{self._ordinal_suffix(value)} NHL {human_name.title}"
+            label = f"{value}{self._ordinal_suffix(value)} NHL {human_name.title()}"
             return [
                 MilestoneHit(
                     player_id=player_id,

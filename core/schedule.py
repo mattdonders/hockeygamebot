@@ -108,6 +108,21 @@ def fetch_playbyplay(game_id: str):
 
 
 @retry(max_attempts=3, delay=2.0, exceptions=(requests.RequestException,))
+def fetch_boxscore(game_id: str):
+    """
+    Fetch the boxscore for the given game from the new NHL API.
+
+    This is used for things like determining the winning goalie and
+    whether they earned a shutout.
+    """
+    url = f"https://api-web.nhle.com/v1/gamecenter/{game_id}/boxscore"
+    logger.info("Fetching boxscore data from %s", url)
+
+    # use key="boxscore" so the limiter can treat this separately
+    return _make_api_json(url, key="boxscore", timeout=10)
+
+
+@retry(max_attempts=3, delay=2.0, exceptions=(requests.RequestException,))
 def fetch_landing(game_id: str):
     """
     Fetch the landing page data for the current game.

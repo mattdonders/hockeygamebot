@@ -165,6 +165,10 @@ class EndOfGameSocial:
 
     team_stats_sent: bool = False
 
+    # --- Milestone hits you already tracked ---
+    milestone_hits: List["MilestoneHit"] = field(default_factory=list)
+    milestones_sent: bool = False
+
     # --- convenience helpers ---
     def set_root(self, platform: str, ref: PostRef) -> None:
         if platform == "bluesky":

@@ -448,6 +448,50 @@ def start_game_loop(context: GameContext):
                         if hasattr(context, "monitor"):
                             context.monitor.record_error(f"Team stats post failed: {e}")
 
+                    # 4. Calculate Any Goalie Milestones
+                    if context.milestone_service is not None:
+                        winning_goalie_id, was_shutout = final.infer_goalie_result_from_boxscore(context)
+
+                        if winning_goalie_id is not None:
+                            try:
+                                goalie_hits = context.milestone_service.handle_postgame_goalie_milestones(
+                                    goalie_id=winning_goalie_id,
+                                    won=True,
+                                    got_shutout=was_shutout,
+                                )
+                            except Exception:
+                                logger.exception("Error applying goalie post-game milestones")
+                                goalie_hits = []
+
+                            if goalie_hits:
+                                logging.info("Goalie Hits: %s", goalie_hits)
+                                # However you're storing final milestones for social posts:
+                                if hasattr(context, "final_socials"):
+                                    context.final_socials.milestone_hits.extend(goalie_hits)
+
+                            # Persist updated wins/shutouts
+                            try:
+                                context.milestone_service.flush_snapshot_cache()
+                            except Exception:
+                                logger.exception("Failed to flush milestone snapshot cache after goalie milestones.")
+
+                    # 5. Post post-game milestones (goals + goalie wins/shutouts)
+                    if (
+                        context.milestone_service is not None
+                        and context.final_socials is not None
+                        and context.final_socials.milestone_hits  # <- non-empty
+                    ):
+                        milestone_msg = final.generate_final_milestones_post(context)
+
+                        if milestone_msg:
+                            context.social.post(
+                                message=milestone_msg,
+                                platforms="enabled",  # Milestones should go to all socials
+                                state=context.final_socials,
+                            )
+                            # If you want a sent-flag:
+                            context.final_socials.milestones_sent = True  # optional new bool on EndOfGameSocial
+
                 # Check if all required content has been posted
                 if (
                     context.final_socials.final_score_sent
