@@ -24,27 +24,23 @@ class StartOfGameSocial:
     threads_root: Optional[PostRef] = None
     threads_parent: Optional[PostRef] = None
 
-    # --- Optional bookkeeping flags/metadata you already track ---
-    did_season_series: bool = False
-    did_team_stats: bool = False
-    did_officials: bool = False
-
     # --- Your existing message content + sent flags ---
     core_msg: Optional[str] = None
     core_sent: bool = False
 
-    season_series_msg: Optional[str] = None
-    season_series_sent: bool = False
+    officials_msg: Optional[str] = None
+    officials_sent: bool = False
 
-    team_stats_sent: bool = False
+    # --- Milestone hits you already tracked ---
+    milestone_hits: List["MilestoneHit"] = field(default_factory=list)
+    milestone_watches: List["MilestoneHit"] = field(default_factory=list)
+    milestones_sent: bool = False
 
+    # --- TBD: None of these are actually implemented in V2
     goalies_pref_msg: Optional[str] = None
     goalies_pref_sent: bool = False
     goalies_other_msg: Optional[str] = None
     goalies_other_sent: bool = False
-
-    officials_msg: Optional[str] = None
-    officials_sent: bool = False
 
     pref_lines_msg: Optional[str] = None
     pref_lines_sent: bool = False
@@ -57,11 +53,6 @@ class StartOfGameSocial:
     # This is for starting lineups
     starters_msg: Optional[str] = None
     starters_sent: bool = False
-
-    # --- Milestone hits you already tracked ---
-    milestone_hits: List["MilestoneHit"] = field(default_factory=list)
-    milestone_watches: List["MilestoneHit"] = field(default_factory=list)
-    milestones_sent: bool = False
 
     # --- Misc debug / last responses ---
     last_payloads: Dict[str, Any] = field(default_factory=dict)
@@ -112,15 +103,24 @@ class StartOfGameSocial:
     @property
     def all_pregame_sent(self) -> bool:
         """
-        Returns True when the core pre-game content set is posted.
-        (Core preview text, season series context, and team stats chart.)
-        Officials are tracked separately.
+        Returns True when *all* pre-game socials have been sent:
+
+          - unified pre-game post (core_sent)
+          - milestones pre-game post (milestones_sent)
+          - officials / referees post (officials_sent)
+
+        This is what the preview sleep calculator uses to decide whether it can
+        safely sleep all the way to puck drop.
         """
-        pregame_checks = ("core_sent", "season_series_sent", "team_stats_sent")
-        status = {attr: getattr(self, attr) for attr in pregame_checks}
-        if not all(status.values()):
+        status = {
+            "core_sent": self.core_sent,
+            "milestones_sent": self.milestones_sent,
+            "officials_sent": self.officials_sent,
+        }
+        all_sent = all(status.values())
+        if not all_sent:
             logger.info("Pregame Socials Status: %s", status)
-        return all(status.values())
+        return all_sent
 
 
 @dataclass

@@ -137,6 +137,353 @@ def start_dashboard_server(port=8000, max_retries=5):
     logger.critical("Bot will continue running but dashboard will be unavailable")
 
 
+def _handle_pregame_state(context: GameContext):
+    """
+    Handle all pre-game (FUT / PRE) behavior:
+
+      - unified pre-game post (core_sent)
+      - milestones pre-game post (milestones_sent)
+      - officials / referees pre-game post (officials_sent)
+      - sleep logic via preview_sleep_calculator
+    """
+    logger.info("Handling a preview game state: %s", context.game_state)
+
+    cache = getattr(context, "cache", None)
+
+    if not context.preview_socials.core_sent:
+        logger.info("Unified pre-game post not yet sent; generating content.")
+
+        chart_path = None
+        try:
+            right_rail_data = schedule.fetch_rightrail(context.game_id)
+            teamstats_data = right_rail_data.get("teamSeasonStats")
+            if teamstats_data:
+                chart_path = teamstats_chart(context, teamstats_data, ingame=False)
+                logger.info("Generated pre-game team stats chart at %s", chart_path)
+            else:
+                logger.info("No teamSeasonStats in right rail; skipping chart.")
+        except Exception as e:
+            logger.exception("Failed to generate pre-game team stats chart: %s", e)
+
+        try:
+            # Use X-style pre-game copy as the unified pre-game message
+            pregame_message = preview.format_pregame_post(context.game, context)
+        except Exception as e:
+            logger.exception(
+                "Failed to format unified pre-game message with format_pregame_post; "
+                "falling back to format_future_game_post: %s",
+                e,
+            )
+            pregame_message = preview.format_future_game_post(context.game, context)
+
+        try:
+            results = context.social.post_and_seed(
+                message=pregame_message,
+                media=chart_path,
+                platforms="enabled",  # all enabled platforms, including X
+                event_type="pregame",
+                state=context.preview_socials,
+            )
+
+            # Mark the unified pre-game post as sent
+            context.preview_socials.core_sent = True
+
+            if cache is not None:
+                cache.mark_pregame_sent("core", results)
+                cache.save()
+
+            logger.info("Posted unified pre-game post with chart (if available).")
+        except Exception as e:
+            logger.exception("Failed to post unified pre-game preview: %s", e)
+
+    # --- Officials remain a separate, non-X threaded reply ---
+    if not context.preview_socials.officials_sent:
+        try:
+            officials_post = preview.generate_referees_post(context)
+            if officials_post:
+                context.social.reply(
+                    message=officials_post,
+                    platforms=NON_X_PLATFORMS,
+                    state=context.preview_socials,
+                )
+                context.preview_socials.officials_sent = True
+
+                if cache is not None:
+                    cache.mark_pregame_sent("officials")
+                    cache.save()
+
+                logger.info("Posted officials preview (threaded).")
+            else:
+                logger.info("No officials info available; skipping.")
+        except Exception as e:
+            logger.exception("Failed to post officials preview: %s", e)
+
+    # --- Milestone Watch / Preview Post ---
+    if context.milestone_service is not None and not context.preview_socials.milestones_sent:
+        try:
+            milestone_msg = preview.generate_pregame_milestones_post(context)
+            if milestone_msg:
+                context.social.reply(
+                    message=milestone_msg,
+                    platforms="enabled",  # all enabled platforms, including X
+                    state=context.preview_socials,
+                )
+                context.preview_socials.milestones_sent = True
+
+                if cache is not None:
+                    cache.mark_pregame_sent("milestones")
+                    cache.save()
+
+                logger.info(
+                    "Posted pre-game milestone preview for %d hits.",
+                    len(context.preview_socials.milestone_hits),
+                )
+        except Exception:
+            logger.exception("Failed to post pre-game milestone preview.")
+
+    # --- Sleep until closer to game time ---
+    if hasattr(context, "monitor"):
+        context.monitor.set_status("SLEEPING")
+    preview.preview_sleep_calculator(context)
+
+
+def _handle_live_state(context: GameContext):
+    logger.debug("Game Context: %s", vars(context))
+    logger.info("Handling a LIVE game state: %s", context.game_state)
+
+    # Set status to RUNNING when actively processing game
+    if hasattr(context, "monitor"):
+        context.monitor.set_status("RUNNING")
+
+    if not context.gametime_rosters_set:
+        # Get Game-Time Rosters and Combine w/ Pre-Game Rosters
+        logger.info("Getting game-time rosters and adding them to existing combined rosters.")
+        game_time_rosters = rosters.load_game_rosters(context)
+        final_combined_rosters = {
+            **context.combined_roster,
+            **game_time_rosters,
+        }
+        context.combined_roster = final_combined_rosters
+        context.gametime_rosters_set = True
+
+    # Parse Live Game Data
+    parse_live_game(context)
+
+    if context.clock.in_intermission:
+        intermission_sleep_time = context.clock.seconds_remaining
+        logger.info(
+            "Game is in intermission - sleep for the remaining time (%ss).",
+            intermission_sleep_time,
+        )
+        if hasattr(context, "monitor"):
+            context.monitor.set_status("SLEEPING")
+        time.sleep(intermission_sleep_time)
+    else:
+        live_sleep_time = context.config["script"]["live_sleep_time"]
+        logger.info("Sleeping for configured live game time (%ss).", live_sleep_time)
+
+        # Now increment the counter sleep for the calculated time above
+        context.live_loop_counter += 1
+        time.sleep(live_sleep_time)
+
+
+def _handle_postgame_state(context: GameContext):
+    # Set Constants for Stay-Away to Send Highlights and GOAL GIFs / MP4s
+    PENDING_GOAL_RETRIES = 4
+    PENDING_GOAL_SLEEP = 20  # seconds
+
+    logger.info("Game is now over and / or 'Official' - run end of game functions with increased sleep time.")
+
+    # Set status to RUNNING for final game processing
+    if hasattr(context, "monitor"):
+        context.monitor.set_status("RUNNING")
+
+    # If (for some reason) the bot was started after the end of the game
+    # We need to re-run the live loop once to parse all of the events
+    if not context.events:
+        logger.info("Bot started after game ended, pass livefeed into event factory to fill events.")
+
+        if not context.gametime_rosters_set:
+            # Get Game-Time Rosters and Combine w/ Pre-Game Rosters
+            logger.info("Getting game-time rosters and adding them to existing combined rosters.")
+            game_time_rosters = rosters.load_game_rosters(context)
+            final_combined_rosters = {
+                **context.combined_roster,
+                **game_time_rosters,
+            }
+            context.combined_roster = final_combined_rosters
+            context.gametime_rosters_set = True
+
+        # Extract game ID and build the play-by-play URL
+        game_id = context.game_id
+        # play_by_play_data = schedule.fetch_playbyplay(game_id)
+        # events = play_by_play_data.get("plays", [])
+
+        # Parse Live Game Data
+        parse_live_game(context)
+
+    # Retry loop for final content (three stars may not be available immediately)
+    max_final_attempts = 10  # Check up to 10 times
+    final_attempt = 0
+    final_sleep_time = 30  # Wait 30 seconds between attempts
+
+    while final_attempt < max_final_attempts:
+        final_attempt += 1
+        all_content_posted = True
+
+        logger.info(f"Final content check - attempt {final_attempt}/{max_final_attempts}")
+
+        # 1. Post Final Score (should always be ready)
+        if not context.final_socials.final_score_sent:
+            try:
+                final_score_post = final.final_score(context)
+                if final_score_post:  # Validate not None
+                    results = context.social.post_and_seed(
+                        message=final_score_post,
+                        platforms="enabled",  # Bsky + Threads + X
+                        event_type="final_summary",  # uses X allowlist
+                        state=context.final_socials,
+                    )
+                    context.final_socials.final_score_sent = True
+                    logger.info("Posted and seeded final score thread roots.")
+                else:
+                    logger.warning("Final score post returned None")
+            except Exception as e:
+                logger.error(f"Error posting final score: {e}", exc_info=True)
+                if hasattr(context, "monitor"):
+                    context.monitor.record_error(f"Final score post failed: {e}")
+
+        # 2. Post Three Stars (may not be ready immediately)
+        if not context.final_socials.three_stars_sent:
+            try:
+                three_stars_post = final.three_stars(context)
+                if three_stars_post:
+                    res = context.social.reply(
+                        message=three_stars_post,
+                        platforms="enabled",  # Bsky + Threads + X
+                        event_type="three_stars",  # uses X allowlist
+                        state=context.final_socials,  # uses seeded roots/parents
+                    )
+                    context.final_socials.three_stars_sent = True
+                    logger.info("Posted three stars reply successfully.")
+                else:
+                    logger.info("⏳ Three stars not available yet, will retry")
+                    all_content_posted = False
+            except Exception as e:
+                logger.error(f"Error posting three stars: {e}", exc_info=True)
+                if hasattr(context, "monitor"):
+                    context.monitor.record_error(f"Three stars post failed: {e}")
+
+        # 3. Post Team Stats Chart
+        if not context.final_socials.team_stats_sent:
+            try:
+                right_rail_data = schedule.fetch_rightrail(context.game_id)
+                team_stats_data = right_rail_data.get("teamGameStats")
+                if team_stats_data:
+                    chart_path = charts.teamstats_chart(context, team_stats_data, ingame=True)
+                    if chart_path:  # ✅ Validate chart was created
+                        chart_message = f"Final team stats for tonight's game.\n\n{context.preferred_team.hashtag} | {context.game_hashtag}"
+                        res = context.social.reply(
+                            message=chart_message,
+                            media=chart_path,
+                            platforms="enabled",  # Bsky + Threads + X
+                            event_type="final_summary",  # uses X allowlist
+                            state=context.final_socials,  # auto-picks the current parent
+                        )
+                        context.final_socials.team_stats_sent = True
+                        logger.info("Posted team stats chart reply successfully.")
+                    else:
+                        logger.warning("Team stats chart returned None")
+                else:
+                    logger.warning("Team stats data not available")
+            except Exception as e:
+                logger.error(f"Error posting team stats: {e}", exc_info=True)
+                if hasattr(context, "monitor"):
+                    context.monitor.record_error(f"Team stats post failed: {e}")
+
+            # 4. Calculate Any Goalie Milestones
+            if context.milestone_service is not None:
+                winning_goalie_id, was_shutout = final.infer_goalie_result_from_boxscore(context)
+
+                if winning_goalie_id is not None:
+                    try:
+                        goalie_hits = context.milestone_service.handle_postgame_goalie_milestones(
+                            goalie_id=winning_goalie_id,
+                            won=True,
+                            got_shutout=was_shutout,
+                        )
+                    except Exception:
+                        logger.exception("Error applying goalie post-game milestones")
+                        goalie_hits = []
+
+                    if goalie_hits:
+                        logging.info("Goalie Hits: %s", goalie_hits)
+                        # However you're storing final milestones for social posts:
+                        if hasattr(context, "final_socials"):
+                            context.final_socials.milestone_hits.extend(goalie_hits)
+
+                    # Persist updated wins/shutouts
+                    try:
+                        context.milestone_service.flush_snapshot_cache()
+                    except Exception:
+                        logger.exception("Failed to flush milestone snapshot cache after goalie milestones.")
+
+            # 5. Post post-game milestones (goals + goalie wins/shutouts)
+            if (
+                context.milestone_service is not None
+                and context.final_socials is not None
+                and context.final_socials.milestone_hits  # <- non-empty
+            ):
+                milestone_msg = final.generate_final_milestones_post(context)
+
+                if milestone_msg:
+                    context.social.post(
+                        message=milestone_msg,
+                        platforms="enabled",  # Milestones should go to all socials
+                        state=context.final_socials,
+                    )
+                    # If you want a sent-flag:
+                    context.final_socials.milestones_sent = True  # optional new bool on EndOfGameSocial
+
+        # Check if all required content has been posted
+        if (
+            context.final_socials.final_score_sent
+            and context.final_socials.three_stars_sent
+            and context.final_socials.team_stats_sent
+        ):
+            logger.info("⏳ Running a few intervals to wait for any pending GIFs!")
+            wait_for_goal_gifs(context)
+
+            logger.info("🎉 All final content posted successfully!")
+            end_game_loop(context)
+            return  # Exit the function
+
+        # If not all content posted and we have attempts remaining, sleep and retry
+        if final_attempt < max_final_attempts:
+            if hasattr(context, "monitor"):
+                context.monitor.set_status("SLEEPING")
+            logger.info(f"Waiting {final_sleep_time}s before next final content check...")
+            time.sleep(final_sleep_time)
+            if hasattr(context, "monitor"):
+                context.monitor.set_status("RUNNING")
+
+    # If we exhausted all attempts, log what's missing and exit anyway
+    missing_content = []
+    if not context.final_socials.final_score_sent:
+        missing_content.append("final score")
+    if not context.final_socials.three_stars_sent:
+        missing_content.append("three stars")
+    if not context.final_socials.team_stats_sent:
+        missing_content.append("team stats")
+
+    if missing_content:
+        logger.warning(f"⚠️  Max final attempts reached. Missing content: {', '.join(missing_content)}")
+        if hasattr(context, "monitor"):
+            context.monitor.record_error(f"Incomplete final content: {', '.join(missing_content)}")
+
+    end_game_loop(context)
+
+
 def start_game_loop(context: GameContext):
     """
     Manages the main game loop for real-time updates.
@@ -149,6 +496,26 @@ def start_game_loop(context: GameContext):
         context (GameContext): The shared context containing game details, configuration,
             and state management.
     """
+
+    # ------------------------------------------------------------------------------
+    # HYDRATE PRE-GAME SOCIAL STATE FROM CACHE (ONCE)
+    # ------------------------------------------------------------------------------
+    cache = getattr(context, "cache", None)
+    if cache is not None and hasattr(context, "preview_socials"):
+        mapping = [
+            ("core", "core_sent"),
+            ("officials", "officials_sent"),
+            ("milestones", "milestones_sent"),
+        ]
+        for kind, attr in mapping:
+            if hasattr(context.preview_socials, attr) and cache.is_pregame_sent(kind):
+                setattr(context.preview_socials, attr, True)
+
+        roots = cache.get_pregame_root_refs()
+        if roots:
+            logger.info("Restoring pre-game thread roots from cache: %s", roots)
+            context.social.restore_roots_from_cache(roots, state=context.preview_socials)
+
     # ------------------------------------------------------------------------------
     # START THE MAIN LOOP
     # ------------------------------------------------------------------------------
@@ -168,367 +535,13 @@ def start_game_loop(context: GameContext):
         # If we enter this function on the day of a game (before the game starts), gameState = "FUT"
         # We should send preview posts & then sleep until game time.
         if context.game_state in ["PRE", "FUT"]:
-            logger.info("Handling a preview game state: %s", context.game_state)
+            _handle_pregame_state(context)
 
-            cache = getattr(context, "cache", None)
-
-            # --- Hydrate pre-game state from cache (flags + roots) ---
-            if cache is not None:
-                mapping = [
-                    ("core", "core_sent"),
-                    ("season_series", "season_series_sent"),
-                    ("team_stats", "team_stats_sent"),
-                    ("officials", "officials_sent"),
-                ]
-                for kind, attr in mapping:
-                    if hasattr(context.preview_socials, attr) and cache.is_pregame_sent(kind):
-                        setattr(context.preview_socials, attr, True)
-
-                roots = cache.get_pregame_root_refs()
-                if roots:
-                    context.social.restore_roots_from_cache(roots, state=context.preview_socials)
-
-            # --- Unified pre-game core post (core + season series + team stats) ---
-            unified_pregame_sent = (
-                getattr(context.preview_socials, "core_sent", False)
-                and getattr(context.preview_socials, "season_series_sent", False)
-                and getattr(context.preview_socials, "team_stats_sent", False)
-            )
-
-            if not unified_pregame_sent:
-                logger.info("Unified pre-game post not yet sent; generating content.")
-
-                chart_path = None
-                try:
-                    right_rail_data = schedule.fetch_rightrail(context.game_id)
-                    teamstats_data = right_rail_data.get("teamSeasonStats")
-                    if teamstats_data:
-                        chart_path = teamstats_chart(context, teamstats_data, ingame=False)
-                        logger.info("Generated pre-game team stats chart at %s", chart_path)
-                    else:
-                        logger.info("No teamSeasonStats in right rail; skipping chart.")
-                except Exception as e:
-                    logger.exception("Failed to generate pre-game team stats chart: %s", e)
-
-                try:
-                    # Use X-style pre-game copy as the unified pre-game message
-                    pregame_message = preview.format_pregame_post(context.game, context)
-                except Exception as e:
-                    logger.exception(
-                        "Failed to format unified pre-game message with format_pregame_post; "
-                        "falling back to format_future_game_post: %s",
-                        e,
-                    )
-                    pregame_message = preview.format_future_game_post(context.game, context)
-
-                try:
-                    results = context.social.post_and_seed(
-                        message=pregame_message,
-                        media=chart_path,
-                        platforms="enabled",  # all enabled platforms, including X
-                        event_type="pregame",
-                        state=context.preview_socials,
-                    )
-
-                    # Since we've collapsed the pieces, mark all three as sent
-                    context.preview_socials.core_sent = True
-                    context.preview_socials.season_series_sent = True
-                    context.preview_socials.team_stats_sent = True
-
-                    if cache is not None:
-                        cache.mark_pregame_sent("core", results)
-                        cache.mark_pregame_sent("season_series")
-                        cache.mark_pregame_sent("team_stats")
-                        cache.save()
-
-                    logger.info("Posted unified pre-game post with chart (if available).")
-                except Exception as e:
-                    logger.exception("Failed to post unified pre-game preview: %s", e)
-
-            # --- Officials remain a separate, non-X threaded reply ---
-            if not context.preview_socials.officials_sent:
-                try:
-                    officials_post = preview.generate_referees_post(context)
-                    if officials_post:
-                        context.social.reply(
-                            message=officials_post,
-                            platforms=NON_X_PLATFORMS,
-                            state=context.preview_socials,
-                        )
-                        context.preview_socials.officials_sent = True
-
-                        if cache is not None:
-                            cache.mark_pregame_sent("officials")
-                            cache.save()
-
-                        logger.info("Posted officials preview (threaded).")
-                    else:
-                        logger.info("No officials info available; skipping.")
-                except Exception as e:
-                    logger.exception("Failed to post officials preview: %s", e)
-
-            # --- Milestone Watch / Preview Post ---
-            if context.milestone_service is not None and not context.preview_socials.milestones_sent:
-                try:
-                    milestone_msg = preview.generate_pregame_milestones_post(context)
-                    if milestone_msg:
-                        context.social.reply(
-                            message=milestone_msg,
-                            platforms="enabled",  # all enabled platforms, including X
-                            state=context.preview_socials,
-                        )
-                        context.preview_socials.milestones_sent = True
-
-                        if cache is not None:
-                            cache.mark_pregame_sent("milestones")
-                            cache.save()
-
-                        logger.info(
-                            "Posted pre-game milestone preview for %d hits.",
-                            len(context.preview_socials.milestone_hits),
-                        )
-                except Exception:
-                    logger.exception("Failed to post pre-game milestone preview.")
-
-            # --- Sleep until closer to game time ---
-            if hasattr(context, "monitor"):
-                context.monitor.set_status("SLEEPING")
-            preview.preview_sleep_calculator(context)
-
-        elif context.game_state in ["PRE", "LIVE", "CRIT"]:
-            logger.debug("Game Context: %s", vars(context))
-            logger.info("Handling a LIVE game state: %s", context.game_state)
-
-            # Set status to RUNNING when actively processing game
-            if hasattr(context, "monitor"):
-                context.monitor.set_status("RUNNING")
-
-            if not context.gametime_rosters_set:
-                # Get Game-Time Rosters and Combine w/ Pre-Game Rosters
-                logger.info("Getting game-time rosters and adding them to existing combined rosters.")
-                game_time_rosters = rosters.load_game_rosters(context)
-                final_combined_rosters = {
-                    **context.combined_roster,
-                    **game_time_rosters,
-                }
-                context.combined_roster = final_combined_rosters
-                context.gametime_rosters_set = True
-
-            # Parse Live Game Data
-            parse_live_game(context)
-
-            if context.clock.in_intermission:
-                intermission_sleep_time = context.clock.seconds_remaining
-                logger.info(
-                    "Game is in intermission - sleep for the remaining time (%ss).",
-                    intermission_sleep_time,
-                )
-                if hasattr(context, "monitor"):
-                    context.monitor.set_status("SLEEPING")
-                time.sleep(intermission_sleep_time)
-            else:
-                live_sleep_time = context.config["script"]["live_sleep_time"]
-                logger.info("Sleeping for configured live game time (%ss).", live_sleep_time)
-
-                # Now increment the counter sleep for the calculated time above
-                context.live_loop_counter += 1
-                time.sleep(live_sleep_time)
+        elif context.game_state in ["LIVE", "CRIT"]:
+            _handle_live_state(context)
 
         elif context.game_state in ["OFF", "FINAL"]:
-            # Set Constants for Stay-Away to Send Highlights and GOAL GIFs / MP4s
-            PENDING_GOAL_RETRIES = 4
-            PENDING_GOAL_SLEEP = 20  # seconds
-
-            logger.info("Game is now over and / or 'Official' - run end of game functions with increased sleep time.")
-
-            # Set status to RUNNING for final game processing
-            if hasattr(context, "monitor"):
-                context.monitor.set_status("RUNNING")
-
-            # If (for some reason) the bot was started after the end of the game
-            # We need to re-run the live loop once to parse all of the events
-            if not context.events:
-                logger.info("Bot started after game ended, pass livefeed into event factory to fill events.")
-
-                if not context.gametime_rosters_set:
-                    # Get Game-Time Rosters and Combine w/ Pre-Game Rosters
-                    logger.info("Getting game-time rosters and adding them to existing combined rosters.")
-                    game_time_rosters = rosters.load_game_rosters(context)
-                    final_combined_rosters = {
-                        **context.combined_roster,
-                        **game_time_rosters,
-                    }
-                    context.combined_roster = final_combined_rosters
-                    context.gametime_rosters_set = True
-
-                # Extract game ID and build the play-by-play URL
-                game_id = context.game_id
-                # play_by_play_data = schedule.fetch_playbyplay(game_id)
-                # events = play_by_play_data.get("plays", [])
-
-                # Parse Live Game Data
-                parse_live_game(context)
-
-            # Retry loop for final content (three stars may not be available immediately)
-            max_final_attempts = 10  # Check up to 10 times
-            final_attempt = 0
-            final_sleep_time = 30  # Wait 30 seconds between attempts
-
-            while final_attempt < max_final_attempts:
-                final_attempt += 1
-                all_content_posted = True
-
-                logger.info(f"Final content check - attempt {final_attempt}/{max_final_attempts}")
-
-                # 1. Post Final Score (should always be ready)
-                if not context.final_socials.final_score_sent:
-                    try:
-                        final_score_post = final.final_score(context)
-                        if final_score_post:  # Validate not None
-                            results = context.social.post_and_seed(
-                                message=final_score_post,
-                                platforms="enabled",  # Bsky + Threads + X
-                                event_type="final_summary",  # uses X allowlist
-                                state=context.final_socials,
-                            )
-                            context.final_socials.final_score_sent = True
-                            logger.info("Posted and seeded final score thread roots.")
-                        else:
-                            logger.warning("Final score post returned None")
-                    except Exception as e:
-                        logger.error(f"Error posting final score: {e}", exc_info=True)
-                        if hasattr(context, "monitor"):
-                            context.monitor.record_error(f"Final score post failed: {e}")
-
-                # 2. Post Three Stars (may not be ready immediately)
-                if not context.final_socials.three_stars_sent:
-                    try:
-                        three_stars_post = final.three_stars(context)
-                        if three_stars_post:
-                            res = context.social.reply(
-                                message=three_stars_post,
-                                platforms="enabled",  # Bsky + Threads + X
-                                event_type="three_stars",  # uses X allowlist
-                                state=context.final_socials,  # uses seeded roots/parents
-                            )
-                            context.final_socials.three_stars_sent = True
-                            logger.info("Posted three stars reply successfully.")
-                        else:
-                            logger.info("⏳ Three stars not available yet, will retry")
-                            all_content_posted = False
-                    except Exception as e:
-                        logger.error(f"Error posting three stars: {e}", exc_info=True)
-                        if hasattr(context, "monitor"):
-                            context.monitor.record_error(f"Three stars post failed: {e}")
-
-                # 3. Post Team Stats Chart
-                if not context.final_socials.team_stats_sent:
-                    try:
-                        right_rail_data = schedule.fetch_rightrail(context.game_id)
-                        team_stats_data = right_rail_data.get("teamGameStats")
-                        if team_stats_data:
-                            chart_path = charts.teamstats_chart(context, team_stats_data, ingame=True)
-                            if chart_path:  # ✅ Validate chart was created
-                                chart_message = f"Final team stats for tonight's game.\n\n{context.preferred_team.hashtag} | {context.game_hashtag}"
-                                res = context.social.reply(
-                                    message=chart_message,
-                                    media=chart_path,
-                                    platforms="enabled",  # Bsky + Threads + X
-                                    event_type="final_summary",  # uses X allowlist
-                                    state=context.final_socials,  # auto-picks the current parent
-                                )
-                                context.final_socials.team_stats_sent = True
-                                logger.info("Posted team stats chart reply successfully.")
-                            else:
-                                logger.warning("Team stats chart returned None")
-                        else:
-                            logger.warning("Team stats data not available")
-                    except Exception as e:
-                        logger.error(f"Error posting team stats: {e}", exc_info=True)
-                        if hasattr(context, "monitor"):
-                            context.monitor.record_error(f"Team stats post failed: {e}")
-
-                    # 4. Calculate Any Goalie Milestones
-                    if context.milestone_service is not None:
-                        winning_goalie_id, was_shutout = final.infer_goalie_result_from_boxscore(context)
-
-                        if winning_goalie_id is not None:
-                            try:
-                                goalie_hits = context.milestone_service.handle_postgame_goalie_milestones(
-                                    goalie_id=winning_goalie_id,
-                                    won=True,
-                                    got_shutout=was_shutout,
-                                )
-                            except Exception:
-                                logger.exception("Error applying goalie post-game milestones")
-                                goalie_hits = []
-
-                            if goalie_hits:
-                                logging.info("Goalie Hits: %s", goalie_hits)
-                                # However you're storing final milestones for social posts:
-                                if hasattr(context, "final_socials"):
-                                    context.final_socials.milestone_hits.extend(goalie_hits)
-
-                            # Persist updated wins/shutouts
-                            try:
-                                context.milestone_service.flush_snapshot_cache()
-                            except Exception:
-                                logger.exception("Failed to flush milestone snapshot cache after goalie milestones.")
-
-                    # 5. Post post-game milestones (goals + goalie wins/shutouts)
-                    if (
-                        context.milestone_service is not None
-                        and context.final_socials is not None
-                        and context.final_socials.milestone_hits  # <- non-empty
-                    ):
-                        milestone_msg = final.generate_final_milestones_post(context)
-
-                        if milestone_msg:
-                            context.social.post(
-                                message=milestone_msg,
-                                platforms="enabled",  # Milestones should go to all socials
-                                state=context.final_socials,
-                            )
-                            # If you want a sent-flag:
-                            context.final_socials.milestones_sent = True  # optional new bool on EndOfGameSocial
-
-                # Check if all required content has been posted
-                if (
-                    context.final_socials.final_score_sent
-                    and context.final_socials.three_stars_sent
-                    and context.final_socials.team_stats_sent
-                ):
-                    logger.info("⏳ Running a few intervals to wait for any pending GIFs!")
-                    wait_for_goal_gifs(context)
-
-                    logger.info("🎉 All final content posted successfully!")
-                    end_game_loop(context)
-                    return  # Exit the function
-
-                # If not all content posted and we have attempts remaining, sleep and retry
-                if final_attempt < max_final_attempts:
-                    if hasattr(context, "monitor"):
-                        context.monitor.set_status("SLEEPING")
-                    logger.info(f"Waiting {final_sleep_time}s before next final content check...")
-                    time.sleep(final_sleep_time)
-                    if hasattr(context, "monitor"):
-                        context.monitor.set_status("RUNNING")
-
-            # If we exhausted all attempts, log what's missing and exit anyway
-            missing_content = []
-            if not context.final_socials.final_score_sent:
-                missing_content.append("final score")
-            if not context.final_socials.three_stars_sent:
-                missing_content.append("three stars")
-            if not context.final_socials.team_stats_sent:
-                missing_content.append("team stats")
-
-            if missing_content:
-                logger.warning(f"⚠️  Max final attempts reached. Missing content: {', '.join(missing_content)}")
-                if hasattr(context, "monitor"):
-                    context.monitor.record_error(f"Incomplete final content: {', '.join(missing_content)}")
-
-            end_game_loop(context)
+            _handle_postgame_state(context)
 
         else:
             logger.error(f"Unknown game state: {context.game_state}")

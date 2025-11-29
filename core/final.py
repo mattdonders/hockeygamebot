@@ -11,24 +11,137 @@ from core.models.game_context import GameContext
 logger = logging.getLogger(__name__)
 
 
+def _resolve_final_result(context: GameContext) -> Tuple[str, int, int]:
+    """
+    Resolve the authoritative final result for this game using the
+    club-schedule-season endpoint.
+
+    Returns:
+        (result_type, preferred_score, other_score)
+
+        result_type is usually "REG", "OT", or "SO" based on
+        gameOutcome.lastPeriodType.
+    """
+    preferred_abbr = context.preferred_team.abbreviation
+    season_id = context.season_id
+
+    try:
+        full_schedule = schedule.fetch_schedule(preferred_abbr, season_id)
+        games = full_schedule.get("games", [])
+    except Exception as exc:  # defensive fallback
+        logger.exception(
+            "Final result: failed to fetch schedule for %s (%s); " "falling back to context scores.",
+            preferred_abbr,
+            exc,
+        )
+        return "REG", context.preferred_team.score, context.other_team.score
+
+    game_entry = None
+    for game in games:
+        # Game IDs in schedule and context should match when cast to str
+        if str(game.get("id")) == str(context.game_id):
+            game_entry = game
+            break
+
+    if game_entry is None:
+        logger.warning(
+            "Final result: could not locate game %s in schedule for %s; " "falling back to context scores.",
+            context.game_id,
+            preferred_abbr,
+        )
+        return "REG", context.preferred_team.score, context.other_team.score
+
+    game_outcome = game_entry.get("gameOutcome") or {}
+    result_type = game_outcome.get("lastPeriodType", "REG")
+
+    home = game_entry.get("homeTeam", {}) or {}
+    away = game_entry.get("awayTeam", {}) or {}
+
+    home_score = home.get("score", 0)
+    away_score = away.get("score", 0)
+
+    if context.preferred_homeaway == "home":
+        preferred_score = home_score
+        other_score = away_score
+    elif context.preferred_homeaway == "away":
+        preferred_score = away_score
+        other_score = home_score
+    else:
+        logger.warning(
+            "Final result: preferred team %s not found as home/away in game %s; falling back to context scores.",
+            context.preferred_team.abbreviation,
+            context.game_id,
+        )
+        return result_type, context.preferred_team.score, context.other_team.score
+
+    # Optionally keep the context in sync with the official record
+    try:
+        context.preferred_team.score = preferred_score
+        context.other_team.score = other_score
+    except Exception:
+        logger.debug("Unable to write resolved scores back to context.", exc_info=True)
+
+    return result_type, preferred_score, other_score
+
+
 def final_score(context: GameContext):
     logger.info("Starting the core Final Score work now.")
 
-    play_by_play_data = schedule.fetch_playbyplay(context.game_id)
+    # We still fetch play-by-play here in case we want richer summaries later.
+    try:
+        play_by_play_data = schedule.fetch_playbyplay(context.game_id)
+    except Exception:
+        play_by_play_data = None
+        logger.debug("Unable to fetch play-by-play in final_score.", exc_info=True)
 
+    # Use the authoritative final result from the schedule API
+    result_type, preferred_score, other_score = _resolve_final_result(context)
+
+    # Home/road text stays exactly as before
     pref_home_text = "on the road" if context.preferred_homeaway == "away" else "at home"
 
-    if context.preferred_team.score > context.other_team.score:
+    preferred_won = preferred_score > other_score
+
+    # For REG and OT, keep the text as close as possible to your existing style.
+    # For SO, append a short "in a shootout" suffix.
+    if result_type == "SO":
+        result_suffix = " in a shootout"
+    elif result_type == "OT":
+        result_suffix = " in overtime"
+    else:
+        result_suffix = ""
+
+    # Structured logging for debugging
+    try:
+        home_abbr = context.home_team.abbreviation
+        away_abbr = context.away_team.abbreviation
+    except Exception:
+        home_abbr = "HOME"
+        away_abbr = "AWAY"
+
+    winner_abbr = context.preferred_team.abbreviation if preferred_won else context.other_team.abbreviation
+
+    logger.info(
+        "Final result: %s @ %s, result_type=%s, winner=%s, displayed_score=%s-%s",
+        away_abbr,
+        home_abbr,
+        result_type,
+        winner_abbr,
+        preferred_score,
+        other_score,
+    )
+
+    if preferred_won:
         final_score_text = (
             f"{context.preferred_team.full_name} win {pref_home_text} over the "
-            f"{context.other_team.full_name} by a score of {context.preferred_team.score} to "
-            f"{context.other_team.score}! 🚨🚨🚨"
+            f"{context.other_team.full_name} by a score of {preferred_score} to "
+            f"{other_score}{result_suffix}! 🚨🚨🚨"
         )
     else:
         final_score_text = (
             f"{context.preferred_team.full_name} lose {pref_home_text} to the "
-            f"{context.other_team.full_name} by a score of {context.preferred_team.score} to "
-            f"{context.other_team.score}! 👎🏻👎🏻👎🏻"
+            f"{context.other_team.full_name} by a score of {preferred_score} to "
+            f"{other_score}{result_suffix}! 👎🏻👎🏻👎🏻"
         )
 
     next_game_str = next_game(context)
