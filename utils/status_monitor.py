@@ -219,10 +219,10 @@ class StatusMonitor:
             preview_socials_data = None
             if hasattr(context, 'preview_socials'):
                 preview_socials_data = {
-                    'core_sent': context.preview_socials.core_sent,
-                    'season_series_sent': context.preview_socials.season_series_sent,
-                    'team_stats_sent': context.preview_socials.team_stats_sent,
-                    'officials_sent': context.preview_socials.officials_sent,
+                    "core_sent": context.preview_socials.core_sent,
+                    "milestones_sent": context.preview_socials.milestones_sent,
+                    "officials_sent": context.preview_socials.officials_sent,
+                    "all_pregame_sent": context.preview_socials.all_pregame_sent,
                 }
 
         except Exception as e:
@@ -303,11 +303,9 @@ class StatusMonitor:
             # Update social tracking
             if preview_socials_data:
                 self.status["socials"]["preview_posts"]["core_sent"] = preview_socials_data['core_sent']
-                self.status["socials"]["preview_posts"]["season_series_sent"] = preview_socials_data[
-                    'season_series_sent'
-                ]
-                self.status["socials"]["preview_posts"]["team_stats_sent"] = preview_socials_data['team_stats_sent']
+                self.status["socials"]["preview_posts"]["milestones_sent"] = preview_socials_data['season_series_sent']
                 self.status["socials"]["preview_posts"]["officials_sent"] = preview_socials_data['officials_sent']
+                self.status["socials"]["preview_posts"]["all_pregame_sent"] = preview_socials_data['all_pregame_sent']
 
             self._check_health()
             self._write_status()
