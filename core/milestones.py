@@ -325,7 +325,7 @@ class MilestoneService:
         current_game_number = baseline_gp + 1
 
         if current_game_number in thresholds:
-            label = f"{current_game_number}{self._ordinal_suffix(current_game_number)} NHL game"
+            label = f"{current_game_number}{self._ordinal_suffix(current_game_number)} NHL Game"
             return MilestoneHit(
                 player_id=player_id,
                 stat="games_played",
@@ -504,7 +504,7 @@ class MilestoneService:
             "isAggregate": "true",
             "reportType": "career",
             "isGame": "false",
-            "cayenneExp": f"playerId={player_id}",
+            "cayenneExp": f"playerId={player_id} and gameTypeId=2",
         }
 
         logger.debug("Fetching career snapshot from stats API for player_id=%s", player_id)
@@ -538,7 +538,7 @@ class MilestoneService:
             "isAggregate": "true",
             "reportType": "career",
             "isGame": "false",
-            "cayenneExp": f"playerId={player_id}",
+            "cayenneExp": f"playerId={player_id} and gameTypeId=2",
         }
 
         data = get_json(goalie_url, key="nhl_stats_goalie", params=goalie_params, timeout=5)

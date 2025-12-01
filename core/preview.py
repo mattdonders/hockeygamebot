@@ -392,36 +392,36 @@ def generate_pregame_milestones_post(context: GameContext) -> Optional[str]:
     if service is None or (not hits and not watches):
         return None
 
-    # Resolve IDs -> names from the combined roster
-    def resolve_name(player_id: int) -> str:
-        # combined_roster right now is {player_id: "Name"}
-        return context.combined_roster.get(player_id, str(player_id))
-
-    # This gives you nice, compact player+label lines
-    summary_body = service.format_hits(hits, player_name_resolver=resolve_name)
-
     team_name = context.preferred_team.full_name if context.preferred_team else "Tonight's game"
 
     lines: list[str] = []
-    lines.append(f"Milestone watch tonight for {team_name} 👀🏒")
 
-    # Exact milestones (e.g. “594th NHL game”)
+    # Header
+    lines.append(f"{team_name} Milestone Watch 👀🏒")
+
+    # Exact milestones (e.g. “1000th NHL Game”)
     if hits:
         lines.append("")  # blank line
-        lines.append("Tonight’s milestones:")
+        if len(hits) == 1:
+            lines.append("Milestone in tonight’s game:")
+        else:
+            lines.append("Milestones in tonight’s game:")
         for hit in hits:
             name = context.preferred_roster.get(hit.player_id, str(hit.player_id))
-            lines.append(f"• {name} — {hit.label}")
+            lines.append(f"🎉 {name} — {hit.label}")
 
-    # Upcoming milestones (e.g. “2 goals away from 100th NHL goal”)
+    # Upcoming milestones (e.g. “3 away from 100th NHL Goal”)
     if watches:
         lines.append("")  # blank line
-        lines.append("On milestone watch:")
+        if len(watches) == 1:
+            lines.append("Player nearing a milestone:")
+        else:
+            lines.append("Players nearing milestones:")
         for watch in watches:
             name = context.preferred_roster.get(watch.player_id, str(watch.player_id))
             lines.append(f"• {name} — {watch.label}")
 
-    # Optional: hashtags
+    # Hashtags
     lines.append("")
     lines.append(f"{context.preferred_team.hashtag} | {context.game_hashtag}")
 
