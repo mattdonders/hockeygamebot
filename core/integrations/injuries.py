@@ -12,6 +12,8 @@ from typing import Any, Dict, List, Optional, Set
 import pandas as pd
 import requests
 
+from utils.retry import retry
+
 logger = logging.getLogger(__name__)
 
 
@@ -158,6 +160,7 @@ def parse_hockey_reference_injuries_html(
     return injuries
 
 
+@retry(max_attempts=3, delay=2.0, exceptions=(requests.RequestException,))
 def get_team_injuries_from_hockey_reference(
     team_abbr: str,
     season_year: int,

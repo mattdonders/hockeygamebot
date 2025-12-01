@@ -5,6 +5,7 @@ import argparse
 import http.server
 import logging
 import os
+import random
 import socketserver
 import sys
 import threading
@@ -978,7 +979,7 @@ def main():
 
     # fmt: off
     parser = argparse.ArgumentParser(description="Check NHL games for a specific date.")
-    parser.add_argument("--config", type=str, default="config.yaml", help="Path to the configuration file (default: config.yaml).")
+    parser.add_argument("--config", type=str, default="config/config.yaml", help="Path to the configuration file (default: config.yaml).")
     parser.add_argument("--date", type=str, help="Date to check for a game (format: YYYY-MM-DD). Defaults to today's date.")
     parser.add_argument("--nosocial", action="store_true", help="Print messages instead of posting to socials.")
     parser.add_argument("--dry-run", dest="nosocial", action="store_true", help="Alias for --nosocial (no posting).")
@@ -1087,6 +1088,11 @@ def main():
 
     # Set Active (Global) Game Context
     GameContext.set_active(context)
+
+    # Stagger startup for multi-scaling of bot to avoid API calls on the same second
+    initial_delay = random.uniform(0, 20)
+    logger.info("Initial startup delay for this process: %.1fs", initial_delay)
+    time.sleep(initial_delay)
 
     # After creating monitor
     monitor = StatusMonitor()

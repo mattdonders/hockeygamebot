@@ -1,47 +1,69 @@
-# Hockey Game Bot - Git Ignore File
+###############################################
+# HOCKEY GAME BOT — GITIGNORE
+###############################################
 
-# ===========================================
-# SECRETS & CREDENTIALS - NEVER COMMIT THESE
-# ===========================================
-config.yaml
-config*.yaml
+########## SECRETS & CREDENTIALS (NEVER COMMIT) ##########
+# Root-level secrets / config files
 .env
 secret.py
+secrets/
 *.pem
 *.key
+*.crt
 
-# ===========================================
-# PYTHON
-# ===========================================
-# Byte-compiled / optimized / DLL files
+# Key/credential helper text files
+config-00-njd-gamebottwitterkeys.txt
+
+##############################
+# CONFIG FILES
+##############################
+
+# Ignore runtime configs at project root (legacy)
+config.yaml
+config-*.yaml
+
+# Ignore runtime configs inside config/ folder
+config/config.yaml
+config/config-*.yaml
+
+# But DO keep the sample template
+!config/config-sample.yaml
+
+# Keep placeholder directory entry
+!config/.gitkeep
+!config/README.md
+
+
+########## PYTHON BUILD / BYTECODE ##########
 __pycache__/
 *.py[cod]
 *$py.class
 *.so
 
-# Virtual environments
+########## PYTHON ENVIRONMENTS ##########
+.venv/
 venv/
 env/
 ENV/
-.venv/
+env.bak/
+venv.bak/
+pyvenv.cfg
 bin/
 lib/
 lib64/
-pyvenv.cfg
 share/
-env.bak/
-venv.bak/
 
-# Distribution / packaging
+
+########## PACKAGING & DISTRIBUTION ##########
 .Python
 build/
-develop-eggs/
 dist/
+sdist/
+develop-eggs/
 downloads/
 eggs/
 .eggs/
 parts/
-sdist/
 var/
 wheels/
 pip-wheel-metadata/
@@ -51,18 +73,14 @@ share/python-wheels/
 *.egg
 MANIFEST
 
-# ===========================================
-# GENERATED FILES - DON'T COMMIT THESE
-# ===========================================
-# Generated images (charts, stats)
+
+########## GENERATED IMAGES / MEDIA ##########
 images/*.png
 images/*.jpg
 images/*.jpeg
-
-# Exception: Keep example images if you have them
 !images/example*.png
 
-# Custom resource images (your specific patterns)
+# Game-generated resources
 resources/images/Gameday-*.jpg
 resources/images/GamedayFinal-*.jpg
 resources/images/Gameday-*.png
@@ -74,14 +92,15 @@ resources/images/Rink-Shotmap-Generated.png
 resources/images/Final*.png
 resources/images/temp/
 hockeygamebot/resources/images/temp/
-resources/PSDs
-resources/*-roster.json
+resources/PSDs/
+resources/rosters/*.json
 
-# Generated data files
+
+########## GENERATED DATA FILES ##########
 data/*.json
 data/*.csv
 
-# Logs
+########## LOGS ##########
 logs/
 *.log
 *.log.*
@@ -89,24 +108,22 @@ pip-log.txt
 pip-delete-this-directory.txt
 nohup.out
 
-# Status/metrics files
+########## STATUS / METRICS ##########
 status.json
 metrics.json
+status-sample.json
 
-# TBD Images
-TBD*.png
-
-# === OUTPUT FILES (rendered images, GIFs, charts) ===
+########## OUTPUT (RENDERED FILES) ##########
 output/*
 !output/.OUTPUTS-GO-HERE
 
-# Goal GIFs (nested)
 output/goal_gifs/*
 !output/goal_gifs/.GOAL-GIFS-GO-HERE
 
-# ===========================================
-# TESTING
-# ===========================================
+TBD*.png
+
+
+########## TESTING / COVERAGE ##########
 htmlcov/
 .tox/
 .nox/
@@ -120,9 +137,8 @@ coverage.xml
 .hypothesis/
 .pytest_cache/
 
-# ===========================================
-# WORK IN PROGRESS - DON'T COMMIT THESE
-# ===========================================
+
+########## WORK-IN-PROGRESS / SCRATCH ##########
 wip-*
 WIP-*
 TODO.md
@@ -132,15 +148,15 @@ experiments/
 archive/
 localdata/
 
-# ===========================================
-# V1 LEGACY FILES (After V2 Migration)
-# ===========================================
+
+########## V1 / LEGACY CODE ##########
 hockey_twitter_bot.py
 nhl_game_events.py
+v1-oldapi/
+v2-toomuch/
 
-# ===========================================
-# OPERATING SYSTEM
-# ===========================================
+
+########## OS-SPECIFIC ##########
 # macOS
 .DS_Store
 .AppleDouble
@@ -154,19 +170,17 @@ Desktop.ini
 # Linux
 *~
 
-# ===========================================
-# IDE / EDITORS
-# ===========================================
-# VS Code
+
+########## IDE / EDITORS ##########
+# VSCode
 .vscode/
 *.code-workspace
 
-# PyCharm
+# PyCharm / JetBrains
 .idea/
 *.iml
-.project
 
-# Sublime Text
+# Sublime
 *.sublime-project
 *.sublime-workspace
 
@@ -174,41 +188,30 @@ Desktop.ini
 *.swp
 *.swo
 
-# Spyder
+# Spyder / Rope
 .spyderproject
 .spyproject
-
-# Rope
 .ropeproject
 
-# ===========================================
-# FRAMEWORKS (if you add them later)
-# ===========================================
-# Django
+
+########## FRAMEWORKS (IF USED LATER) ##########
 local_settings.py
 db.sqlite3
 db.sqlite3-journal
-
-# Flask
 instance/
 .webassets-cache
-
-# Scrapy
-.scrapy
-
-# Jupyter Notebook
+.scrapy/
 .ipynb_checkpoints
 profile_default/
 ipython_config.py
 
-# ===========================================
-# BUILD TOOLS
-# ===========================================
+
+########## BUILD TOOLS ##########
 # PyInstaller
 *.manifest
 *.spec
 
-# Sphinx documentation
+# Sphinx
 docs/_build/
 
 # PyBuilder
@@ -217,51 +220,33 @@ target/
 # mkdocs
 /site
 
-# ===========================================
-# TYPE CHECKERS
-# ===========================================
-# mypy
+
+########## TYPE CHECKERS ##########
 .mypy_cache/
 .dmypy.json
 dmypy.json
-
-# Pyre
 .pyre/
-
-# pyenv
 .python-version
 
-# ===========================================
-# DOCKER
-# ===========================================
+
+########## DOCKER ##########
 .dockerignore
 
-# ===========================================
-# OTHER
-# ===========================================
-# Temporary files
+
+########## OTHER ##########
 tmp/
 temp/
 *.tmp
 *.bak
-status-sample.json
 
-# API response cache (if you add caching)
+# General cache folders
 .cache/
 cache/
 
-# Translations
-*.mo
-*.pot
-
-# Celery
 celerybeat-schedule
 .dashboard_port
-config-00-njd-gamebottwitterkeys.txt
 
-# Legacy archived code
-v1-oldapi/
-v2-toomuch/
 
-# Local-only deployment scripts on PROD
-scripts/
+########## LOCAL-ONLY DEPLOYMENT SCRIPTS (PROD) ##########
+scripts/local/
+scripts/dev-only/
