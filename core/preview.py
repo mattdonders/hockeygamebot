@@ -151,6 +151,10 @@ def calculate_season_series(
         if game["gameState"] in ["FUT", "PREVIEW"]:
             continue
 
+        # Skip Non-Regular Season Games
+        if game["gameType"] != 2:
+            continue
+
         # Check if the opposing team matches either home or away
         home_team = game["homeTeam"]["abbrev"]
         away_team = game["awayTeam"]["abbrev"]
