@@ -99,8 +99,7 @@ class StatusMonitor:
                 "posts_sent": 0,
                 "preview_posts": {
                     "core_sent": False,
-                    "season_series_sent": False,
-                    "team_stats_sent": False,
+                    "milestone_sent": False,
                     "officials_sent": False,
                 },
                 "last_post_time": None,
@@ -303,7 +302,7 @@ class StatusMonitor:
             # Update social tracking
             if preview_socials_data:
                 self.status["socials"]["preview_posts"]["core_sent"] = preview_socials_data['core_sent']
-                self.status["socials"]["preview_posts"]["milestones_sent"] = preview_socials_data['season_series_sent']
+                self.status["socials"]["preview_posts"]["milestones_sent"] = preview_socials_data['milestones_sent']
                 self.status["socials"]["preview_posts"]["officials_sent"] = preview_socials_data['officials_sent']
                 self.status["socials"]["preview_posts"]["all_pregame_sent"] = preview_socials_data['all_pregame_sent']
 
