@@ -229,16 +229,22 @@ def _handle_pregame_state(context: GameContext):
                     platforms="enabled",  # all enabled platforms, including X
                     state=context.preview_socials,
                 )
-                context.preview_socials.milestones_sent = True
-
-                if cache is not None:
-                    cache.mark_pregame_sent("milestones")
-                    cache.save()
-
                 logger.info(
-                    "Posted pre-game milestone preview for %d hits.",
-                    len(context.preview_socials.milestone_hits),
+                    "Posted pre-game milestone preview for %d hits.", len(context.preview_socials.milestone_hits)
                 )
+            else:
+                logger.info(
+                    "No milestones for this game - set our 'milestones_sent' value to "
+                    "True anyway to skip this since milestones don't change mid-day."
+                )
+
+            # We set the Milestones Sent Flag to True Regardless (UNLESS we have an error)
+            # This is because milestones should be analyzed once and won't change mid-day
+            context.preview_socials.milestones_sent = True
+
+            if cache is not None:
+                cache.mark_pregame_sent("milestones")
+                cache.save()
         except Exception:
             logger.exception("Failed to post pre-game milestone preview.")
 
