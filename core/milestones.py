@@ -9,6 +9,8 @@ from typing import Callable, Dict, Iterable, List, Optional
 
 import requests
 
+from utils.http import get_json
+
 logger = logging.getLogger(__name__)
 
 STATS_API_BASE = "https://api.nhle.com/stats/rest/en"
@@ -507,10 +509,8 @@ class MilestoneService:
 
         logger.debug("Fetching career snapshot from stats API for player_id=%s", player_id)
 
-        resp = self.session.get(url, params=params, timeout=5)
-        resp.raise_for_status()
-        payload = resp.json()
-        rows = payload.get("data", [])
+        data = get_json(url, key="nhl_stats_skater", params=params, timeout=5)
+        rows = data.get("data", [])
 
         if rows:
             row = rows[0]
@@ -541,10 +541,8 @@ class MilestoneService:
             "cayenneExp": f"playerId={player_id}",
         }
 
-        resp = self.session.get(goalie_url, params=goalie_params, timeout=5)
-        resp.raise_for_status()
-        payload = resp.json()
-        rows = payload.get("data", [])
+        data = get_json(goalie_url, key="nhl_stats_goalie", params=goalie_params, timeout=5)
+        rows = data.get("data", [])
 
         if rows:
             row = rows[0]

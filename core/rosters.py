@@ -5,6 +5,9 @@ from datetime import datetime, timedelta
 
 import requests
 
+from definitions import ROSTERS_DIR
+from utils.http import get_json
+
 logger = logging.getLogger(__name__)
 
 
@@ -14,7 +17,7 @@ def load_roster(team_abbreviation: str, season_id: int):
     Check for local file before fetching from the API.
     If the local file exists but is older than 24 hours, fetch a new roster.
     """
-    file_path = f"resources/{team_abbreviation}-roster.json"
+    file_path = ROSTERS_DIR / f"{team_abbreviation}-roster.json"
 
     # Check if the local file exists
     if os.path.exists(file_path):
@@ -37,21 +40,15 @@ def load_roster(team_abbreviation: str, season_id: int):
 
     # Fetch from the API if the file doesn't exist or is outdated
     url = f"https://api-web.nhle.com/v1/roster/{team_abbreviation}/{season_id}"
-    response = requests.get(url)
-    if response.status_code == 200:
-        roster = response.json()
+    roster_data = get_json(url, key="roster", timeout=10)
 
-        # Save to local file for future use
-        os.makedirs(os.path.dirname(file_path), exist_ok=True)
-        with open(file_path, "w") as file:
-            json.dump(roster, file)
-            logger.info(f"Saved updated roster for {team_abbreviation} to {file_path}.")
+    # Save to local file for future use
+    os.makedirs(os.path.dirname(file_path), exist_ok=True)
+    with open(file_path, "w") as file:
+        json.dump(roster_data, file)
+        logger.info(f"Saved updated roster for {team_abbreviation} to {file_path}.")
 
-        return roster
-    else:
-        error_message = f"Failed to fetch roster for {team_abbreviation}. " f"Status Code: {response.status_code}"
-        logger.error(error_message)
-        raise Exception(error_message)
+    return roster_data
 
 
 def load_game_rosters(context):

@@ -322,75 +322,148 @@ class GoalEvent(Event):
         )
         return change
 
+    def _build_current_scoring_block(self) -> str:
+        """Return a block showing the *current* official scoring for this goal.
+
+        Example:
+            🚨 Jack Hughes (23)
+            🍎 Jesper Bratt (31)
+            🍏 Luke Hughes (12)
+        """
+        lines: List[str] = []
+
+        scorer_name = getattr(self, "scoring_player_name", None)
+        scorer_total = getattr(self, "scoring_player_total", None)
+
+        a1_name = getattr(self, "assist1_name", None)
+        a1_total = getattr(self, "assist1_total", None)
+
+        a2_name = getattr(self, "assist2_name", None)
+        a2_total = getattr(self, "assist2_total", None)
+
+        # Goal line
+        if scorer_name:
+            line = f"🚨 {scorer_name}"
+            if scorer_total not in (None, 0):
+                line += f" ({scorer_total})"
+            lines.append(line)
+
+        # Primary assist
+        if a1_name:
+            line = f"🍎 {a1_name}"
+            if a1_total not in (None, 0):
+                line += f" ({a1_total})"
+            lines.append(line)
+
+        # Secondary assist
+        if a2_name:
+            line = f"🍏 {a2_name}"
+            if a2_total not in (None, 0):
+                line += f" ({a2_total})"
+            lines.append(line)
+
+        return "\n".join(lines)
+
     def _build_scoring_change_text(self, change: Dict[str, object]) -> str:
-        """Return a human-friendly text for a scoring-change update."""
+        """Build user-facing text for a scoring-change update.
+
+        Target format:
+
+        The scoring on this goal has changed.
+        Primary assist added for Jesper Bratt.
+
+        🚨 Jack Hughes (23)
+        🍎 Jesper Bratt (31)
+        🍏 Luke Hughes (12)
+        """
+        lines: List[str] = ["The scoring on this goal has changed."]
+
         new_scorer_id = change.get("new_scorer_id")
         old_scorer_id = change.get("old_scorer_id")
+        new_a1_id = change.get("new_assist1_id")
+        old_a1_id = change.get("old_assist1_id")
+        new_a2_id = change.get("new_assist2_id")
+        old_a2_id = change.get("old_assist2_id")
 
-        scorer_changed = change.get("scorer_changed")
-        assist1_changed = change.get("assist1_changed")
-        assist2_changed = change.get("assist2_changed")
+        scorer_changed = bool(change.get("scorer_changed"))
+        assist1_changed = bool(change.get("assist1_changed"))
+        assist2_changed = bool(change.get("assist2_changed"))
 
-        parts: List[str] = []
+        diff_clauses: List[str] = []
 
-        # Scorer text
+        # --- Scorer diffs ----------------------------------------------------
         if scorer_changed:
             new_name = self._safe_player_name(new_scorer_id)
-            old_name = self._safe_player_name(old_scorer_id)
-            parts.append(f"SCORING CHANGE: Goal now credited to {new_name} (previously {old_name}).")
-        else:
-            # No scorer change – still worth noting if assists changed.
-            parts.append("SCORING CHANGE:")
+            old_name = self._safe_player_name(old_scorer_id) if old_scorer_id else None
 
-        # Assist text (if changed)
-        assist_changes: List[str] = []
+            if new_scorer_id and old_scorer_id:
+                diff_clauses.append(f"Goal now credited to {new_name} (was {old_name}).")
+            elif new_scorer_id and not old_scorer_id:
+                diff_clauses.append(f"Goal now credited to {new_name}.")
+            elif not new_scorer_id and old_scorer_id:
+                diff_clauses.append(f"Goal has been removed from {old_name}.")
+
+        # --- Primary assist diffs --------------------------------------------
         if assist1_changed:
-            new_a1 = self._safe_player_name(change.get("new_assist1_id"))
-            old_a1 = self._safe_player_name(change.get("old_assist1_id"))
-            if new_a1 and old_a1:
-                assist_changes.append(f"Primary assist now {new_a1} (was {old_a1})")
-            elif new_a1 and not old_a1:
-                assist_changes.append(f"Primary assist added for {new_a1}")
-            elif not new_a1 and old_a1:
-                assist_changes.append(f"Primary assist removed from {old_a1}")
+            new_name = self._safe_player_name(new_a1_id)
+            old_name = self._safe_player_name(old_a1_id) if old_a1_id else None
 
+            if new_a1_id and old_a1_id:
+                diff_clauses.append(f"Primary assist now {new_name} (was {old_name}).")
+            elif new_a1_id and not old_a1_id:
+                diff_clauses.append(f"Primary assist added for {new_name}.")
+            elif not new_a1_id and old_a1_id:
+                diff_clauses.append(f"Primary assist removed from {old_name}.")
+
+        # --- Secondary assist diffs ------------------------------------------
         if assist2_changed:
-            new_a2 = self._safe_player_name(change.get("new_assist2_id"))
-            old_a2 = self._safe_player_name(change.get("old_assist2_id"))
-            if new_a2 and old_a2:
-                assist_changes.append(f"Secondary assist now {new_a2} (was {old_a2})")
-            elif new_a2 and not old_a2:
-                assist_changes.append(f"Secondary assist added for {new_a2}")
-            elif not new_a2 and old_a2:
-                assist_changes.append(f"Secondary assist removed from {old_a2}")
+            new_name = self._safe_player_name(new_a2_id)
+            old_name = self._safe_player_name(old_a2_id) if old_a2_id else None
 
-        if assist_changes:
-            parts.append(" / ".join(assist_changes))
+            if new_a2_id and old_a2_id:
+                diff_clauses.append(f"Secondary assist now {new_name} (was {old_name}).")
+            elif new_a2_id and not old_a2_id:
+                diff_clauses.append(f"Secondary assist added for {new_name}.")
+            elif not new_a2_id and old_a2_id:
+                diff_clauses.append(f"Secondary assist removed from {old_name}.")
 
-        # Add a compact scoreline to remind users which goal this is about.
-        try:
-            pref = self.context.preferred_team
-            other = self.context.other_team
-            parts.append(f"{pref.abbreviation}: {pref.score} / {other.abbreviation}: {other.score}")
-        except Exception:
-            pass
+        # Attach a single diff line (or multiple joined with spaces)
+        if diff_clauses:
+            lines.append(" ".join(diff_clauses))
 
-        return " ".join(p for p in parts if p)
+        # Blank line, then current official scoring block
+        block = self._build_current_scoring_block()
+        if block:
+            lines.append("")
+            lines.append(block)
+
+        return "\n".join(lines)
 
     def _safe_player_name(self, player_id: Optional[int]) -> str:
-        """Resolve a player ID to a stable display name for scoring-change posts."""
+        """Resolve a player ID to a name using context.combined_roster.
+
+        combined_roster is built from flatten_roster/load_team_rosters and
+        uses int player IDs mapped to "First Last".
+        """
         if not player_id:
             return "Unknown"
 
         roster = getattr(self.context, "combined_roster", {}) or {}
-        entry = roster.get(player_id)
-        if isinstance(entry, dict):
-            name = entry.get("name")
-            if name:
-                return name
 
-        # Fallback: leave as ID if we truly can't resolve.
-        return str(player_id)
+        # Keys are usually ints, but be defensive and try a few variants.
+        name = roster.get(player_id)
+        if name is None and isinstance(player_id, str):
+            try:
+                name = roster.get(int(player_id))
+            except ValueError:
+                pass
+        if name is None:
+            name = roster.get(str(player_id))
+
+        if isinstance(name, str) and name.strip():
+            return name.strip()
+
+        return "Unknown"
 
     def handle_scoring_change(self, change: Dict[str, object]) -> None:
         """Apply a confirmed scoring change and, if stable, post an update.
