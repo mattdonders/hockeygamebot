@@ -1098,6 +1098,9 @@ def main():
     # Set Active (Global) Game Context
     GameContext.set_active(context)
 
+    # Add Preferred Team to GameContext
+    context.preferred_team = preferred_team
+
     # Stagger startup for multi-scaling of bot to avoid API calls on the same second
     initial_delay = random.uniform(0, 20)
     logger.info("Initial startup delay for this process: %.1fs", initial_delay)
@@ -1115,9 +1118,6 @@ def main():
     # bluesky_client.monitor = monitor
     publisher.monitor = monitor
     schedule.set_monitor(monitor)
-
-    # Add Preferred Team to GameContext
-    context.preferred_team = preferred_team
 
     # Fetch season ID
     season_id = schedule.fetch_season_id(preferred_team.abbreviation)
