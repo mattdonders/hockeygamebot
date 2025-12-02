@@ -401,7 +401,8 @@ def get_abbreviation_by_name(team_name):
 
     for team_abbr, details in TEAM_DETAILS.items():
         if details.get("full_name") == team_name:
-            return details.get("full_name")
+            return team_abbr
+    return None
 
 
 def get_team_name_by_id(team_id):

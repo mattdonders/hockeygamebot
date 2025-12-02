@@ -50,7 +50,7 @@ class SilentHTTPHandler(http.server.SimpleHTTPRequestHandler):
         pass  # Suppress all HTTP logs
 
 
-def start_dashboard_server(port=8000, max_retries=5):
+def start_dashboard_server(team_slug: str, port: int = 8000, max_retries: int = 5):
     """
     Start the dashboard web server with error recovery and port file.
 
@@ -87,14 +87,16 @@ def start_dashboard_server(port=8000, max_retries=5):
                     s.close()
 
                     # Write port and IP to file
-                    with open(".dashboard_port", "w") as f:
+                    port_file = f".dashboard_port-{team_slug.lower()}"
+
+                    with open(port_file, "w") as f:
                         f.write(f"{current_port}\n")
                         f.write(f"{local_ip}\n")
                         f.write(f"http://localhost:{current_port}/dashboard.html\n")
                         f.write(f"http://{local_ip}:{current_port}/dashboard.html\n")
 
-                    logger.info("Dashboard info written to .dashboard_port")
-                    logger.info(f"Network access: http://{local_ip}:{current_port}/dashboard.html")
+                    logger.info("Dashboard info written to %s", port_file)
+                    logger.info("Network access: http://%s:%s/dashboard.html", local_ip, current_port)
                 except Exception as e:
                     logger.warning(f"Could not write dashboard port file: {e}")
 
@@ -1002,13 +1004,14 @@ def main():
     otherutils.setup_logging(config, console=args.console, debug=args.debug)
     otherutils.log_startup_info(args, config)
 
-    # Start dashboard server in background
-    dashboard_thread = threading.Thread(target=start_dashboard_server, args=(8000,), daemon=True)
-    dashboard_thread.start()
-    logger.info("Dashboard server started in background")
-
     team_name = config.get("default", {}).get("team_name", "New Jersey Devils")
     preferred_team = Team(team_name)
+
+    # Start dashboard server in background
+    team_slug = preferred_team.abbreviation
+    dashboard_thread = threading.Thread(target=start_dashboard_server, args=(team_slug, 8000), daemon=True)
+    dashboard_thread.start()
+    logger.info("Dashboard server started in background")
 
     # Initialize Bluesky Client
     # bluesky_environment = "debug" if args.debugsocial else "prod"
@@ -1100,8 +1103,12 @@ def main():
     logger.info("Initial startup delay for this process: %.1fs", initial_delay)
     time.sleep(initial_delay)
 
-    # After creating monitor
-    monitor = StatusMonitor()
+    # Create the Status Monitor w/ a Team-Specific Slug
+    # somewhere where you know the team (config / context)
+    team_slug = context.preferred_team.abbreviation.lower()  # "njd", "pit", etc.
+    status_path = Path(f"status-{team_slug}.json")
+
+    monitor = StatusMonitor(status_path)
     context.monitor = monitor
 
     # Attach the Monitor to BlueSky Client & Schedule Modules

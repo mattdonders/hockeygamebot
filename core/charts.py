@@ -393,6 +393,7 @@ def teamstats_chart(context: GameContext, team_game_stats: dict, ingame: bool = 
     ax.grid(False)
 
     # Save the figure
-    chart_path = os.path.join(IMAGES_DIR, f"{chart_file_prefix}-teamstatschart.png")
+    team_slug = context.preferred_team.abbreviation.lower()  # "njd", "pit"
+    chart_path = os.path.join(IMAGES_DIR, f"{team_slug}-{chart_file_prefix}-teamstatschart.png")
     plt.savefig(chart_path, bbox_inches="tight")
     return chart_path

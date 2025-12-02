@@ -250,3 +250,10 @@ celerybeat-schedule
 ########## LOCAL-ONLY DEPLOYMENT SCRIPTS (PROD) ##########
 scripts/local/
 scripts/dev-only/
+
+########## LOCAL LAUNCH / STOP SCRIPTS (KEEP SAMPLE VERSIONS) ##########
+# Ignore concrete per-environment scripts
+scripts/hgb-*.sh
+
+# But keep any sample versions under version control
+!scripts/hgb-*-sample.sh

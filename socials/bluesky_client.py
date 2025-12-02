@@ -12,6 +12,8 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 
+from atproto_client import exceptions as atproto_exceptions
+
 # Silence noisy Pydantic v2 + atproto_client schema warnings
 from pydantic.warnings import UnsupportedFieldAttributeWarning
 
@@ -79,11 +81,52 @@ class BlueskyClient(SocialClient):
 
     def __init__(self, cfg: BlueskyConfig):
         self.cfg = cfg
+        self.client: Client | None = None
+        self.enabled: bool = False  # only set True after successful login/restore
+
+        # If for some reason cfg is missing, just disable gracefully
+        if cfg is None:
+            logger.warning("BlueskyClient initialized without config; disabling Bluesky.")
+            return
+
+        # Create client instance
         self.client = Client(cfg.service_url or "https://bsky.social")
-        # Try restore; if it fails, do a fresh login.
-        if not self._load_session():
-            self.client.login(cfg.handle, cfg.app_password)
-            self._save_session()
+
+        try:
+            # Try restore; if it fails, do a fresh login.
+            if not self._load_session():
+                self.client.login(cfg.handle, cfg.app_password)
+                self._save_session()
+
+            self.enabled = True
+            logger.info("Bluesky client initialized for handle=%s", cfg.handle)
+
+        except atproto_exceptions.UnauthorizedError as exc:
+            # Includes AccountTakedown / bad credentials, etc.
+            logger.error(
+                "Bluesky login failed for handle=%s with UnauthorizedError (%s). " "Disabling Bluesky for this run.",
+                cfg.handle,
+                exc,
+            )
+            self.client = None
+            self.enabled = False
+
+        except atproto_exceptions.NetworkError as exc:
+            logger.error(
+                "Bluesky network error while logging in for handle=%s: %s. " "Disabling Bluesky for this run.",
+                cfg.handle,
+                exc,
+            )
+            self.client = None
+            self.enabled = False
+
+        except Exception as exc:  # catch-all so one-off bugs don't kill the bot
+            logger.exception(
+                "Unexpected Bluesky error while initializing handle=%s; disabling Bluesky for this run.",
+                cfg.handle,
+            )
+            self.client = None
+            self.enabled = False
 
     # ---------------- Session helpers ----------------
 
@@ -122,9 +165,38 @@ class BlueskyClient(SocialClient):
         logger.info("Bluesky session saved to %s", p)
 
     def login_or_restore(self) -> None:
-        if not self._load_session():
-            self.client.login(self.cfg.handle, self.cfg.app_password)
-            self._save_session()
+        if not self.client:
+            logger.warning("BlueskyClient.login_or_restore called but client is disabled; skipping.")
+            return
+
+        try:
+            if not self._load_session():
+                self.client.login(self.cfg.handle, self.cfg.app_password)
+                self._save_session()
+            self.enabled = True
+        except atproto_exceptions.UnauthorizedError as exc:
+            logger.error(
+                "Bluesky login_or_restore UnauthorizedError for handle=%s: %s. Disabling Bluesky for this run.",
+                self.cfg.handle,
+                exc,
+            )
+            self.client = None
+            self.enabled = False
+        except atproto_exceptions.NetworkError as exc:
+            logger.error(
+                "Bluesky login_or_restore NetworkError for handle=%s: %s. Disabling Bluesky for this run.",
+                self.cfg.handle,
+                exc,
+            )
+            self.client = None
+            self.enabled = False
+        except Exception:
+            logger.exception(
+                "Unexpected Bluesky error in login_or_restore for handle=%s; disabling Bluesky for this run.",
+                self.cfg.handle,
+            )
+            self.client = None
+            self.enabled = False
 
     # ---------------- Posting helpers ----------------
 
@@ -329,6 +401,12 @@ class BlueskyClient(SocialClient):
         - If single image -> send with correct aspect ratio.
         - If image is too large for Bluesky, we SKIP the post entirely (return None).
         """
+
+        # 0) Early Exit if We Force-Disable
+        if not self.client or not getattr(self, "enabled", False):
+            logger.info("BlueskyClient.post called but Bluesky is disabled or not logged in; skipping post.")
+            return None
+
         # 1) Text + facets
         text, facets = self._facets_for_text(post.text or "")
 

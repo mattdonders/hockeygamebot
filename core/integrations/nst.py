@@ -16,6 +16,7 @@ from utils.team_details import get_team_details_by_name
 
 logger = logging.getLogger(__name__)
 
+
 def get_nst_report_url(context: GameContext, full: bool = False) -> Optional[str]:
     """
     Generate the Natural Stat Trick (NST) report URL for a given NHL game.
@@ -142,6 +143,7 @@ def generate_team_season_charts(team_name, situation, lastgames=None):
     team_details = get_team_details_by_name(team_name)
     team_color_bg = team_details["primary_color"]
     team_color_text = team_details["primary_text_color"]
+    team_abbrev = team_details["abbreviation"].lower()
 
     # For each index value of the dataframe, add the rank to that index
     # We transpose twice because volumns are easier to work with
@@ -232,6 +234,8 @@ def generate_team_season_charts(team_name, situation, lastgames=None):
         ax2.text(100 - 2, i, str(round(v, 2)), va="center", ha="right", color=team_color_text, fontweight="bold")
 
     last_games_file = "" if not lastgames else f"-last{lastgames}"
-    overview_fig_path = os.path.join(IMAGES_DIR, f"allcharts-yesterday-team-season-{situation}{last_games_file}.png")
+    overview_fig_path = os.path.join(
+        IMAGES_DIR, f"{team_abbrev}-allcharts-yesterday-team-season-{situation}{last_games_file}.png"
+    )
     overview_fig.savefig(overview_fig_path, bbox_inches="tight")
     return overview_fig_path
