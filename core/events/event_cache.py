@@ -15,7 +15,7 @@ class GameCache:
     Restart-safe cache for per-game event processing.
 
     Each game gets its own JSON file:
-      {root_dir}/{season_id}/{game_id}.json
+      {root_dir}/{season_id}/{game_id}-{team_abbrev}.json
 
     Tracks:
       - processed_event_ids: eventIds we've already handled (to avoid reposting)
@@ -37,7 +37,7 @@ class GameCache:
         self.team_abbrev = str(team_abbrev)
 
         self.dirpath = os.path.join(self.root_dir, self.season_id)
-        self.filepath = os.path.join(self.dirpath, f"{self.game_id}.json")
+        self.filepath = os.path.join(self.dirpath, f"{self.game_id}-{self.team_abbrev.lower()}.json")
 
         self.processed_event_ids: Set[str] = set()
         self.last_sort_order: Optional[int] = None

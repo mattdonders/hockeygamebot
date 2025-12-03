@@ -100,6 +100,32 @@ class GoalEvent(Event):
             return f"{scoring_line}\n\n{assists_text}"
         return scoring_line
 
+    def _resolve_player_name(self, pid: int) -> str:
+        """Best-effort player name resolver for milestone banners."""
+        if not pid:
+            return "Unknown"
+
+        # 1) Check combined roster
+        roster = getattr(self.context, "combined_roster", {}) or {}
+        entry = roster.get(pid) or roster.get(str(pid))
+        if isinstance(entry, dict):
+            name = entry.get("name") or entry.get("full_name")
+            if name:
+                return name
+        elif isinstance(entry, str) and entry.strip():
+            return entry.strip()
+
+        # 2) Fallback to names from this event
+        if pid == getattr(self, "scoring_player_id", None) and getattr(self, "scoring_player_name", None):
+            return self.scoring_player_name
+        if pid == getattr(self, "assist1_player_id", None) and getattr(self, "assist1_name", None):
+            return self.assist1_name
+        if pid == getattr(self, "assist2_player_id", None) and getattr(self, "assist2_name", None):
+            return self.assist2_name
+
+        # 3) Last resort: raw ID
+        return str(pid)
+
     def parse(self):
         """
         Parse a goal event and return a formatted message.
@@ -173,17 +199,20 @@ class GoalEvent(Event):
                 )
 
                 if hits:
-
-                    def _name_resolver(pid: int) -> str:
-                        roster = getattr(self.context, "combined_roster", {}) or {}
-                        entry = roster.get(pid)
-                        if isinstance(entry, dict):
-                            return entry.get("name") or str(pid)
-                        return str(pid)
+                    logger.info(
+                        "MilestoneService returned %d hit(s) for goal event %s "
+                        "(scorer_id=%s, a1_id=%s, a2_id=%s): %r",
+                        len(hits),
+                        getattr(self, "event_id", "unknown"),
+                        self.scoring_player_id,
+                        self.assist1_player_id,
+                        self.assist2_player_id,
+                        hits,
+                    )
 
                     milestone_prefix = milestone_service.format_hits(
                         hits,
-                        player_name_resolver=_name_resolver,
+                        player_name_resolver=self._resolve_player_name,
                     )
                     if milestone_prefix:
                         logger.info("Milestone hit on goal: %s", milestone_prefix)

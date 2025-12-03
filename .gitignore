@@ -112,6 +112,7 @@ nohup.out
 status.json
 metrics.json
 status-sample.json
+status-*.json
 
 ########## OUTPUT (RENDERED FILES) ##########
 output/*
@@ -245,6 +246,7 @@ cache/
 
 celerybeat-schedule
 .dashboard_port
+.dashboard_port*
 
 
 ########## LOCAL-ONLY DEPLOYMENT SCRIPTS (PROD) ##########

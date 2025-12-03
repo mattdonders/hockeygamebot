@@ -594,7 +594,16 @@ class MilestoneService:
             state.pp_goals += 1
             state.pp_points += 1
 
-        return self._check_all_stats(player_id, state)
+        hits: List[MilestoneHit] = []
+
+        # Only stats affected by a goal
+        hits.extend(self._check_stat(player_id, "goals", state.goals))
+        hits.extend(self._check_stat(player_id, "points", state.points))
+        if is_power_play:
+            hits.extend(self._check_stat(player_id, "pp_goals", state.pp_goals))
+            hits.extend(self._check_stat(player_id, "pp_points", state.pp_points))
+
+        return hits
 
     def _apply_assist(self, player_id: int, is_power_play: bool) -> List[MilestoneHit]:
         state = self._ensure_state(player_id)
@@ -604,7 +613,15 @@ class MilestoneService:
         if is_power_play:
             state.pp_points += 1
 
-        return self._check_all_stats(player_id, state)
+        hits: List[MilestoneHit] = []
+
+        # Only stats affected by an assist
+        hits.extend(self._check_stat(player_id, "assists", state.assists))
+        hits.extend(self._check_stat(player_id, "points", state.points))
+        if is_power_play:
+            hits.extend(self._check_stat(player_id, "pp_points", state.pp_points))
+
+        return hits
 
     def _check_all_stats(
         self,
