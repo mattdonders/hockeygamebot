@@ -983,7 +983,8 @@ class GoalEvent(Event):
         # re-posting goals after a process restart.
         cache = getattr(self.context, "cache", None)
         if cache is not None and not self._post_refs:
-            if cache.was_goal_posted(self.event_id):
+            followup_types = {"goal_gif", "goal_highlight", "scoring_change"}
+            if (event_type or "goal") not in followup_types and cache.was_goal_posted(self.event_id):
                 logger.info(
                     "GoalEvent[%s]: initial goal already posted in a previous run; skipping re-post.",
                     self.event_id,

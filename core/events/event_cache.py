@@ -175,6 +175,20 @@ class GameCache:
 
         self.save()
 
+    def was_gif_posted(self, event_id: Any) -> bool:
+        """Return True if this goal's GIF has already been posted."""
+        snap = self.goal_snapshots.get(str(event_id), {})
+        if not isinstance(snap, dict):
+            return False
+        return bool(snap.get("gif_posted", False))
+
+    def mark_gif_posted(self, event_id: Any) -> None:
+        """Mark a goal's GIF as posted."""
+        k = str(event_id)
+        snap = self.goal_snapshots.setdefault(k, {})
+        snap["gif_posted"] = True
+        self.save()
+
     def update_goal_snapshot(self, event_id: Any, **fields) -> None:
         """
         Upsert arbitrary fields (e.g., highlight URLs) for a goal.

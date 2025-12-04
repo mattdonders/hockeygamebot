@@ -2,11 +2,9 @@
 
 
 import argparse
-import http.server
 import logging
 import os
 import random
-import socketserver
 import sys
 import threading
 import time
@@ -43,101 +41,6 @@ warnings.filterwarnings(
     message="The 'default' attribute.*`Field\\(\\)`",
     category=UserWarning,
 )
-
-
-class SilentHTTPHandler(http.server.SimpleHTTPRequestHandler):
-    def log_message(self, format, *args):
-        pass  # Suppress all HTTP logs
-
-
-def start_dashboard_server(team_slug: str, port: int = 8000, max_retries: int = 5):
-    """
-    Start the dashboard web server with error recovery and port file.
-
-    Creates .dashboard_port file containing:
-    - Port number
-    - Local IP address
-    - Dashboard URLs
-
-    Args:
-        port: Initial port to try (will increment if in use)
-        max_retries: Maximum number of restart attempts
-    """
-    import errno
-    import socket
-
-    os.chdir(os.path.dirname(os.path.abspath(__file__)))
-    Handler = SilentHTTPHandler
-
-    retry_count = 0
-    current_port = port
-
-    while retry_count < max_retries:
-        try:
-            # Try to bind to the port
-            with socketserver.TCPServer(("0.0.0.0", current_port), Handler) as httpd:
-                logger.info(f"Dashboard server running at http://0.0.0.0:{current_port}/dashboard.html")
-
-                # Write port file for easy reference
-                try:
-                    # Get local IP address
-                    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-                    s.connect(("8.8.8.8", 80))
-                    local_ip = s.getsockname()[0]
-                    s.close()
-
-                    # Write port and IP to file
-                    port_file = f".dashboard_port-{team_slug.lower()}"
-
-                    with open(port_file, "w") as f:
-                        f.write(f"{current_port}\n")
-                        f.write(f"{local_ip}\n")
-                        f.write(f"http://localhost:{current_port}/dashboard.html\n")
-                        f.write(f"http://{local_ip}:{current_port}/dashboard.html\n")
-
-                    logger.info("Dashboard info written to %s", port_file)
-                    logger.info("Network access: http://%s:%s/dashboard.html", local_ip, current_port)
-                except Exception as e:
-                    logger.warning(f"Could not write dashboard port file: {e}")
-
-                # If we had to use a different port, warn user
-                if current_port != port:
-                    logger.warning(f"Original port {port} unavailable, using {current_port}")
-
-                # Start serving (this blocks)
-                httpd.serve_forever()
-
-        except OSError as e:
-            if e.errno == errno.EADDRINUSE:
-                # Port is already in use, try next port
-                logger.warning(f"Port {current_port} is in use, trying {current_port + 1}")
-                current_port += 1
-                retry_count += 1
-                continue
-            else:
-                # Other OS error, log and retry after delay
-                logger.error(f"Dashboard server error: {e}", exc_info=True)
-                retry_count += 1
-                if retry_count < max_retries:
-                    import time
-
-                    time.sleep(10)
-                continue
-
-        except Exception as e:
-            # Unexpected error, log and retry
-            logger.error(f"Dashboard server crashed: {e}", exc_info=True)
-            retry_count += 1
-            if retry_count < max_retries:
-                logger.info(f"Restarting dashboard server (attempt {retry_count}/{max_retries})...")
-                import time
-
-                time.sleep(10)
-            continue
-
-    # If we get here, all retries failed
-    logger.critical(f"Dashboard server failed to start after {max_retries} attempts")
-    logger.critical("Bot will continue running but dashboard will be unavailable")
 
 
 def _handle_pregame_state(context: GameContext):
@@ -651,6 +554,23 @@ def handle_is_game_today(game, target_date, preferred_team, season_id, context: 
     logger.info(f"  Venue: {game['venue']['default']}")
     logger.info(f"  Start Time (UTC): {game['startTimeUTC']}")
 
+    # Since there is a game today, we want to now create our status / cache file
+    # This is used to cache events AND to manage live bots for the Game Bot Dashboard
+    # Initialize per-game StatusMonitor now that we know there is a game today.
+    team_slug = preferred_team.abbreviation.lower()  # e.g. "njd", "pit"
+    status_path = Path(f"status-{team_slug}.json")
+
+    monitor = StatusMonitor(status_path)
+    context.monitor = monitor
+
+    # Attach the monitor to SocialPublisher & schedule module
+    if hasattr(context, "social") and context.social is not None:
+        context.social.monitor = monitor
+    schedule.set_monitor(monitor)
+
+    # Optional: mark as STARTING
+    monitor.set_status("STARTING")
+
     # Setup Other Team Object & Other Related Team Functions
     is_preferred_home = game["homeTeam"]["abbrev"] == preferred_team.abbreviation
     other_team_abbreviation = game["awayTeam"]["abbrev"] if is_preferred_home else game["homeTeam"]["abbrev"]
@@ -663,6 +583,9 @@ def handle_is_game_today(game, target_date, preferred_team, season_id, context: 
     context.home_team = preferred_team if is_preferred_home else other_team
     context.away_team = other_team if is_preferred_home else preferred_team
     context.preferred_homeaway = "home" if is_preferred_home else "away"
+
+    # Generate Team Slug (for File Name Separation)
+    file_team_slug = context.preferred_team.abbreviation
 
     # Set hashtags into game context
     context.game_hashtag = f"#{context.away_team.abbreviation}vs{context.home_team.abbreviation}"
@@ -725,7 +648,7 @@ def handle_is_game_today(game, target_date, preferred_team, season_id, context: 
         logger.info(f"{injury}")
 
     # Per-game milestone snapshot cache
-    milestone_cache_path = season_dir / f"{game_id}_milestones.json"
+    milestone_cache_path = season_dir / f"{game_id}_{file_team_slug}-milestones.json"
     logger.info("Milestone snapshot cache path: %s", milestone_cache_path)
 
     # Extract player IDs from preferred roster for milestone checks
@@ -1007,12 +930,6 @@ def main():
     team_name = config.get("default", {}).get("team_name", "New Jersey Devils")
     preferred_team = Team(team_name)
 
-    # Start dashboard server in background
-    team_slug = preferred_team.abbreviation
-    dashboard_thread = threading.Thread(target=start_dashboard_server, args=(team_slug, 8000), daemon=True)
-    dashboard_thread.start()
-    logger.info("Dashboard server started in background")
-
     # Initialize Bluesky Client
     # bluesky_environment = "debug" if args.debugsocial else "prod"
     # bluesky_account = config["bluesky"][bluesky_environment]["account"]
@@ -1105,19 +1022,6 @@ def main():
     initial_delay = random.uniform(0, 20)
     logger.info("Initial startup delay for this process: %.1fs", initial_delay)
     time.sleep(initial_delay)
-
-    # Create the Status Monitor w/ a Team-Specific Slug
-    # somewhere where you know the team (config / context)
-    team_slug = context.preferred_team.abbreviation.lower()  # "njd", "pit", etc.
-    status_path = Path(f"status-{team_slug}.json")
-
-    monitor = StatusMonitor(status_path)
-    context.monitor = monitor
-
-    # Attach the Monitor to BlueSky Client & Schedule Modules
-    # bluesky_client.monitor = monitor
-    publisher.monitor = monitor
-    schedule.set_monitor(monitor)
 
     # Fetch season ID
     season_id = schedule.fetch_season_id(preferred_team.abbreviation)
