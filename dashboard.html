@@ -36,6 +36,107 @@
             align-items: center;
         }
 
+        .header-left {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .team-selector {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 14px;
+            color: #4b5563;
+        }
+
+        .team-select {
+            padding: 6px 10px;
+            border-radius: 8px;
+            border: 1px solid #e5e7eb;
+            background: #f9fafb;
+            font-size: 14px;
+            min-width: 180px;
+        }
+
+        .bots-grid-container {
+            background: white;
+            padding: 20px;
+            border-radius: 12px;
+            margin-bottom: 20px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.08);
+        }
+
+        .bots-grid-title {
+            font-size: 18px;
+            font-weight: 600;
+            margin-bottom: 12px;
+            color: #111827;
+        }
+
+        .bots-grid {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .bots-grid th {
+            text-align: left;
+            padding: 8px;
+            font-size: 14px;
+            font-weight: 600;
+            color: #374151;
+            border-bottom: 1px solid #e5e7eb;
+        }
+
+        .bots-grid td {
+            padding: 8px;
+            font-size: 14px;
+            border-bottom: 1px solid #f3f4f6;
+        }
+
+        .bots-grid .cell-muted {
+            color: #6b7280;
+        }
+
+        .bots-grid-status {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 4px 8px;
+            border-radius: 8px;
+            font-size: 13px;
+            font-weight: 600;
+        }
+
+        .bots-grid-status-running {
+            background: #d1fae5;
+            color: #065f46;
+        }
+
+        .bots-grid-status-starting {
+            background: #fef3c7;
+            color: #92400e;
+        }
+
+        .bots-grid-status-idle {
+            background: #e5e7eb;
+            color: #374151;
+        }
+
+        .bots-grid-status-error {
+            background: #fee2e2;
+            color: #991b1b;
+        }
+
+
+        @media (max-width: 900px) {
+            .header {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 12px;
+            }
+        }
+
         .header h1 {
             font-size: 28px;
             color: #2d3748;
@@ -381,7 +482,15 @@
 <body>
     <div class="container">
         <div class="header">
-            <h1>🏒 Hockey Bot Dashboard</h1>
+            <div class="header-left">
+                <h1>🏒 Hockey Bot Dashboard</h1>
+                <div class="team-selector">
+                    <span>Team:</span>
+                    <select id="teamSelect" class="team-select">
+                        <option value="">Loading…</option>
+                    </select>
+                </div>
+            </div>
             <div>
                 <div class="status-badge" id="statusBadge">
                     <span class="status-dot"></span>
@@ -390,6 +499,27 @@
                 <div class="last-update" id="lastUpdate">Loading...</div>
             </div>
         </div>
+
+        <!-- GLOBAL MULTI-BOT STATUS GRID -->
+        <div class="bots-grid-container" id="botsGridContainer" style="display: none;">
+            <div class="bots-grid-title">Active Game Bots</div>
+            <table class="bots-grid" id="botsGrid">
+                <thead>
+                    <tr>
+                        <th>Team</th>
+                        <th>Status</th>
+                        <th>Last Updated</th>
+                        <th>Matchup</th>
+                        <th>Score</th>
+                    </tr>
+                </thead>
+                <tbody id="botsGridBody">
+                    <!-- Populated by JS -->
+                </tbody>
+            </table>
+        </div>
+
+
 
         <div id="content">
             <div class="loading">
@@ -400,6 +530,171 @@
 
     <script>
         let lastFetchTime = null;
+        let bots = [];
+        let currentTeamSlug = null;
+        let fetchIntervalId = null;
+
+        async function loadBots() {
+            const select = document.getElementById("teamSelect");
+
+            let discoveredBots = [];
+
+            try {
+                const response = await fetch("/api/bots?t=" + Date.now());
+                if (!response.ok) throw new Error("Failed to fetch /api/bots");
+
+                discoveredBots = await response.json();
+            } catch (err) {
+                console.error("Error loading bots:", err);
+                discoveredBots = [];
+            }
+
+            bots = discoveredBots;
+            select.innerHTML = "";
+
+            // No bots found
+            if (bots.length === 0) {
+                select.disabled = true;
+                select.innerHTML = `<option value="">No active bots</option>`;
+                return;
+            }
+
+            select.disabled = false;
+
+            // Determine which team should be selected initially
+            const params = new URLSearchParams(window.location.search);
+            const urlTeam = (params.get("team") || "").trim().toLowerCase();
+
+            let defaultSlug = urlTeam || currentTeamSlug;
+            if (!defaultSlug || !bots.some((b) => b.slug === defaultSlug)) {
+                defaultSlug = bots[0].slug;
+            }
+            currentTeamSlug = defaultSlug;
+
+            // Fetch details from each bot
+            for (let bot of bots) {
+                try {
+                    const statusResp = await fetch(bot.status_file + "?t=" + Date.now());
+                    if (!statusResp.ok) throw new Error("Failed to fetch " + bot.status_file);
+
+                    const statusData = await statusResp.json();
+
+                    const botMeta = statusData.bot || {};
+                    const game = statusData.game || {};
+
+                    // status + last_updated (convert ISO string -> seconds since epoch)
+                    bot.status = botMeta.status || "IDLE";
+
+                    if (botMeta.last_update) {
+                        const ms = Date.parse(botMeta.last_update);
+                        bot.last_updated = isNaN(ms) ? null : Math.floor(ms / 1000);
+                    } else {
+                        bot.last_updated = null;
+                    }
+
+                    // matchup
+                    bot.matchup =
+                        game.away_team && game.home_team
+                            ? `${game.away_team} @ ${game.home_team}`
+                            : null;
+
+                    // score (preferred vs other)
+                    if (
+                        statusData.preferredScore !== undefined &&
+                        statusData.otherScore !== undefined
+                    ) {
+                        bot.score = `${statusData.preferredScore} - ${statusData.otherScore}`;
+                    } else {
+                        bot.score = null;
+                    }
+                } catch (err) {
+                    console.error("Error loading status for", bot.slug, err);
+                    bot.status = "ERROR";
+                    bot.last_updated = null;
+                    bot.matchup = null;
+                    bot.score = null;
+                }
+            }
+
+            // Build dropdown
+            bots.forEach((bot) => {
+                const opt = document.createElement("option");
+                opt.value = bot.slug;
+                opt.textContent = bot.label || bot.slug.toUpperCase();
+                if (bot.slug === currentTeamSlug) opt.selected = true;
+                select.appendChild(opt);
+            });
+
+            select.addEventListener("change", () => {
+                currentTeamSlug = select.value;
+                fetchStatus();
+            });
+        }
+
+
+
+        function renderBotsGrid() {
+            const container = document.getElementById("botsGridContainer");
+            const tbody = document.getElementById("botsGridBody");
+
+            if (!bots || bots.length === 0) {
+                container.style.display = "none";
+                return;
+            }
+
+            container.style.display = "block";
+            tbody.innerHTML = "";
+
+            bots.forEach((bot) => {
+                const tr = document.createElement("tr");
+
+                const statusClass = {
+                    RUNNING: "bots-grid-status-running",
+                    STARTING: "bots-grid-status-starting",
+                    IDLE: "bots-grid-status-idle",
+                    ERROR: "bots-grid-status-error",
+                }[bot.status?.toUpperCase()] || "bots-grid-status-idle";
+
+                const lastUpdated = bot.last_updated
+                    ? formatSecondsAgo(bot.last_updated)
+                    : "—";
+
+                tr.innerHTML = `
+                    <td>${bot.label || bot.slug.toUpperCase()}</td>
+                    <td><span class="bots-grid-status ${statusClass}">${bot.status || "IDLE"}</span></td>
+                    <td class="cell-muted">${lastUpdated}</td>
+                    <td class="cell-muted">${bot.matchup || "—"}</td>
+                    <td class="cell-muted">${bot.score || "—"}</td>
+                `;
+
+                tbody.appendChild(tr);
+            });
+        }
+
+        function formatSecondsAgo(ts) {
+            if (!ts) return "—";
+
+            const now = Math.floor(Date.now() / 1000);
+            const diff = Math.max(0, now - ts);
+
+            if (diff < 5) return "just now";
+            if (diff < 60) return `${diff}s ago`;
+
+            const m = Math.floor(diff / 60);
+            if (m < 60) return `${m}m ago`;
+
+            const h = Math.floor(m / 60);
+            const remM = m % 60;
+            if (h < 24) {
+                return remM > 0 ? `${h}h ${remM}m ago` : `${h}h ago`;
+            }
+
+            const d = Math.floor(h / 24);
+            const remH = h % 24;
+            return remH > 0 ? `${d}d ${remH}h ago` : `${d}d ago`;
+        }
+
+
 
         function formatUptime(seconds) {
             const hours = Math.floor(seconds / 3600);
@@ -796,21 +1091,34 @@
 
 
 
+        function getStatusFileName() {
+            if (currentTeamSlug) {
+                return `status-${currentTeamSlug}.json`;
+            }
+            // Fallback for single-bot setups or legacy use
+            return "status.json";
+        }
+
         async function fetchStatus() {
+            const statusFile = getStatusFileName();
+
             try {
-                const response = await fetch('status.json?t=' + Date.now());
+                const response = await fetch(statusFile + "?t=" + Date.now());
                 if (!response.ok) {
-                    throw new Error('Failed to fetch status');
+                    throw new Error("Failed to fetch " + statusFile);
                 }
                 const data = await response.json();
                 lastFetchTime = Date.now();
                 renderDashboard(data);
             } catch (error) {
-                console.error('Error fetching status:', error);
-                document.getElementById('content').innerHTML =
-                    '<div class="error-message">⚠️ Error loading status.json - Make sure the bot is running and status.json exists</div>';
+                console.error("Error fetching status:", error);
+                document.getElementById("content").innerHTML =
+                    `<div class="error-message">
+                    ⚠️ Error loading ${statusFile} – Make sure the bot is running and ${statusFile} exists
+                 </div>`;
             }
         }
+
 
         function escapeHtml(str) {
             return str
@@ -820,11 +1128,23 @@
         }
 
 
-        // Initial fetch
-        fetchStatus();
+        async function initDashboard() {
+            await loadBots();
+            renderBotsGrid();   // <-- GOOD RIGHT HERE
 
-        // Auto-refresh every 2 seconds
-        setInterval(fetchStatus, 2000);
+            if (!bots || bots.length === 0) {
+                return;
+            }
+
+            await fetchStatus();
+
+            fetchIntervalId = setInterval(() => {
+                fetchStatus();
+                renderBotsGrid();
+            }, 2000);
+        }
+
+        initDashboard();
     </script>
 </body>
 
