@@ -2,6 +2,7 @@
 
 
 import argparse
+import json
 import logging
 import os
 import random
@@ -31,6 +32,7 @@ from core.models.team import Team
 from definitions import RESOURCES_DIR
 from socials.platforms import NON_X_PLATFORMS
 from socials.publisher import SocialPublisher
+from socials.utils import normalize_post_refs, write_milestones_index
 from utils.config import load_config
 from utils.status_monitor import StatusMonitor
 from utils.team_details import TEAM_DETAILS
@@ -128,28 +130,40 @@ def _handle_pregame_state(context: GameContext):
     if context.milestone_service is not None and not context.preview_socials.milestones_sent:
         try:
             milestone_msg = preview.generate_pregame_milestones_post(context)
+
             if milestone_msg:
-                context.social.reply(
+                # We only enter here if milestones EXIST
+                results = context.social.reply(
                     message=milestone_msg,
                     platforms="enabled",  # all enabled platforms, including X
                     state=context.preview_socials,
                 )
-                logger.info(
-                    "Posted pre-game milestone preview for %d hits.", len(context.preview_socials.milestone_hits)
-                )
-            else:
-                logger.info(
-                    "No milestones for this game - set our 'milestones_sent' value to "
-                    "True anyway to skip this since milestones don't change mid-day."
-                )
 
-            # We set the Milestones Sent Flag to True Regardless (UNLESS we have an error)
-            # This is because milestones should be analyzed once and won't change mid-day
+                post_refs = normalize_post_refs(results)
+
+                # Only write the JSON index if we actually have published posts
+                if post_refs:
+                    write_milestones_index(context, milestone_msg, post_refs)
+                    logger.info(
+                        "Posted pre-game milestone preview for %d hits.",
+                        len(context.preview_socials.milestone_hits),
+                    )
+                else:
+                    logger.warning(
+                        "Milestone preview posted but returned no PostRefs — skipping milestone index write."
+                    )
+
+            else:
+                # No milestones at all → do not write index file
+                logger.info("No milestones for this game — marking milestones_sent=True and moving on.")
+
+            # Set flag regardless to avoid repeated attempts
             context.preview_socials.milestones_sent = True
 
             if cache is not None:
                 cache.mark_pregame_sent("milestones")
                 cache.save()
+
         except Exception:
             logger.exception("Failed to post pre-game milestone preview.")
 
@@ -558,7 +572,7 @@ def handle_is_game_today(game, target_date, preferred_team, season_id, context: 
     # This is used to cache events AND to manage live bots for the Game Bot Dashboard
     # Initialize per-game StatusMonitor now that we know there is a game today.
     team_slug = preferred_team.abbreviation.lower()  # e.g. "njd", "pit"
-    status_path = Path(f"status-{team_slug}.json")
+    status_path = Path(f"status_{team_slug}.json")
 
     monitor = StatusMonitor(status_path)
     context.monitor = monitor

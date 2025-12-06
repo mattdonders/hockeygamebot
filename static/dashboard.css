@@ -1,0 +1,512 @@
+/* HockeyGameBot Dashboard CSS - build 2025-12-05 v1 */
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen,
+        Ubuntu, Cantarell, sans-serif;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    min-height: 100vh;
+    padding: 20px;
+    color: #333;
+}
+
+.container {
+    max-width: 1200px;
+    margin: 0 auto;
+}
+
+.header {
+    background: white;
+    border-radius: 12px;
+    padding: 24px;
+    margin-bottom: 20px;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.header-left {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.header h1 {
+    font-size: 28px;
+    color: #2d3748;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+/* Back to all bots pill */
+.back-button {
+    display: none;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 10px;
+    border-radius: 999px;
+    border: none;
+    background: #eef2ff;
+    color: #4f46e5;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+}
+
+.back-button:hover {
+    background: #e0e7ff;
+}
+
+.back-icon {
+    font-size: 14px;
+}
+
+/* Keep dropdown for future, but hide it from UI */
+.team-selector {
+    display: none;
+}
+
+.team-select {
+    padding: 6px 10px;
+    border-radius: 8px;
+    border: 1px solid #e5e7eb;
+    background: #f9fafb;
+    font-size: 14px;
+    min-width: 180px;
+}
+
+/* Bots grid */
+
+.bots-grid-container {
+    background: white;
+    padding: 20px;
+    border-radius: 12px;
+    margin-bottom: 20px;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.08);
+}
+
+.bots-grid-title {
+    font-size: 18px;
+    font-weight: 600;
+    margin-bottom: 12px;
+    color: #111827;
+}
+
+.bots-grid {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.bots-grid th {
+    text-align: left;
+    padding: 8px;
+    font-size: 14px;
+    font-weight: 600;
+    color: #374151;
+    border-bottom: 1px solid #e5e7eb;
+}
+
+.bots-grid td {
+    padding: 8px;
+    font-size: 14px;
+    border-bottom: 1px solid #f3f4f6;
+}
+
+.bots-grid .cell-muted {
+    color: #6b7280;
+}
+
+.bots-grid-row {
+    cursor: pointer;
+}
+
+.bots-grid-row:hover {
+    background: #f9fafb;
+}
+
+.bots-grid-status {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 8px;
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 600;
+}
+
+.bots-grid-status-running {
+    background: #d1fae5;
+    color: #065f46;
+}
+
+.bots-grid-status-starting {
+    background: #fef3c7;
+    color: #92400e;
+}
+
+.bots-grid-status-idle {
+    background: #e5e7eb;
+    color: #374151;
+}
+
+.bots-grid-status-error {
+    background: #fee2e2;
+    color: #991b1b;
+}
+
+/* Status badge */
+
+.status-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 16px;
+    border-radius: 20px;
+    font-size: 14px;
+    font-weight: 600;
+}
+
+.status-running {
+    background: #10b981;
+    color: white;
+}
+
+.status-sleeping {
+    background: #6366f1;
+    color: white;
+}
+
+.status-error {
+    background: #ef4444;
+    color: white;
+}
+
+.status-stopped {
+    background: #6b7280;
+    color: white;
+}
+
+.status-starting {
+    background: #f59e0b;
+    color: white;
+}
+
+.status-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: currentColor;
+    animation: pulse 2s ease-in-out infinite;
+}
+
+@keyframes pulse {
+
+    0%,
+    100% {
+        opacity: 1;
+    }
+
+    50% {
+        opacity: 0.5;
+    }
+}
+
+.last-update {
+    font-size: 14px;
+    color: #6b7280;
+}
+
+/* Layout cards */
+
+.grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    gap: 16px;
+    margin-bottom: 16px;
+}
+
+.game-card-full {
+    margin-bottom: 16px;
+}
+
+.card {
+    background: white;
+    border-radius: 12px;
+    padding: 20px;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+}
+
+.card-title {
+    font-size: 16px;
+    font-weight: 600;
+    color: #4b5563;
+    margin-bottom: 16px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.card-title::before {
+    content: '';
+    width: 4px;
+    height: 20px;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    border-radius: 2px;
+}
+
+/* Stat rows */
+
+.stat-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 0;
+    border-bottom: 1px solid #f3f4f6;
+}
+
+.stat-row:last-child {
+    border-bottom: none;
+}
+
+.stat-label {
+    font-size: 14px;
+    color: #6b7280;
+    white-space: nowrap;
+}
+
+.stat-value {
+    font-size: 18px;
+    font-weight: 600;
+    color: #1f2937;
+    text-align: right;
+}
+
+/* Game score */
+
+.game-score {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 20px;
+    padding: 20px;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    border-radius: 8px;
+    color: white;
+    margin-bottom: 16px;
+}
+
+.team-score {
+    text-align: center;
+}
+
+.team-name {
+    font-size: 24px;
+    font-weight: bold;
+    margin-bottom: 8px;
+}
+
+.score {
+    font-size: 48px;
+    font-weight: bold;
+}
+
+.vs {
+    font-size: 20px;
+    opacity: 0.8;
+}
+
+/* Event stats */
+
+.event-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: 12px;
+}
+
+.event-stat {
+    background: #f9fafb;
+    padding: 12px;
+    border-radius: 8px;
+    text-align: center;
+}
+
+.event-stat-value {
+    font-size: 24px;
+    font-weight: bold;
+    color: #667eea;
+    margin-bottom: 4px;
+}
+
+.event-stat-label {
+    font-size: 12px;
+    color: #6b7280;
+    text-transform: uppercase;
+}
+
+/* Health, issues */
+
+.health-good {
+    color: #10b981;
+    font-weight: 600;
+}
+
+.health-bad {
+    color: #ef4444;
+    font-weight: 600;
+}
+
+.issues-list {
+    list-style: none;
+    margin-top: 12px;
+}
+
+.issues-list li {
+    padding: 8px 12px;
+    background: #fef2f2;
+    border-left: 3px solid #ef4444;
+    margin-bottom: 8px;
+    border-radius: 4px;
+    font-size: 14px;
+    color: #991b1b;
+}
+
+/* Misc / states */
+
+.no-game {
+    text-align: center;
+    padding: 40px;
+    color: #6b7280;
+    font-size: 18px;
+}
+
+.error-message {
+    background: #fef2f2;
+    border: 1px solid #fee2e2;
+    border-radius: 8px;
+    padding: 16px;
+    margin: 20px 0;
+    color: #991b1b;
+}
+
+.loading {
+    text-align: center;
+    padding: 40px;
+    font-size: 18px;
+    color: #6b7280;
+}
+
+/* Period info */
+
+.period-info {
+    background: #f9fafb;
+    padding: 12px;
+    border-radius: 8px;
+    margin-bottom: 16px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.period-label {
+    font-size: 14px;
+    color: #6b7280;
+}
+
+.period-value {
+    font-size: 16px;
+    font-weight: 600;
+    color: #1f2937;
+}
+
+/* JSON debug / cache */
+
+.json-card .json-details {
+    margin-top: 8px;
+}
+
+.json-card .json-details summary {
+    cursor: pointer;
+    font-weight: 600;
+    list-style: none;
+    margin-bottom: 4px;
+}
+
+.json-card .json-block {
+    background: #111827;
+    color: #e5e7eb;
+    border-radius: 8px;
+    padding: 12px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+        "Liberation Mono", "Courier New", monospace;
+    font-size: 12px;
+    max-height: 320px;
+    overflow: auto;
+    margin: 4px 0 8px;
+}
+
+.json-card .json-empty {
+    font-size: 13px;
+    color: #6b7280;
+    margin: 4px 0 8px;
+}
+
+.cache-goals {
+    margin-top: 12px;
+}
+
+.cache-goals-header {
+    font-weight: 600;
+    margin-bottom: 6px;
+}
+
+.cache-goals-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 4px 8px;
+    font-size: 12px;
+}
+
+.cache-goals-cell-head {
+    font-weight: 600;
+    color: #4b5563;
+}
+
+/* Responsive layout / mobile fixes */
+
+@media (max-width: 900px) {
+    body {
+        padding: 16px;
+    }
+
+    .container {
+        max-width: 100%;
+        padding: 16px;
+    }
+
+    .header {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 12px;
+    }
+
+    .grid {
+        grid-template-columns: 1fr;
+    }
+
+    .grid .card {
+        grid-column: auto !important;
+    }
+
+    .period-info {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 6px;
+    }
+}

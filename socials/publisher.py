@@ -30,6 +30,7 @@ DEFAULT_X_EVENT_ALLOWLIST = {
     "period_summary",
     "final_summary",
     "three_stars",
+    "game_start",
 }
 
 

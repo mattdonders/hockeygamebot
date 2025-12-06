@@ -10,6 +10,7 @@ from core.events.generic import GenericEvent
 from core.events.goal import GoalEvent
 from core.events.penalty import PenaltyEvent
 from core.events.period_end import PeriodEndEvent
+from core.events.period_start import PeriodStartEvent
 from core.events.shootout import ShootoutEvent
 from core.events.stoppage import StoppageEvent
 
@@ -39,6 +40,7 @@ class EventFactory:
             "stoppage": StoppageEvent,
             "period-end": PeriodEndEvent,
             "game-end": GameEndEvent,
+            "period-start": PeriodStartEvent,
         }
 
         # Get the event class based on the type
@@ -135,7 +137,7 @@ class EventFactory:
 
                     # Send Message (on new object creation only)
                     # Define the event types where add_score should be False
-                    disable_add_score_events = (GoalEvent, PeriodEndEvent)
+                    disable_add_score_events = (PeriodStartEvent, GoalEvent, PeriodEndEvent)
                     add_score = not isinstance(event_object, disable_add_score_events)
 
                     # Always pass media; post_message handles media=None just fine
