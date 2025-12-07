@@ -31,6 +31,7 @@ DEFAULT_X_EVENT_ALLOWLIST = {
     "final_summary",
     "three_stars",
     "game_start",
+    "milestone_digest",
 }
 
 

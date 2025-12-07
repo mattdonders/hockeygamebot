@@ -61,67 +61,74 @@ def normalize_post_refs(results) -> list[PostRef]:
     Normalize whatever SocialPublisher returns into a list[PostRef].
 
     Handles:
-      - single PostRef
-      - list/tuple/set of PostRefs
-      - dict of {platform: PostRef}
-      - dict-like result dicts from clients (Bluesky/Threads/etc.)
+      - a single PostRef
+      - a single dict-like result (with keys like platform/id/uri/url)
+      - a dict mapping platform -> PostRef / dict
+      - a list/tuple/set of PostRef / dict
     """
     refs: list[PostRef] = []
 
     if results is None:
         return refs
 
-    def _coerce(obj) -> PostRef | None:
-        # Already a PostRef?
+    # Normalize to a simple iterable of "items" we can coerce one by one.
+    if isinstance(results, (list, tuple, set)):
+        items = list(results)
+    elif isinstance(results, dict):
+        # If this dict looks like a single PostRef-like dict, treat it as one item.
+        if any(k in results for k in ("platform", "id", "uri", "url", "cid", "tweet_id", "post_id")):
+            items = [results]
+        else:
+            # Otherwise assume it's a mapping of {platform: obj}
+            items = list(results.values())
+    else:
+        items = [results]
+
+    for obj in items:
+        # Already a PostRef
         if isinstance(obj, PostRef):
-            return obj
+            # Skip pure placeholders (no id/uri)
+            if not obj.id and not getattr(obj, "uri", None):
+                continue
+            refs.append(obj)
+            continue
 
-        # Dict-like result from a client
+        # Dict-like result from a client or publisher
         if isinstance(obj, dict):
-            if not obj:
-                return None
+            platform = obj.get("platform") or "unknown"
 
-            platform = str(obj.get("platform", "unknown"))
-            canonical_id = obj.get("id") or obj.get("uri") or obj.get("published_id") or obj.get("container_id") or ""
+            canonical_id = (
+                obj.get("id")
+                or obj.get("tweet_id")
+                or obj.get("post_id")
+                or obj.get("container_id")
+                or obj.get("uri")
+                or obj.get("url")
+                or ""
+            )
+
+            uri = obj.get("uri") or obj.get("url")
+
+            # If we have neither id nor uri, this is almost certainly a debug/nosocial placeholder.
+            if not canonical_id and not uri:
+                continue
 
             try:
-                return PostRef(
-                    platform=platform,
+                ref = PostRef(
+                    platform=str(platform),
                     id=str(canonical_id),
-                    uri=obj.get("uri"),
+                    uri=uri,
                     cid=obj.get("cid"),
                     published=bool(obj.get("published", True)),
                     raw=obj,
                 )
+                refs.append(ref)
             except Exception:
-                logger.exception("Failed to construct PostRef from dict: %r", obj)
-                return None
+                logger.exception("normalize_post_refs: failed to build PostRef from dict: %r", obj)
+            continue
 
-        # Anything else: we don't know how to handle it
-        return None
-
-    # Single PostRef or dict
-    if isinstance(results, PostRef) or isinstance(results, dict):
-        ref = _coerce(results)
-        if ref:
-            refs.append(ref)
-
-    # Mapping of platform -> obj
-    elif isinstance(results, dict):
-        for obj in results.values():
-            ref = _coerce(obj)
-            if ref:
-                refs.append(ref)
-
-    # Iterable (list/tuple/set) of things
-    elif isinstance(results, (list, tuple, set)):
-        for obj in results:
-            ref = _coerce(obj)
-            if ref:
-                refs.append(ref)
-
-    else:
-        logger.debug("normalize_post_refs: unsupported result type: %r", type(results))
+        # Anything else we don't understand
+        logger.debug("normalize_post_refs: unsupported item type %r (%r)", type(obj), obj)
 
     return refs
 
