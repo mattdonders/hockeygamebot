@@ -29,6 +29,7 @@ from core.live import parse_live_game
 from core.milestones import MilestoneService
 from core.models.game_context import GameContext
 from core.models.team import Team
+from core.utils.others import normalize_venue_name
 from definitions import RESOURCES_DIR
 from socials.platforms import NON_X_PLATFORMS
 from socials.publisher import SocialPublisher
@@ -621,7 +622,10 @@ def handle_is_game_today(game, target_date, preferred_team, season_id, context: 
     # Get Game Information & Store it in the GameContext
     game_state = game["gameState"]
     context.game_state = game_state
-    context.venue = game["venue"]["default"]
+
+    # Set (& Normalize Venue Name)
+    venue = game["venue"]["default"]
+    context.venue = normalize_venue_name(venue)
 
     # Load Combined Rosters into Game Context
     preferred_roster, other_roster, combined_roster = rosters.load_team_rosters(preferred_team, other_team, season_id)

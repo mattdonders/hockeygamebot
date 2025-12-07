@@ -268,3 +268,18 @@ def safe_remove(item, collection):
     """Safely remove an item from a collection, if it exists."""
     if item in collection:
         collection.remove(item)
+
+
+def normalize_venue_name(name: str | None) -> str | None:
+    """
+    Prevents Twitter/X from auto-linking domain-like substrings in venue names
+    by replacing all periods with a Unicode dot (U+2024).
+
+    This is safe because we only ever call this on NHL venue names, which
+    don't use '.' for anything meaningful except sponsor domains
+    (e.g., 'Crypto.com Arena').
+    """
+    if not name:
+        return name
+
+    return name.replace(".", "\u2024")
