@@ -17,33 +17,19 @@ class PeriodStartEvent(Event):
     """
 
     cache = Cache(__name__)
-    event_type = "game_start"  # <-- important for X allowlist
+    ogical_event_type = "game_start"
 
     def parse(self):
-        # Only care about the very start of the first period
+        # Only trigger at the start of the 1st period
         if self.period_number != 1 or self.time_in_period != "00:00":
             return False
 
-        # Build a simple "game underway" message.
-        # You can tune these attribute names once we line it
-        # up with your GameContext, but this is the idea.
         ctx = self.context
 
-        # Try to build a nice matchup label.
-        matchup = getattr(ctx, "matchup_label", None)
-        if not matchup:
-            home = getattr(ctx, "home_team_name", None)
-            away = getattr(ctx, "away_team_name", None)
-            if home and away:
-                matchup = f"{away} vs {home}"
-            else:
-                matchup = "Tonight's game"
+        home = ctx.home_team.short_name
+        away = ctx.away_team.short_name
+        venue = ctx.venue  # Guaranteed per your design
 
-        venue = getattr(ctx, "venue_name", None) or getattr(ctx, "arena_name", None)
-
-        if venue:
-            social_string = f"{matchup} is underway at {venue}! 🏒"
-        else:
-            social_string = f"{matchup} is underway! 🏒"
+        social_string = f"{away} vs {home} is underway at {venue}! 🏒"
 
         return social_string
