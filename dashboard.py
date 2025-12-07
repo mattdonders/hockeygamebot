@@ -29,9 +29,9 @@ def discover_bots() -> List[Dict[str, Any]]:
     """
     bots: List[Dict[str, Any]] = []
 
-    for path in glob.glob("status-*.json"):
+    for path in glob.glob("status_*.json"):
         # status-njd.json -> njd
-        slug = path[len("status-") : -len(".json")]
+        slug = path[len("status_") : -len(".json")]
         label = slug.upper()
         status_file = path
 
