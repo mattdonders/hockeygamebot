@@ -29,12 +29,13 @@ from core.live import parse_live_game
 from core.milestones import MilestoneService
 from core.models.game_context import GameContext
 from core.models.team import Team
-from core.utils.others import normalize_venue_name
 from definitions import RESOURCES_DIR
 from socials.platforms import NON_X_PLATFORMS
 from socials.publisher import SocialPublisher
 from socials.utils import normalize_post_refs, write_milestones_index
+from socials.x_rate_limiter import XRateLimiter
 from utils.config import load_config
+from utils.others import normalize_venue_name
 from utils.status_monitor import StatusMonitor
 from utils.team_details import TEAM_DETAILS
 
@@ -1001,8 +1002,20 @@ def main():
     cli_nosocial = bool(getattr(args, "nosocial", False))  # True only if flag provided
     effective_nosocial = True if cli_nosocial else yaml_nosocial
 
+    # Build XRateLimiter (if X/Twitter is enabled) and pass it to the publisher
+    cache_dir = Path(config.get("script", {}).get("cache_dir", "./data/cache"))
+    socials_cfg = config.get("socials", {}) or {}
+    x_rate_limiter = None
+    if socials_cfg.get("x") or socials_cfg.get("twitter"):
+        x_rate_limiter = XRateLimiter(
+            team_slug=preferred_team.abbreviation.lower(),
+            base_cache_dir=cache_dir,
+        )
+
     # Instantiate publisher; let it read script.nosocial from the YAML
-    publisher = SocialPublisher(config=config, mode=social_mode, nosocial=effective_nosocial)
+    publisher = SocialPublisher(
+        config=config, mode=social_mode, nosocial=effective_nosocial, monitor=None, x_rate_limiter=x_rate_limiter
+    )
 
     # Only log in when we might post
     if not publisher.nosocial:

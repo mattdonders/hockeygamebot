@@ -10,6 +10,7 @@ from uuid import uuid4
 import yaml
 
 from socials.types import PostRef
+from socials.x_rate_limiter import build_x_limit_warning
 
 from .base import SocialPost
 from .bluesky_client import BlueskyClient, BlueskyConfig
@@ -52,6 +53,7 @@ class SocialPublisher:
         mode: Optional[str] = None,  # "prod" | "debug" (overrides YAML)
         nosocial: Optional[bool] = None,  # override YAML script.nosocial
         monitor: Optional[object] = None,  # optional status monitor
+        x_rate_limiter: Optional[object] = None,  # x / twitter daily rate limiter
     ):
         # Load config if a path/str was provided
         if isinstance(config, (str, Path)):
@@ -71,6 +73,7 @@ class SocialPublisher:
 
         self.monitor = monitor
         self.socials = self.cfg.get("socials", {}) or {}
+        self.x_rate_limiter = x_rate_limiter
 
         # Bluesky
         self._bsky = None
@@ -83,6 +86,9 @@ class SocialPublisher:
                     service_url=bc.get("service_url"),
                 )
             )
+            self._bsky_handle = bc.get("handle")
+        else:
+            self._bsky_handle = None
 
         # Threads
         self._thr = None
@@ -212,6 +218,9 @@ class SocialPublisher:
         targets = self._filter_targets_for_event(targets, event_type)
         results: dict[str, PostRef] = {}
 
+        # Apply X/Twitter daily limit logic (warning + shutdown)
+        targets = self._apply_x_rate_limit(targets, event_type)
+
         # Normalize media into local vs hosted lists without losing items
         def _as_str(p: object) -> str | None:
             if isinstance(p, Path):
@@ -241,11 +250,12 @@ class SocialPublisher:
                     local_paths.append(m_str)
 
         # Helpful Logging - Normalized Media Strings / Locations
-        logger.info(
-            "MEDIA NORMALIZED: local=%s hosted=%s",
-            [str(p) for p in local_paths],
-            hosted_urls,
-        )
+        if local_paths or hosted_urls:
+            logger.info(
+                "MEDIA NORMALIZED: local=%s hosted=%s",
+                [str(p) for p in local_paths],
+                hosted_urls,
+            )
 
         for name, client in self._iter_clients(targets):
             rp = reply_parent if (reply_parent and reply_parent.platform == name) else None
@@ -270,6 +280,14 @@ class SocialPublisher:
 
             if ref:
                 results[name] = ref
+
+            # Track X/Twitter usage for daily limits
+            # This calls the `record_post()` function when sending an post to X / Twitter
+            if name == "x" and getattr(self, "x_rate_limiter", None):
+                try:
+                    self.x_rate_limiter.record_post()
+                except Exception:
+                    logger.exception("Failed to record X rate-limit usage.")
 
         return results
 
@@ -344,6 +362,9 @@ class SocialPublisher:
 
         results: dict[str, PostRef] = {}
 
+        # Apply X/Twitter daily limit logic (warning + shutdown)
+        targets = self._apply_x_rate_limit(targets, event_type)
+
         for name, client in self._iter_clients(targets):
             # Determine the reply parent precedence:
             # 1) explicit reply_to (must match platform)
@@ -381,6 +402,14 @@ class SocialPublisher:
                 self._last[name] = ref
                 if state is not None:
                     self._set_state_parent(state, name, ref)
+
+            # Track X/Twitter usage for daily limits
+            # This calls the `record_post()` function when sending an post to X / Twitter
+            if name == "x" and getattr(self, "x_rate_limiter", None):
+                try:
+                    self.x_rate_limiter.record_post()
+                except Exception:
+                    logger.exception("Failed to record X rate-limit usage (reply).")
 
         return results
 
@@ -549,6 +578,58 @@ class SocialPublisher:
             event_type,
             targets,
         )
+        return targets
+
+    # ---------- X / Twitter Rate Limit Filtering ----------
+    def _apply_x_rate_limit(
+        self,
+        targets: list[str],
+        event_type: str | None,
+    ) -> list[str]:
+        """
+        Apply X/Twitter daily limit rules on top of event routing.
+
+        - If we should send the warning tweet, send it once and drop X from targets.
+        - If we cannot post regular content anymore, drop X from targets.
+        """
+        limiter = getattr(self, "x_rate_limiter", None)
+        if not limiter or "x" not in targets:
+            return targets
+
+        # 1) If we hit the warning threshold, send the warning tweet now and drop X.
+        if limiter.should_send_warning():
+            try:
+                enabled_platforms = set(self._platforms.keys())
+                warning_text = build_x_limit_warning(
+                    enabled_platforms=enabled_platforms,
+                    bluesky_handle=self._bsky_handle,
+                )
+
+                x_client = self._platforms.get("x")
+                if x_client:
+                    # Standalone warning tweet; not threaded
+                    warn_post = SocialPost(text=warning_text)
+                    ref = x_client.post(warn_post, reply_to_ref=None)
+                    if ref:
+                        limiter.record_post(is_warning=True)
+            except Exception:
+                logger.exception("Failed to send X rate-limit warning tweet; disabling X for today.")
+                # Best-effort: mark warning as sent to avoid spamming
+                try:
+                    limiter.record_post(is_warning=True)
+                except Exception:
+                    pass
+
+            return [t for t in targets if t != "x"]
+
+        # 2) If we can't post regular content anymore, drop X.
+        if not limiter.can_post_regular():
+            logger.info(
+                "[X-LIMIT] Daily content limit reached; removing X from targets. " "targets_before=%s",
+                targets,
+            )
+            return [t for t in targets if t != "x"]
+
         return targets
 
     # ---------- NOSOCIAL logging ----------
