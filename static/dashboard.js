@@ -455,7 +455,7 @@ function renderDashboard(data) {
 
 function getStatusFileName() {
     if (currentTeamSlug) {
-        return `status-${currentTeamSlug}.json`;
+        return `status_${currentTeamSlug}.json`;
     }
     return "status.json";
 }
@@ -479,6 +479,27 @@ async function fetchStatus() {
              </div>`;
     }
 }
+
+function getUtcResetLocalLabel() {
+    const now = new Date();
+    // Today at midnight UTC
+    const utcMidnight = new Date(Date.UTC(
+        now.getUTCFullYear(),
+        now.getUTCMonth(),
+        now.getUTCDate(),
+        0, 0, 0, 0
+    ));
+
+    const localTime = utcMidnight.toLocaleTimeString([], {
+        hour: "numeric",
+        minute: "2-digit"
+    });
+
+    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || "local time";
+
+    return `${localTime} ${tz}`;
+}
+
 
 function renderBotsGrid() {
     const container = document.getElementById("botsGridContainer");
@@ -521,13 +542,19 @@ function renderBotsGrid() {
             bot.team_name ||
             bot.slug.toUpperCase();
 
+        const xLimitHtml = bot.x_limit_display
+            ? `<span class="x-limit-cell-pill" title="Resets at midnight UTC (${getUtcResetLocalLabel()})">${bot.x_limit_display}</span>`
+            : "—";
+
         tr.innerHTML = `
             <td>${teamDisplay}</td>
-            <td>${gameId}</td>
-            <td><span class="bots-grid-status ${statusClass}">${bot.status || "IDLE"}</span></td>
-            <td class="cell-muted">${lastUpdated}</td>
-            <td class="cell-muted">${bot.matchup || "—"}</td>
-            <td class="cell-muted">${bot.score || "—"}</td>
+            <td class="col-center">${gameId}</td>
+            <td class="col-center"><span class="bots-grid-status ${statusClass}">${bot.status || "IDLE"}</span></td>
+            <td class="cell-muted col-center">${lastUpdated}</td>
+            <td class="cell-muted col-center">${bot.matchup || "—"}</td>
+            <td class="cell-muted col-center">${bot.score || "—"}</td>
+            <td class="x-limit-cell col-center">${xLimitHtml}</td>
+
         `;
 
 
@@ -629,6 +656,15 @@ async function loadBots() {
                 // Pre-game / no scores yet
                 bot.score = null;
             }
+
+            const social = statusData.social || {};
+            const xInfo = social.x || null;
+
+            if (xInfo && typeof xInfo.count === "number" && typeof xInfo.content_limit === "number") {
+                bot.x_limit_display = `${xInfo.count} / ${xInfo.content_limit}`;
+            } else {
+                bot.x_limit_display = null;
+            }
         } catch (err) {
             console.error("Error loading status for", bot.slug, err);
             bot.status = "ERROR";
@@ -662,6 +698,11 @@ async function initDashboard() {
 
     await loadBots();
     renderBotsGrid();
+
+    const xResetSpan = document.getElementById("xLimitLocalReset");
+    if (xResetSpan) {
+        xResetSpan.textContent = getUtcResetLocalLabel();
+    }
 
     if (!bots || bots.length === 0) {
         setMainViewVisible(false);

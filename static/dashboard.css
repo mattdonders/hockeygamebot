@@ -263,6 +263,11 @@ body {
 
 /* Stat rows */
 
+.col-center {
+    text-align: center !important;
+    vertical-align: middle !important;
+}
+
 .stat-row {
     display: flex;
     justify-content: space-between;
@@ -287,6 +292,35 @@ body {
     color: #1f2937;
     text-align: right;
 }
+
+/* X Limit cell */
+
+.x-limit-cell {
+    text-align: center;
+    font-size: 13px;
+    font-weight: 500;
+}
+
+.x-limit-cell-pill {
+    display: inline-block;
+    padding: 4px 10px;
+    border-radius: 999px;
+    background: #ecfdf5;
+    /* soft green */
+    color: #065f46;
+}
+
+
+.x-limit-footnote {
+    display: block;
+    width: 100%;
+    text-align: right;
+    margin-top: 8px;
+    font-size: 12px;
+    color: #6b7280;
+}
+
+
 
 /* Game score */
 

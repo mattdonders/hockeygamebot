@@ -68,6 +68,9 @@ class StatusMonitor:
                 "venue": None,
                 "in_intermission": False,
             },
+            "social": {
+                "x": None,
+            },
             "events": {
                 "total": 0,
                 "goals": 0,
@@ -143,6 +146,7 @@ class StatusMonitor:
         events_snapshot = []
         live_loop_counter = 0
         cache_snapshot = None
+        x_limit_snapshot = None
 
         # Quickly copy only what we need
         try:
@@ -223,6 +227,22 @@ class StatusMonitor:
                     "officials_sent": context.preview_socials.officials_sent,
                     "all_pregame_sent": context.preview_socials.all_pregame_sent,
                 }
+
+            # Snapshot X / Twitter rate-limit state (if available)
+            if hasattr(context, "x_rate_limiter") and context.x_rate_limiter is not None:
+                try:
+                    limiter = context.x_rate_limiter
+                    state = limiter.get_state() or {}
+                    x_limit_snapshot = {
+                        "utc_day": state.get("day"),
+                        "count": state.get("count", 0),
+                        "warning_sent": state.get("warning_sent", False),
+                        "content_limit": getattr(limiter, "CONTENT_LIMIT", 15),
+                        "daily_limit": getattr(limiter, "DAILY_LIMIT", 17),
+                    }
+                except Exception as e:
+                    logger.warning(f"Failed to snapshot X rate-limit state: {e}")
+                    x_limit_snapshot = None
 
         except Exception as e:
             # If snapshot fails, log but don't crash
@@ -305,6 +325,11 @@ class StatusMonitor:
                 self.status["socials"]["preview_posts"]["milestones_sent"] = preview_socials_data['milestones_sent']
                 self.status["socials"]["preview_posts"]["officials_sent"] = preview_socials_data['officials_sent']
                 self.status["socials"]["preview_posts"]["all_pregame_sent"] = preview_socials_data['all_pregame_sent']
+
+            # Update structured X / Twitter limit info for dashboard
+            if x_limit_snapshot is not None:
+                self.status.setdefault("social", {})
+                self.status["social"]["x"] = x_limit_snapshot
 
             self._check_health()
             self._write_status()

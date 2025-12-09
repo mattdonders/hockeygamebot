@@ -44,17 +44,22 @@
                 <thead>
                     <tr>
                         <th>Team</th>
-                        <th>Game ID</th>
-                        <th>Status</th>
-                        <th>Last Updated</th>
-                        <th>Matchup</th>
-                        <th>Score</th>
+                        <th class="col-center">Game ID</th>
+                        <th class="col-center">Status</th>
+                        <th class="col-center">Last Updated</th>
+                        <th class="col-center">Matchup</th>
+                        <th class="col-center">Score</th>
+                        <th class="col-center">X Limit</th>
                     </tr>
                 </thead>
                 <tbody id="botsGridBody">
                     <!-- Populated by JS -->
                 </tbody>
             </table>
+            <p class="x-limit-footnote">
+                X Limit Resets @ Midnight UTC
+                (<span id="xLimitLocalReset"></span>)
+            </p>
         </div>
 
         <!-- MAIN PER-TEAM DASHBOARD CONTENT -->
