@@ -65,20 +65,17 @@ class GoalEvent(Event):
         scorer = getattr(self, "scoring_player_name", "Unknown scorer")
         season_total = getattr(self, "scoring_player_total", None)
 
-        shot_type = (self.shot_type or "shot").lower()
+        shot_msg = f"scores on a {self.shot_type} shot" if self.shot_type else "scores"
         time_remaining = self.time_remaining
         period_label = self.period_label
 
         # Scoring line – season total if you have it
         if season_total is not None:
             scoring_line = (
-                f"{scorer} ({season_total}) scores on a {shot_type} shot with "
-                f"{time_remaining} remaining in {period_label}."
+                f"{scorer} ({season_total}) {shot_msg} with " f"{time_remaining} remaining in {period_label}."
             )
         else:
-            scoring_line = (
-                f"{scorer} scores on a {shot_type} shot with " f"{time_remaining} remaining in {period_label}."
-            )
+            scoring_line = f"{scorer} {shot_msg} with " f"{time_remaining} remaining in {period_label}."
 
         # Assists — based on fields you’re already populating
         num_assists = 0
@@ -180,10 +177,10 @@ class GoalEvent(Event):
         self.shot_type = details.get("shotType", None)
         self.highlight_clip_url = details.get("highlightClipSharingUrl", None)
 
-        # 'Force Fail' on missing data
+        # 'Log Warning' on missing data
+        # We handle missing shot-type via conditional strings now
         if not self.shot_type:
-            logger.warning("Goal data not fully available - force fail & will retry next loop.")
-            return False
+            logger.info("GoalEvent[%s] missing shotType; continuing without it.", self.event_id)
 
         # --- Milestone integration -------------------------------------------
         milestone_prefix = ""
@@ -744,6 +741,25 @@ class GoalEvent(Event):
             )
             return
 
+        # ------------------------------------------------------------------
+        # 2A. Per-context guard: covers duplicate GoalEvent objects and multiple
+        # call sites (live loop + wait_for_goal_gifs).
+        # ------------------------------------------------------------------
+        seen_ids = getattr(context, "generated_goal_gif_ids", None)
+        if seen_ids is None:
+            seen_ids = set()
+            setattr(context, "generated_goal_gif_ids", seen_ids)
+
+        if event_id in seen_ids:
+            logger.info(
+                "[GIF] Skipping event %s — GIF already generated earlier for this game (context-level).",
+                event_id,
+            )
+            # Keep the instance flag in sync so later calls on this object
+            # also fast-path through the per-instance guard.
+            self.goal_gif_generated = True
+            return
+
         # ----------------------------------------------------------------------
         # 3. Preferred team restriction
         # ----------------------------------------------------------------------
@@ -853,6 +869,15 @@ class GoalEvent(Event):
             gif_path,
         )
 
+        # Mark Goal GIF Generated at Context Level Too
+        try:
+            seen_ids = getattr(context, "generated_goal_gif_ids", None)
+            if isinstance(seen_ids, set):
+                seen_ids.add(event_id)
+        except Exception:
+            # Non-fatal; just means we won't get the extra protection.
+            pass
+
         # ------------------------------------------------------------------
         # 8. Build caption text for the GIF reply
         # ------------------------------------------------------------------
@@ -863,14 +888,14 @@ class GoalEvent(Event):
         time_remaining = getattr(self, "time_remaining", "")
 
         if is_preferred_goal:
-            opening = f"EDGE VIZ: {scorer} scores for the {team}!"
+            opening = f"🎥 EDGE VIZ: {scorer} scores for the {team}!"
         else:
-            opening = f"EDGE VIZ: {scorer} strikes for the {team}."
+            opening = f"🎥 EDGE VIZ: {scorer} strikes for the {team}."
 
         shot_label = (shot_type or "shot").lower()
 
         # Example: "Tip-in from the puck-tracking view (07:06 in the 1st)."
-        detail = f"{shot_label.capitalize()} from the puck-tracking view"
+        detail = f"on a {shot_label.lower()}"
         if time_remaining and period_label:
             detail += f" ({time_remaining} remaining in {period_label})."
         elif period_label:

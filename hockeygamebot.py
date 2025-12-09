@@ -484,13 +484,24 @@ def wait_for_goal_gifs(context: GameContext):
     for attempt in range(PENDING_GOAL_RETRIES):
         all_events = getattr(context, "events", []) or []
 
-        pending_goals = [
-            e
-            for e in all_events
-            if isinstance(e, GoalEvent)
-            and getattr(e, "is_preferred", False)
-            and not getattr(e, "goal_gif_generated", False)
-        ]
+        unique_pending: dict[int, GoalEvent] = {}
+        for e in all_events:
+            if not isinstance(e, GoalEvent):
+                continue
+            if not getattr(e, "is_preferred", False):
+                continue
+            if getattr(e, "goal_gif_generated", False):
+                continue
+
+            eid = getattr(e, "event_id", None)
+            if eid is None:
+                continue
+            if eid in unique_pending:
+                logger.debug("wait_for_goal_gifs: skipping duplicate GoalEvent[%s] instance in pending list.", eid)
+                continue
+            unique_pending[eid] = e
+
+        pending_goals = list(unique_pending.values())
 
         if not pending_goals:
             logger.info("All preferred goal GIFs are now generated or skipped.")
