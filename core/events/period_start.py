@@ -17,7 +17,7 @@ class PeriodStartEvent(Event):
     """
 
     cache = Cache(__name__)
-    ogical_event_type = "game_start"
+    logical_event_type = "game_start"
 
     def parse(self):
         # Only trigger at the start of the 1st period

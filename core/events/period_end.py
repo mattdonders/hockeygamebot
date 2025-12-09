@@ -1,6 +1,10 @@
+import logging
+
 from core import charts, schedule
 
 from .base import Cache, Event
+
+logger = logging.getLogger(__name__)
 
 
 class PeriodEndEvent(Event):
@@ -18,6 +22,23 @@ class PeriodEndEvent(Event):
         period_number = self.period_number
         period_type = self.event_data.get("periodDescriptor", {}).get("periodType", "unknown")
         period_ordinal = f"{period_number}{'th' if 10 <= period_number % 100 <= 20 else {1: 'st', 2: 'nd', 3: 'rd'}.get(period_number % 10, 'th')}"
+
+        # ---------------------------------------------------------
+        # NEW: Skip late-period summaries in regular-season games
+        # - Period 3: end of regulation
+        # - Period 4: end of OT
+        # The GameEnd charts will follow shortly and cover this.
+        # ---------------------------------------------------------
+        game_type = getattr(self.context, "game_type", None)
+        if game_type == "R" and period_number in (3, 4):
+            # Returning None tells the factory "no social message for this event"
+            logger.info(
+                "Skipping PeriodEndEvent summary for period %s in regular-season game; "
+                "final GameEnd charts will cover this.",
+                period_number,
+            )
+            return None
+        # ---------------------------------------------------------
 
         if period_type == "REG":
             message = f"The {period_ordinal} period has ended."
