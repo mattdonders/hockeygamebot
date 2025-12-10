@@ -888,22 +888,25 @@ class GoalEvent(Event):
         time_remaining = getattr(self, "time_remaining", "")
 
         if is_preferred_goal:
-            opening = f"🎥 EDGE VIZ: {scorer} scores for the {team}!"
+            opening = f"🎥 EDGE VIZ (tracking data): {scorer} scores for the {team}"
         else:
-            opening = f"🎥 EDGE VIZ: {scorer} strikes for the {team}."
+            opening = f"🎥 EDGE VIZ (tracking data): {scorer} strikes for the {team}"
 
         shot_label = (shot_type or "shot").lower()
 
-        # Example: "Tip-in from the puck-tracking view (07:06 in the 1st)."
-        detail = f"on a {shot_label.lower()}"
+        # Build time/period clause
         if time_remaining and period_label:
-            detail += f" ({time_remaining} remaining in {period_label})."
+            time_clause = f"{time_remaining} remaining in the {period_label}"
         elif period_label:
-            detail += f" ({period_label})."
+            time_clause = period_label
         else:
-            detail += "."
+            time_clause = None
 
-        gif_caption = f"{opening}\n{detail}"
+        # Final single-line caption
+        if time_clause:
+            gif_caption = f"{opening} on a {shot_label} ({time_clause})."
+        else:
+            gif_caption = f"{opening} on a {shot_label}."
 
         # ----------------------------------------------------------------------
         # 9. Attempt posting
