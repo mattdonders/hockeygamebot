@@ -155,6 +155,16 @@ class XRateLimiter:
 
         self._save_state()
 
+    def get_state(self) -> dict:
+        """
+        Public accessor used by StatusMonitor to snapshot the current
+        X rate-limit state for the dashboard.
+
+        Returns a shallow copy so callers can't mutate internal state.
+        """
+        self._maybe_rotate_day()
+        return dict(self._state)
+
 
 if __name__ == "__main__":
     import argparse
