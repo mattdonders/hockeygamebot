@@ -1,6 +1,7 @@
 import logging
 
 from core import charts, schedule
+from utils.game_type_constants import GAME_TYPE_REGULAR_SEASON
 
 from .base import Cache, Event
 
@@ -30,7 +31,7 @@ class PeriodEndEvent(Event):
         # The GameEnd charts will follow shortly and cover this.
         # ---------------------------------------------------------
         game_type = getattr(self.context, "game_type", None)
-        if game_type == "R" and period_number in (3, 4):
+        if game_type == GAME_TYPE_REGULAR_SEASON and period_number in (3, 4):
             # Returning None tells the factory "no social message for this event"
             logger.info(
                 "Skipping PeriodEndEvent summary for period %s in regular-season game; "

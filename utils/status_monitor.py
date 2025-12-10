@@ -228,10 +228,16 @@ class StatusMonitor:
                     "all_pregame_sent": context.preview_socials.all_pregame_sent,
                 }
 
-            # Snapshot X / Twitter rate-limit state (if available)
-            if hasattr(context, "x_rate_limiter") and context.x_rate_limiter is not None:
+            limiter = None
+            social = getattr(context, "social", None)
+
+            if social is not None and hasattr(social, "x_rate_limiter"):
+                limiter = social.x_rate_limiter
+            elif hasattr(context, "x_rate_limiter") and context.x_rate_limiter is not None:
+                limiter = context.x_rate_limiter
+
+            if limiter is not None:
                 try:
-                    limiter = context.x_rate_limiter
                     state = limiter.get_state() or {}
                     x_limit_snapshot = {
                         "utc_day": state.get("day"),
@@ -243,6 +249,9 @@ class StatusMonitor:
                 except Exception as e:
                     logger.warning(f"Failed to snapshot X rate-limit state: {e}")
                     x_limit_snapshot = None
+            else:
+                logger.warning("No X rate limiter found in context or social publisher")
+                x_limit_snapshot = None
 
         except Exception as e:
             # If snapshot fails, log but don't crash

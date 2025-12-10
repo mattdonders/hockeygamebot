@@ -297,6 +297,9 @@ def main() -> None:
         platforms=platforms_for_intro,
     )
 
+    # Store the parent tweet per platform so we can build a continuous thread
+    current_parent_refs = {platform: intro_post_refs[platform] for platform in platforms_for_intro}
+
     # We want to thread replies under the intro on each platform where it exists.
     # SocialPublisher.post returns dict[str, PostRef]
     # We'll pass the appropriate PostRef as reply_to for each platform.
@@ -326,12 +329,17 @@ def main() -> None:
                 platform,
                 line,
             )
-            publisher.reply(
+            new_ref = publisher.reply(
                 message=line,
                 event_type="milestone_digest",
                 reply_to=parent_ref,
                 platforms=[platform],
             )
+
+            # new_ref is a dict: {"x": PostRef(...)}
+            # store the returned post ref as the new parent_ref for that platform
+            if isinstance(new_ref, dict) and platform in new_ref:
+                current_parent_refs[platform] = new_ref[platform]
 
 
 if __name__ == "__main__":
