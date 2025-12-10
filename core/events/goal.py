@@ -1003,6 +1003,11 @@ class GoalEvent(Event):
         if not hasattr(self, "_root_refs"):
             self._root_refs = {}
 
+        # Ensure we track whether the initial post was ever made,
+        # independent of whether we have non-X refs in _post_refs.
+        if not hasattr(self, "_has_initial_post"):
+            self._has_initial_post = False
+
         # Restart-safe guard: if this would be treated as an initial post
         # (no in-memory refs yet), consult the per-game cache to avoid
         # re-posting goals after a process restart.
@@ -1044,7 +1049,7 @@ class GoalEvent(Event):
             text += f"\n\n{link}"
 
         try:
-            if not self._post_refs:
+            if not self._has_initial_post:
                 # ------------------------------------------------------------------
                 # Initial post on all enabled platforms; store refs for future replies.
                 # ------------------------------------------------------------------
@@ -1059,6 +1064,10 @@ class GoalEvent(Event):
                     platforms="enabled",
                     event_type=event_type or "goal",
                 )
+
+                # Only flip the flag if we actually got something back
+                if results:
+                    self._has_initial_post = True
 
                 # After a successful initial post, mark this goal as posted in the
                 # restart-safe cache so we don't re-post it on a future restart.
