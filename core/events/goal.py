@@ -186,7 +186,7 @@ class GoalEvent(Event):
         milestone_prefix = ""
         milestone_service: MilestoneService = getattr(self.context, "milestone_service", None)
 
-        if milestone_service is not None:
+        if milestone_service is not None and getattr(self, "is_preferred", False):
             try:
                 hits = milestone_service.handle_goal_event(
                     scoring_player_id=self.scoring_player_id,
@@ -217,6 +217,13 @@ class GoalEvent(Event):
                 logger.exception(
                     "MilestoneService: error while handling goal event; ignoring milestones for this goal."
                 )
+        elif milestone_service is not None:
+            logger.info(
+                "MilestoneService: suppressing milestone check for non-preferred goal "
+                "(event_owner_team_id=%s, preferred_team_id=%s).",
+                event_owner_team_id,
+                getattr(self.context.preferred_team, "team_id", None),
+            )
 
         # Build Goal Message
         title = self._build_goal_title_text()
@@ -574,6 +581,29 @@ class GoalEvent(Event):
         self.assist1_player_id = new_scoring["assist1_id"]
         self.assist2_player_id = new_scoring["assist2_id"]
 
+        # Refresh human-readable names/totals so the scoring block reflects
+        # the current official scoring.
+        self.scoring_player_name = self._safe_player_name(self.scoring_player_id)
+
+        if self.assist1_player_id:
+            self.assist1_name = self._safe_player_name(self.assist1_player_id)
+        else:
+            self.assist1_name = None
+
+        if self.assist2_player_id:
+            self.assist2_name = self._safe_player_name(self.assist2_player_id)
+        else:
+            self.assist2_name = None
+
+        # If the league re-assigns points, our cached season totals may be wrong.
+        # Hide totals for any slot that changed; keep them for untouched slots.
+        # if change.get("scorer_changed"):
+        #     self.scoring_player_total = None
+        # if change.get("assist1_changed"):
+        #     self.assist1_total = None
+        # if change.get("assist2_changed"):
+        #     self.assist2_total = None
+
         # ----- Milestones: figure out who is newly credited -------------------
         milestone_hits: List[Any] = []
         milestone_service = getattr(self.context, "milestone_service", None)
@@ -591,7 +621,7 @@ class GoalEvent(Event):
         }
         newly_credited_ids.difference_update(already_credited)
 
-        if milestone_service is not None and newly_credited_ids:
+        if milestone_service is not None and newly_credited_ids and getattr(self, "is_preferred", False):
             try:
                 scorer_ids: List[int] = []
                 assist_ids: List[int] = []
@@ -614,6 +644,13 @@ class GoalEvent(Event):
                     "MilestoneService: error while handling scoring change; " "ignoring milestones for this change.",
                 )
                 milestone_hits = []
+        elif milestone_service is not None and newly_credited_ids:
+            logger.info(
+                "MilestoneService: suppressing scoring-change milestones for non-preferred goal "
+                "(event_owner_team_id=%s, preferred_team_id=%s).",
+                getattr(self.details, "eventOwnerTeamId", None) if isinstance(self.details, dict) else None,
+                getattr(self.context.preferred_team, "team_id", None),
+            )
 
         # ----- Persist durable scoring state into GameCache -------------------
         updated_credited = set(already_credited)
