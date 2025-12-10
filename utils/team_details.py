@@ -49,10 +49,10 @@ TEAM_DETAILS = {
         "hashtag": "#GoBolts",
         "timezone": "America/New_York",
         "team_id": 14,
-        "primary_color": "#002868",
-        "secondary_color": "#000000",
+        "primary_color": "#00205B",  # fixed
+        "secondary_color": "#FFFFFF",  # fixed
         "primary_text_color": "#FFFFFF",
-        "secondary_text_color": "#FFFFFF",
+        "secondary_text_color": "#000000",
     },
     "NYR": {
         "full_name": "New York Rangers",
@@ -73,7 +73,7 @@ TEAM_DETAILS = {
         "team_id": 4,
         "primary_color": "#FA4616",
         "secondary_color": "#000000",
-        "primary_text_color": "#FFFFFF",
+        "primary_text_color": "#000000",
         "secondary_text_color": "#FFFFFF",
     },
     "PIT": {
@@ -116,9 +116,9 @@ TEAM_DETAILS = {
         "timezone": "America/Toronto",
         "team_id": 10,
         "primary_color": "#00205B",
-        "secondary_color": "#000000",
+        "secondary_color": "#FFFFFF",  # fixed
         "primary_text_color": "#FFFFFF",
-        "secondary_text_color": "#FFFFFF",
+        "secondary_text_color": "#000000",
     },
     "MTL": {
         "full_name": "Montreal Canadiens",
@@ -127,7 +127,7 @@ TEAM_DETAILS = {
         "timezone": "America/Toronto",
         "team_id": 8,
         "primary_color": "#AF1E2D",
-        "secondary_color": "#192168",
+        "secondary_color": "#00205B",  # fixed
         "primary_text_color": "#FFFFFF",
         "secondary_text_color": "#FFFFFF",
     },
@@ -137,7 +137,7 @@ TEAM_DETAILS = {
         "hashtag": "#GoSensGo",
         "timezone": "America/Toronto",
         "team_id": 9,
-        "primary_color": "#C8102E",
+        "primary_color": "#DA1A32",
         "secondary_color": "#000000",
         "primary_text_color": "#FFFFFF",
         "secondary_text_color": "#FFFFFF",
@@ -160,9 +160,9 @@ TEAM_DETAILS = {
         "timezone": "America/Detroit",
         "team_id": 17,
         "primary_color": "#CE1126",
-        "secondary_color": "#000000",
+        "secondary_color": "#FFFFFF",  # fixed
         "primary_text_color": "#FFFFFF",
-        "secondary_text_color": "#FFFFFF",
+        "secondary_text_color": "#000000",
     },
     "CBJ": {
         "full_name": "Columbus Blue Jackets",
@@ -271,7 +271,7 @@ TEAM_DETAILS = {
         "team_id": 22,
         "primary_color": "#FF4C00",
         "secondary_color": "#041E42",
-        "primary_text_color": "#FFFFFF",
+        "primary_text_color": "#000000",
         "secondary_text_color": "#FFFFFF",
     },
     "CGY": {
@@ -304,7 +304,7 @@ TEAM_DETAILS = {
         "team_id": 24,
         "primary_color": "#F47A38",
         "secondary_color": "#B09862",
-        "primary_text_color": "#FFFFFF",
+        "primary_text_color": "#000000",
         "secondary_text_color": "#000000",
     },
     "SJS": {

@@ -314,7 +314,7 @@ def main() -> None:
             continue
 
         for platform, line in per_platform_lines.items():
-            parent_ref = intro_post_refs.get(platform)
+            parent_ref = current_parent_refs.get(platform)
             if not parent_ref:
                 logger.info(
                     "No intro PostRef for %s on %s; skipping reply.",

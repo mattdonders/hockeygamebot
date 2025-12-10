@@ -1,4 +1,5 @@
 import logging
+import math
 import os
 
 import numpy as np
@@ -13,6 +14,80 @@ from definitions import IMAGES_DIR
 from utils.team_details import TEAM_DETAILS
 
 logger = logging.getLogger(__name__)
+
+
+# ----------------------------------------------------------------------
+# Neutral fallback colors (NOT used as any primary/secondary team color)
+# ----------------------------------------------------------------------
+NEUTRAL_FALLBACK_COLOR = "#E0E0E0"  # light neutral gray
+NEUTRAL_FALLBACK_TEXT_COLOR = "#000000"  # high-contrast text
+
+
+# ----------------------------------------------------------------------
+# Color helpers
+# ----------------------------------------------------------------------
+def _hex_to_rgb(hex_color: str) -> tuple[int, int, int]:
+    """
+    Convert #RRGGBB hex string to (R, G, B).
+    """
+    hex_color = hex_color.lstrip("#")
+    if len(hex_color) != 6:
+        raise ValueError(f"Invalid hex color: {hex_color!r}")
+    r = int(hex_color[0:2], 16)
+    g = int(hex_color[2:4], 16)
+    b = int(hex_color[4:6], 16)
+    return r, g, b
+
+
+def colors_similar(
+    color_a: str,
+    color_b: str,
+    threshold: float = 45.0,
+) -> bool:
+    """
+    Return True if two hex colors are 'similar enough' to be confusing together.
+
+    Uses Euclidean distance in RGB space.
+    Max distance ≈ 441 (between black and white).
+    A threshold around 40–60 works decently for 'visually close'.
+    """
+    ra, ga, ba = _hex_to_rgb(color_a)
+    rb, gb, bb = _hex_to_rgb(color_b)
+
+    distance = math.sqrt((ra - rb) ** 2 + (ga - gb) ** 2 + (ba - bb) ** 2)
+    return distance < threshold
+
+
+def resolve_other_team_color(pref_team, other_team):
+    """
+    Returns (other_color, other_text_color) with similarity checking.
+
+    Logic:
+      1. Try using other_team.primary_color
+      2. If too similar to pref_team.primary_color → try secondary
+      3. If still similar → use neutral fallback
+    """
+
+    pref_color = pref_team.primary_color
+
+    # Start with other team's primary palette
+    other_color = other_team.primary_color
+    other_text = other_team.primary_text_color
+
+    # If too similar → try secondary
+    if colors_similar(pref_color, other_color):
+        sec_color = getattr(other_team, "secondary_color", None)
+        sec_text = getattr(other_team, "secondary_text_color", None)
+
+        if sec_color and not colors_similar(pref_color, sec_color):
+            other_color = sec_color
+            other_text = sec_text
+        else:
+            # Secondary missing or also similar → fallback
+            other_color = NEUTRAL_FALLBACK_COLOR
+            other_text = NEUTRAL_FALLBACK_TEXT_COLOR
+
+    return other_color, other_text
 
 
 def format_pp_text(goals: int, opps: int) -> str:
@@ -93,10 +168,8 @@ def teamstats_chart(context: GameContext, team_game_stats: dict, ingame: bool = 
     game_date_string = context.game_time_local_str
     venue = context.venue
 
-    # Check if Colors are Same & Swap Other Team Color
-    if pref_team_color == other_team_color:
-        other_team_color = other_team.secondary_color
-        other_team_text_color = other_team.secondary_text_color
+    # Check if Colors are Similar & Swap Other Team Color
+    other_team_color, other_team_text_color = resolve_other_team_color(pref_team, other_team)
 
     # Remove Preferred HomeAway from Context to Shorten Variable Names
     pref_homeaway = context.preferred_homeaway
