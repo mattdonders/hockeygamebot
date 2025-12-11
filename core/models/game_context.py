@@ -91,6 +91,9 @@ class GameContext:
         self.venue = None
         self.clock: Clock = Clock()
 
+        self.period_descriptor: dict | None = None
+        self.display_period: int | None = None
+
         self.preferred_team: Team = None
         self.other_team: Team = None
         self.home_team: Team = None

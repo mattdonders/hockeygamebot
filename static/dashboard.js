@@ -500,6 +500,55 @@ function getUtcResetLocalLabel() {
     return `${localTime} ${tz}`;
 }
 
+function formatPeriodLabel(period) {
+    if (period == null) return null;
+    const n = Number(period);
+    if (n === 1) return "1st";
+    if (n === 2) return "2nd";
+    if (n === 3) return "3rd";
+    if (n === 4) return "OT";
+    if (n === 5) return "SO";
+    return `P${n}`;
+}
+
+function formatGameStateForGrid(g) {
+    if (!g) return null;
+    const state = g.game_state;
+    const periodLabel = formatPeriodLabel(g.period);
+    const time = g.time_remaining;
+
+    if (!state) return null;
+
+    // Pre / future
+    if (state === "FUT" || state === "PRE") {
+        return "Pre-Game";
+    }
+
+    // Live game
+    if (state === "LIVE") {
+        if (g.in_intermission) {
+            // "1st INT", "2nd INT", "OT INT"
+            if (periodLabel) return `${periodLabel} INT`;
+            return "Intermission";
+        }
+        if (periodLabel && time) return `${periodLabel} • ${time}`;
+        if (periodLabel) return periodLabel;
+        if (time) return time;
+        return "Live";
+    }
+
+    // Final states
+    if (state === "OFF") {
+        if (periodLabel === "OT" || periodLabel === "SO") {
+            return `Final ${periodLabel}`;
+        }
+        return "Final";
+    }
+
+    // Fallback (shows raw state string)
+    return state;
+}
+
 
 function renderBotsGrid() {
     const container = document.getElementById("botsGridContainer");
@@ -552,6 +601,7 @@ function renderBotsGrid() {
             <td class="col-center"><span class="bots-grid-status ${statusClass}">${bot.status || "IDLE"}</span></td>
             <td class="cell-muted col-center">${lastUpdated}</td>
             <td class="cell-muted col-center">${bot.matchup || "—"}</td>
+            <td class="cell-muted col-center">${bot.game_state_display || "—"}</td>
             <td class="cell-muted col-center">${bot.score || "—"}</td>
             <td class="x-limit-cell col-center">${xLimitHtml}</td>
 
@@ -656,6 +706,9 @@ async function loadBots() {
                 // Pre-game / no scores yet
                 bot.score = null;
             }
+
+            // 👉 Short game state label for the grid (period / time / final)
+            bot.game_state_display = formatGameStateForGrid(g);
 
             const social = statusData.social || {};
             const xInfo = social.x || null;

@@ -200,9 +200,33 @@ class StatusMonitor:
                     clock_time_remaining = context.clock.time_remaining
                     clock_in_intermission = context.clock.in_intermission
 
-                period_descriptor = game_snapshot.get("periodDescriptor", {})
-                period = period_descriptor.get("number")
-                period_type = period_descriptor.get("periodType")
+                # --- Prefer live period info from context, fall back to snapshot ---
+                period = None
+                period_type = None
+
+                # 1) Prefer live periodDescriptor from the PBP (parse_live_game)
+                pd_live = getattr(context, "period_descriptor", None)
+                if isinstance(pd_live, dict) and pd_live:
+                    period = pd_live.get("number")
+                    period_type = pd_live.get("periodType")
+
+                # 2) Next, prefer live displayPeriod from the PBP
+                if period is None:
+                    display_period = getattr(context, "display_period", None)
+                    if display_period is not None:
+                        period = display_period
+
+                # 3) Finally, fall back to the original schedule snapshot if we have nothing else
+                if period is None and game_snapshot:
+                    pd_snap = game_snapshot.get("periodDescriptor") or {}
+                    if pd_snap:
+                        # only fill things that are still missing
+                        period = period or pd_snap.get("number")
+                        period_type = period_type or pd_snap.get("periodType")
+
+                    if period is None:
+                        # last-ditch fallback
+                        period = game_snapshot.get("displayPeriod")
 
             if context.events:
                 events_snapshot = list(context.events)
@@ -274,8 +298,7 @@ class StatusMonitor:
 
                 # Period info
                 self.status["game"]["period"] = period
-                if period_type and period_type != "REG":
-                    self.status["game"]["period"] = f"{period} ({period_type})"
+                self.status["game"]["period_type"] = period_type
 
             # Update event counts
             if events_snapshot:

@@ -64,6 +64,10 @@ def parse_live_game(context: GameContext):
     play_by_play_data = schedule.fetch_playbyplay(context.game_id)
     all_events = play_by_play_data.get("plays", [])
 
+    # Since We Are Live & Have PBP Data, Update the Period in GameContext
+    context.period_descriptor = play_by_play_data.get("periodDescriptor") or {}
+    context.display_period = play_by_play_data.get("displayPeriod")
+
     logger.debug("Number of *TOTAL* Events Retrieved from PBP: %s", len(all_events))
     logger.info("%s total event(s) detected in PBP - checking for new events.", len(all_events))
 
