@@ -1,8 +1,6 @@
 import logging
 import time
 
-import requests
-
 from core import schedule
 from core.events.factory import EventFactory
 from core.models.game_context import GameContext
@@ -61,7 +59,13 @@ def parse_live_game(context: GameContext):
       - Goal events are always re-evaluated each loop (for highlight/score updates).
     """
 
-    play_by_play_data = schedule.fetch_playbyplay(context.game_id)
+    # Prefer the snapshot fetched in the main loop, fall back to a direct fetch
+    play_by_play_data = getattr(context, "latest_pbp", None)
+    if not play_by_play_data:
+        play_by_play_data = schedule.fetch_playbyplay(context.game_id)
+        context.latest_pbp = play_by_play_data
+
+    # Extract 'ALL EVENTS' From PBP Data
     all_events = play_by_play_data.get("plays", [])
 
     # Since We Are Live & Have PBP Data, Update the Period in GameContext

@@ -77,6 +77,7 @@ class GameContext:
         self.debugsocial: bool = debugsocial
 
         self.cache = None  # type: ignore  # set per game after IDs/teams are known
+        self.latest_pbp: dict | None = None
 
         # Attributes Below are Not Passed-In at Initialization Time
         self.game = None

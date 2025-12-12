@@ -19,6 +19,7 @@ from matplotlib import font_manager
 import core.preview as preview
 import core.rosters as rosters
 import core.schedule as schedule
+import utils.http
 import utils.others as otherutils
 from core import charts, final
 from core.charts import teamstats_chart
@@ -449,12 +450,14 @@ def start_game_loop(context: GameContext):
     # ------------------------------------------------------------------------------
 
     while True:
-        # Every loop, update game state so the logic below works for switching between them
-        updated_game_state = schedule.fetch_game_state(context.game_id)
-        context.game_state = updated_game_state
+        # FETCH PBP ONCE PER LOOP
+        play_by_play_data = schedule.fetch_playbyplay(context.game_id)
+        context.latest_pbp = play_by_play_data
 
-        clock_data = schedule.fetch_clock(context.game_id)
-        context.clock.update(clock_data)
+        # Every loop, update game state so the logic below works for switching between them
+        # Also update Clock so we have latest time information (for sleep)
+        context.game_state = schedule.extract_game_state(play_by_play_data)
+        context.clock.update(schedule.extract_clock(play_by_play_data))
 
         # Update monitoring dashboard with current game state
         if hasattr(context, "monitor"):
@@ -952,6 +955,11 @@ def main():
 
     # Load configuration
     config = load_config(args.config)
+
+    # NEW: Initialize the HTTP Client and Caching (SIMPLIFIED CALL)
+    # The init_http_client function reads config/caching settings and connects
+    # to Redis (if enabled).
+    utils.http.init_http_client(config)
 
     # Setup logging & log startup info
     otherutils.setup_logging(config, console=args.console, debug=args.debug)

@@ -3,8 +3,6 @@ import logging
 import os
 from datetime import datetime, timedelta
 
-import requests
-
 from definitions import ROSTERS_DIR
 from utils.http import get_json
 
@@ -40,7 +38,7 @@ def load_roster(team_abbreviation: str, season_id: int):
 
     # Fetch from the API if the file doesn't exist or is outdated
     url = f"https://api-web.nhle.com/v1/roster/{team_abbreviation}/{season_id}"
-    roster_data = get_json(url, key="roster", timeout=10)
+    roster_data = get_json(url, key="roster")
 
     # Save to local file for future use
     os.makedirs(os.path.dirname(file_path), exist_ok=True)
@@ -55,17 +53,24 @@ def load_game_rosters(context):
     logger.info("Getting rosterSpots from Game Center feed.")
     game_id = context.game_id
     url = f"https://api-web.nhle.com/v1/gamecenter/{game_id}/play-by-play"
-    response = requests.get(url)
-    if response.status_code == 200:
-        pbp_data = response.json()
+    try:
+        pbp_data = get_json(url, key="roster")
+    except Exception as e:
+        logger.error(f"Failed to fetch roster for game {game_id}: {e}")
+        return {}
+
+    if pbp_data:
         roster_spots = pbp_data.get("rosterSpots")
 
         roster = {
+            # Note: Assuming this remains valid for the data structure
             player["playerId"]: f"{player['firstName']['default']} {player['lastName']['default']}"
             for player in roster_spots
         }
 
         return roster
+
+    return {}
 
 
 def get_opposing_team_abbreviation(game, team_abbreviation):

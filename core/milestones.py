@@ -509,7 +509,7 @@ class MilestoneService:
 
         logger.debug("Fetching career snapshot from stats API for player_id=%s", player_id)
 
-        data = get_json(url, key="nhl_stats_skater", params=params, timeout=5)
+        data = get_json(url, key="nhl_stats_skater", params=params)
         rows = data.get("data", [])
 
         if rows:
@@ -541,7 +541,7 @@ class MilestoneService:
             "cayenneExp": f"playerId={player_id} and gameTypeId=2",
         }
 
-        data = get_json(goalie_url, key="nhl_stats_goalie", params=goalie_params, timeout=5)
+        data = get_json(goalie_url, key="nhl_stats_goalie", params=goalie_params)
         rows = data.get("data", [])
 
         if rows:

@@ -3,8 +3,6 @@ import time
 from datetime import datetime, timezone
 from typing import Optional
 
-import requests
-
 from core import schedule
 from core.milestones import MilestoneHit, MilestoneWatch
 from core.models.game_context import GameContext
