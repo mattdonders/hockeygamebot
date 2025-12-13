@@ -263,12 +263,26 @@ class StatusMonitor:
             if limiter is not None:
                 try:
                     state = limiter.get_state() or {}
+
+                    # New schema: rolling window list of post timestamps
+                    posts = state.get("posts", None)
+                    if isinstance(posts, list):
+                        x_count = len(posts)
+                        utc_day = None  # rolling window; no UTC day boundary
+                    else:
+                        # Legacy schema fallback
+                        x_count = state.get("count", 0)
+                        utc_day = state.get("day")
+
                     x_limit_snapshot = {
-                        "utc_day": state.get("day"),
-                        "count": state.get("count", 0),
+                        "utc_day": utc_day,
+                        "count": x_count,
                         "warning_sent": state.get("warning_sent", False),
                         "content_limit": getattr(limiter, "CONTENT_LIMIT", 15),
                         "daily_limit": getattr(limiter, "DAILY_LIMIT", 17),
+                        # Optional (nice for UI/tooltips)
+                        "window_seconds": getattr(limiter, "WINDOW_SECONDS", 86400),
+                        "schema_version": state.get("schema_version"),
                     }
                 except Exception as e:
                     logger.warning(f"Failed to snapshot X rate-limit state: {e}")

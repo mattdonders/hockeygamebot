@@ -1050,6 +1050,20 @@ def main():
             base_cache_dir=cache_dir,
         )
 
+        # Log initial X rolling-window state
+        try:
+            st = x_rate_limiter.get_state()
+            logger.info(
+                "XRateLimiter initialized: rolling=%s content_limit=%s daily_limit=%s warning_sent=%s disabled_for=%ss",
+                st.get("rolling_count"),
+                st.get("content_limit"),
+                st.get("daily_limit"),
+                st.get("warning_sent"),
+                st.get("disabled_for_seconds"),
+            )
+        except Exception:
+            logger.exception("Failed to read initial XRateLimiter state.")
+
     # Instantiate publisher; let it read script.nosocial from the YAML
     publisher = SocialPublisher(
         config=config, mode=social_mode, nosocial=effective_nosocial, monitor=None, x_rate_limiter=x_rate_limiter

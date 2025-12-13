@@ -32,7 +32,7 @@ def discover_bots() -> List[Dict[str, Any]]:
     for path in glob.glob("status_*.json"):
         # status-njd.json -> njd
         slug = path[len("status_") : -len(".json")]
-        label = slug.upper()
+        label = slug.updas()
         status_file = path
 
         # Try to read nicer label info from the JSON (home/away teams, etc.)

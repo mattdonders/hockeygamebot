@@ -713,11 +713,32 @@ async function loadBots() {
             const social = statusData.social || {};
             const xInfo = social.x || null;
 
-            if (xInfo && typeof xInfo.count === "number" && typeof xInfo.content_limit === "number") {
-                bot.x_limit_display = `${xInfo.count} / ${xInfo.content_limit}`;
+            if (xInfo) {
+                // New rolling-window schema: posts[] is the source of truth
+                let used = null;
+
+                if (Array.isArray(xInfo.posts)) {
+                    used = xInfo.posts.length;
+                } else if (typeof xInfo.posts_count === "number") {
+                    used = xInfo.posts_count;
+                } else if (typeof xInfo.count === "number") {
+                    // Legacy schema fallback
+                    used = xInfo.count;
+                }
+
+                const limit =
+                    (typeof xInfo.content_limit === "number" ? xInfo.content_limit : null) ??
+                    (typeof xInfo.CONTENT_LIMIT === "number" ? xInfo.CONTENT_LIMIT : null);
+
+                if (typeof used === "number" && typeof limit === "number") {
+                    bot.x_limit_display = `${used} / ${limit}`;
+                } else {
+                    bot.x_limit_display = null;
+                }
             } else {
                 bot.x_limit_display = null;
             }
+
         } catch (err) {
             console.error("Error loading status for", bot.slug, err);
             bot.status = "ERROR";
