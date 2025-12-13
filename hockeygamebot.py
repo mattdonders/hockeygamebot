@@ -1045,10 +1045,13 @@ def main():
     socials_cfg = config.get("socials", {}) or {}
     x_rate_limiter = None
     if socials_cfg.get("x") or socials_cfg.get("twitter"):
-        x_rate_limiter = XRateLimiter(
-            team_slug=preferred_team.abbreviation.lower(),
-            base_cache_dir=cache_dir,
-        )
+        # Build Twitter / X State Path
+        abbr = preferred_team.abbreviation.lower()
+        limits_dir = cache_dir / "twitter_limits"
+        limits_dir.mkdir(parents=True, exist_ok=True)
+        state_path = limits_dir / f"{abbr}.json"
+
+        x_rate_limiter = XRateLimiter(state_path=state_path)
 
         # Log initial X rolling-window state
         try:
