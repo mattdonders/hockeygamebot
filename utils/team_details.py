@@ -345,7 +345,7 @@ TEAM_DETAILS = {
         "short_name": "Mammoth",
         "hashtag": "#TusksUp",
         "timezone": "America/Denver",
-        "team_id": 59,
+        "team_id": 68,
         "primary_color": "#71AFE5",
         "secondary_color": "#090909",
         "primary_text_color": "#000000",

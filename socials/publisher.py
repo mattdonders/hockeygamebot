@@ -281,13 +281,13 @@ class SocialPublisher:
             if ref:
                 results[name] = ref
 
-            # Track X/Twitter usage for daily limits
-            # This calls the `record_post()` function when sending an post to X / Twitter
-            if name == "x" and getattr(self, "x_rate_limiter", None):
-                try:
-                    self.x_rate_limiter.record_post()
-                except Exception:
-                    logger.exception("Failed to record X rate-limit usage.")
+                # Track X/Twitter usage for daily limits
+                # This calls the `record_post()` function when sending an post to X / Twitter
+                if name == "x" and getattr(self, "x_rate_limiter", None):
+                    try:
+                        self.x_rate_limiter.record_post()
+                    except Exception:
+                        logger.exception("Failed to record X rate-limit usage.")
 
         return results
 
@@ -403,13 +403,13 @@ class SocialPublisher:
                 if state is not None:
                     self._set_state_parent(state, name, ref)
 
-            # Track X/Twitter usage for daily limits
-            # This calls the `record_post()` function when sending an post to X / Twitter
-            if name == "x" and getattr(self, "x_rate_limiter", None):
-                try:
-                    self.x_rate_limiter.record_post()
-                except Exception:
-                    logger.exception("Failed to record X rate-limit usage (reply).")
+                # Track X/Twitter usage for daily limits
+                # This calls the `record_post()` function when sending an post to X / Twitter
+                if name == "x" and getattr(self, "x_rate_limiter", None):
+                    try:
+                        self.x_rate_limiter.record_post()
+                    except Exception:
+                        logger.exception("Failed to record X rate-limit usage (reply).")
 
         return results
 

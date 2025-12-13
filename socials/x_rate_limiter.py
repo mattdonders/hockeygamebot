@@ -1,6 +1,16 @@
+# socials/x_rate_limiter.py
+from __future__ import annotations
+
 import json
+import time
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any
+
+# -------------------------------
+# Public helper (unchanged API)
+# -------------------------------
 
 
 def build_x_limit_warning(
@@ -14,225 +24,300 @@ def build_x_limit_warning(
     - If other platforms enabled → mention them generically
     - If X is the only platform → generic “see you tomorrow” message
     """
+    # NOTE: Keep this text consistent with your bot voice; tweak if desired.
+    has_bsky = "bluesky" in enabled_platforms or "bsky" in enabled_platforms
+    other_platforms = sorted(p for p in enabled_platforms if p not in {"x", "twitter"})
 
-    base = "Due to daily posting limits on X, this bot has to stop posting updates early today.\n\n"
-
-    # Remove X itself — we care about *other* active channels
-    non_x = {p for p in enabled_platforms if p != "x"}
-
-    # ----- Case A: Bluesky enabled -----
-    if "bluesky" in non_x:
-        pretty_others = sorted(non_x - {"bluesky"})
-
+    lines: list[str] = []
+    lines.append("Due to daily posting limits on X, this bot has to stop posting updates early today.")
+    lines.append("")
+    if has_bsky:
         if bluesky_handle:
-            bsky_part = f"Bluesky at {bluesky_handle}"
+            lines.append(f"We’ll keep posting on Bluesky: {bluesky_handle}")
         else:
-            bsky_part = "Bluesky"
+            lines.append("We’ll keep posting on Bluesky.")
+        if other_platforms:
+            # Avoid listing "x" itself; we already said X is blocked.
+            others = ", ".join(p for p in other_platforms if p not in {"bluesky", "bsky"})
+            if others:
+                lines.append(f"We’ll also keep posting on: {others}")
+    else:
+        if other_platforms:
+            others = ", ".join(other_platforms)
+            lines.append(f"We’ll keep posting on: {others}")
 
-        if pretty_others:
-            # Example: "Threads, Telegram"
-            others_str = ", ".join(name.capitalize() for name in pretty_others)
-            return base + f"Live game coverage will continue on {bsky_part} and our other channels ({others_str})."
-        else:
-            return base + f"Live game coverage will continue on {bsky_part} for the rest of the game."
+    lines.append("")
+    lines.append("We’ll be back with updates once our posting limit clears.")
+    return "\n".join(lines)
 
-    # ----- Case B: Other platforms enabled (no Bluesky) -----
-    if non_x:
-        pretty = ", ".join(name.capitalize() for name in sorted(non_x))
-        return base + f"Live game coverage will continue on our other channels: {pretty}."
 
-    # ----- Case C: Only X is enabled -----
-    return base + "We’ll be back with updates tomorrow once our daily limit resets."
+# -------------------------------
+# Rolling-window limiter
+# -------------------------------
+
+
+@dataclass(frozen=True)
+class XLimitState:
+    posts: list[int]  # epoch seconds for successful POST /2/tweets (includes warning tweet)
+    warning_sent: bool  # whether we already sent the warning tweet for the *current* rolling window state
+    warning_post_ts: int  # epoch seconds; when we last successfully posted the warning tweet (0 if never)
+    disabled_until: int  # epoch seconds; if > now, do not attempt posting to X
+    last_429_at: int  # epoch seconds; last time we saw a 429 (for debugging)
+    last_reset_hint: int  # epoch seconds; best-known reset time from headers (for debugging)
 
 
 class XRateLimiter:
     """
-    Manages Twitter/X daily post limits per bot.
+    Enforces a rolling 24-hour window locally.
 
-    Each Twitter account gets its own JSON file:
-        data/cache/twitter_limits/<TEAM>.json
-
-    Structure:
-        {
-            "day": "YYYY-MM-DD",   # UTC day
-            "count": 0,            # posts sent today (UTC)
-            "warning_sent": false  # has the early-stop tweet been sent?
-        }
+    - Tracks successful tweet create timestamps (epoch seconds) in `posts[]`.
+    - Rolling count is posts in the last 24 hours.
+    - Supports a "content stop" threshold (e.g., 15) and a hard ceiling (e.g., 17).
+    - When a 429 occurs, you can set disabled_until to stop attempts until reset.
     """
 
-    DAILY_LIMIT = 17  # X hard limit
-    CONTENT_LIMIT = 15  # at 15, we begin warning + shutting down
+    WINDOW_SECONDS = 24 * 60 * 60
 
-    def __init__(self, team_slug: str, base_cache_dir: Path):
-        """
-        team_slug: "njd", "pit", etc.
-        base_cache_dir: typically Path("data/cache")
-        """
-        self.slug = team_slug.lower()
+    def __init__(
+        self,
+        state_path: str | Path,
+        daily_limit: int = 17,  # hard cap (Free tier)
+        content_limit: int = 15,  # your “stop content” threshold
+    ):
+        self.state_path = Path(state_path)
+        self.daily_limit = int(daily_limit)
+        self.content_limit = int(content_limit)
 
-        # Directory: data/cache/twitter_limits
-        self.limit_dir = base_cache_dir / "twitter_limits"
-        self.limit_dir.mkdir(parents=True, exist_ok=True)
+        self._state: XLimitState = self._load_state()
+        self._prune_and_save_if_needed()
 
-        # File: data/cache/twitter_limits/NJD.json
-        self.file_path = self.limit_dir / f"{self.slug}.json"
+    # ---------- Internals ----------
 
-        self._state = self._load_state()
+    @staticmethod
+    def _now() -> int:
+        return int(time.time())
 
-    # -------------------------------
-    # Internal state helpers
-    # -------------------------------
+    def _load_state(self) -> XLimitState:
+        if not self.state_path.exists():
+            return XLimitState(
+                posts=[],
+                warning_sent=False,
+                warning_post_ts=0,
+                disabled_until=0,
+                last_429_at=0,
+                last_reset_hint=0,
+            )
 
-    def _load_state(self):
-        """Load the JSON file or initialize a new state."""
-        if self.file_path.exists():
-            try:
-                return json.loads(self.file_path.read_text())
-            except Exception:
-                pass  # corrupt file → reinitialize below
+        try:
+            raw = json.loads(self.state_path.read_text())
+        except Exception:
+            # Corrupt file → fail safe: disable X for 15 minutes so we don’t spam retries
+            return XLimitState(
+                posts=[],
+                warning_sent=False,
+                warning_post_ts=0,
+                disabled_until=self._now() + 15 * 60,
+                last_429_at=self._now(),
+                last_reset_hint=0,
+            )
 
-        today = datetime.now(timezone.utc).date().isoformat()
-        return {"day": today, "count": 0, "warning_sent": False}
+        # Legacy format support: {"day": "...", "count": N, "warning_sent": bool}
+        if isinstance(raw, dict) and "posts" not in raw and "count" in raw:
+            count = int(raw.get("count", 0) or 0)
+            warning_sent = bool(raw.get("warning_sent", False))
 
-    def _save_state(self):
-        """Persist the updated state."""
-        self.file_path.write_text(json.dumps(self._state, indent=2))
+            # Conservative migration: assume those posts happened within the last 24 hours.
+            # We backfill timestamps spaced 60s apart ending “now”.
+            now = self._now()
+            backfilled = [now - (i * 60) for i in range(count)][::-1]
 
-    def _maybe_rotate_day(self):
-        """Reset counters if we've crossed a UTC day boundary."""
-        now_utc = datetime.now(timezone.utc).date().isoformat()
-        stored_day = self._state.get("day")
+            return XLimitState(
+                posts=backfilled,
+                warning_sent=warning_sent,
+                warning_post_ts=0,
+                disabled_until=0,
+                last_429_at=0,
+                last_reset_hint=0,
+            )
 
-        if stored_day != now_utc:
-            # Twitter quota resets → we reset as well
-            self._state = {
-                "day": now_utc,
-                "count": 0,
-                "warning_sent": False,
-            }
+        posts = [int(x) for x in (raw.get("posts") or []) if isinstance(x, (int, float, str))]
+        posts = [int(x) for x in posts]
+
+        return XLimitState(
+            posts=posts,
+            warning_sent=bool(raw.get("warning_sent", False)),
+            warning_post_ts=int(raw.get("warning_post_ts", 0) or 0),
+            disabled_until=int(raw.get("disabled_until", 0) or 0),
+            last_429_at=int(raw.get("last_429_at", 0) or 0),
+            last_reset_hint=int(raw.get("last_reset_hint", 0) or 0),
+        )
+
+    def _save_state(self) -> None:
+        self.state_path.parent.mkdir(parents=True, exist_ok=True)
+        payload = {
+            "posts": self._state.posts,
+            "warning_sent": self._state.warning_sent,
+            "disabled_until": self._state.disabled_until,
+            "last_429_at": self._state.last_429_at,
+            "last_reset_hint": self._state.last_reset_hint,
+        }
+        self.state_path.write_text(json.dumps(payload, indent=2, sort_keys=True))
+
+    def _prune_posts(self) -> bool:
+        """Prune anything older than the rolling window. Returns True if it changed."""
+        now = self._now()
+        cutoff = now - self.WINDOW_SECONDS
+        before = len(self._state.posts)
+        kept = [ts for ts in self._state.posts if ts >= cutoff]
+        changed = len(kept) != before
+        if changed:
+            # If the window moved, allow a warning again when we re-approach the content limit.
+            # (Otherwise a warning sent yesterday could block warning today even after posts fall out.)
+            # We only reset warning_sent when pruning actually changes the window.
+            # Only clear warning_sent if the last warning is outside the rolling window.
+            warning_in_window = self._state.warning_post_ts >= cutoff if self._state.warning_post_ts else False
+            self._state = XLimitState(
+                posts=kept,
+                warning_sent=(True if warning_in_window else False),
+                warning_post_ts=(self._state.warning_post_ts if warning_in_window else 0),
+                disabled_until=self._state.disabled_until,
+                last_429_at=self._state.last_429_at,
+                last_reset_hint=self._state.last_reset_hint,
+            )
+        return changed
+
+    def _prune_and_save_if_needed(self) -> None:
+        changed = self._prune_posts()
+        if changed:
             self._save_state()
 
-    # -------------------------------
-    # Public API
-    # -------------------------------
+    # ---------- Public API used by Publisher ----------
+
+    def mark_warning_sent(self):
+        """Mark warning as sent without incrementing the post counter."""
+        now = self._now()
+        self._state.warning_sent = True
+        self._state.warning_post_ts = now
+        self._save_state()
+
+    def get_state(self) -> dict[str, Any]:
+        """Useful for dashboards/monitors."""
+        self._prune_and_save_if_needed()
+        now = self._now()
+        rolling_count = self.get_rolling_count()
+        return {
+            "rolling_count": rolling_count,
+            "content_limit": self.content_limit,
+            "daily_limit": self.daily_limit,
+            "warning_sent": self._state.warning_sent,
+            "warning_post_ts": self._state.warning_post_ts,
+            "disabled_until": self._state.disabled_until,
+            "disabled_for_seconds": max(0, self._state.disabled_until - now),
+            "last_429_at": self._state.last_429_at,
+            "last_reset_hint": self._state.last_reset_hint,
+        }
+
+    def get_rolling_count(self) -> int:
+        self._prune_and_save_if_needed()
+        return len(self._state.posts)
 
     def can_post_regular(self) -> bool:
         """
-        True → allowed to send a normal event post to X.
-        False → do NOT send (but may still send the warning post).
+        Whether we should include X in normal posting targets.
+        - False if disabled_until is active (recent 429)
+        - False if we reached content_limit (your early stop)
         """
-        self._maybe_rotate_day()
-        if self._state["warning_sent"]:
+        self._prune_and_save_if_needed()
+        now = self._now()
+
+        if self._state.disabled_until and now < self._state.disabled_until:
             return False
-        return self._state["count"] < self.CONTENT_LIMIT
+
+        return self.get_rolling_count() < self.content_limit
 
     def should_send_warning(self) -> bool:
         """
-        Determines whether it is time to send the *one* early-stop warning tweet.
-
-        Conditions:
-        - We are at or above CONTENT_LIMIT (15 posts)
-        - warning_sent is still False
-        - We have NOT exceeded the hard limit (17)
+        Whether we should send the one-time warning tweet and then drop X from targets.
         """
-        self._maybe_rotate_day()
+        self._prune_and_save_if_needed()
+        now = self._now()
 
-        count = self._state["count"]
+        if self._state.disabled_until and now < self._state.disabled_until:
+            return False
 
-        return count >= self.CONTENT_LIMIT and not self._state["warning_sent"] and count < self.DAILY_LIMIT
+        count = self.get_rolling_count()
+        if self._state.warning_sent:
+            return False
 
-    def record_post(self, is_warning: bool = False):
+        # Extra guard: never send two warnings inside the same rolling window,
+        # even if warning_sent gets toggled for any reason.
+        if self._state.warning_post_ts and (now - self._state.warning_post_ts) < self.WINDOW_SECONDS:
+            return False
+
+        # send warning once when we hit content_limit
+        return count >= self.content_limit and count < self.daily_limit
+
+    def record_post(self, is_warning: bool = False, ts: int | None = None) -> None:
         """
-        Called AFTER a successful X post.
-        Increments count and optionally marks warning_sent.
+        Record a successful tweet create (POST /2/tweets).
+        Call this only when X actually returned success (ref is not None).
         """
-        self._maybe_rotate_day()
+        self._prune_and_save_if_needed()
+        now = int(ts) if ts is not None else self._now()
 
-        self._state["count"] += 1
+        posts = list(self._state.posts)
+        posts.append(now)
 
-        if is_warning:
-            self._state["warning_sent"] = True
-
+        self._state = XLimitState(
+            posts=posts,
+            warning_sent=(True if is_warning else self._state.warning_sent),
+            warning_post_ts=(now if is_warning else self._state.warning_post_ts),
+            disabled_until=self._state.disabled_until,
+            last_429_at=self._state.last_429_at,
+            last_reset_hint=self._state.last_reset_hint,
+        )
         self._save_state()
 
-    def get_state(self) -> dict:
+    def record_rate_limited(self, reset_epoch: int | None = None) -> None:
         """
-        Public accessor used by StatusMonitor to snapshot the current
-        X rate-limit state for the dashboard.
-
-        Returns a shallow copy so callers can't mutate internal state.
+        Call this when X returns 429 for POST /2/tweets.
+        This disables X until reset_epoch (if provided), otherwise uses a conservative fallback.
         """
-        self._maybe_rotate_day()
-        return dict(self._state)
+        self._prune_and_save_if_needed()
+        now = self._now()
 
+        # Fallback: assume it’s at least a 15-minute bucket if we can’t read anything.
+        fallback = now + 15 * 60
+        disabled_until = int(reset_epoch) if reset_epoch else fallback
 
-if __name__ == "__main__":
-    import argparse
-    from pathlib import Path
+        # Guard against weird values (past timestamps)
+        if disabled_until < now:
+            disabled_until = fallback
 
-    parser = argparse.ArgumentParser(description="Debug / simulate XRateLimiter usage.")
-    parser.add_argument("--team", required=True, help="Team slug (real or fake).")
-    parser.add_argument("--cache-dir", default="data/cache", help="Directory for cache.")
-    parser.add_argument("--steps", type=int, default=18, help="Number of attempts.")
-    parser.add_argument(
-        "--show-warning",
-        action="store_true",
-        default=True,
-        help="Print the X daily-limit warning message.",
-    )
-    args = parser.parse_args()
-
-    # WARN if using a real NHL abbreviation
-    # fmt: off
-    real_abbrevs = {
-        "ana","ari","bos","buf","cgy","car","cbj","chi","col","dal",
-        "det","edm","fla","lak","min","mtl","njd","nsh","nyi","nyr",
-        "ott","phi","pit","sea","sjs","stl","tbl","tor","van","vgk",
-        "wpg","wsh","uta"
-    }
-    # fmt: on
-
-    if args.team.lower() in real_abbrevs:
-        print(
-            f"⚠️  WARNING: '{args.team}' looks like a real team slug.\n"
-            "    Running the simulator will overwrite the real bot's rate-limit file!\n"
-            "    Use a fake slug instead, e.g. '--team njd_test' or '--team sim_njd'.\n"
+        self._state = XLimitState(
+            posts=self._state.posts,
+            warning_sent=self._state.warning_sent,
+            warning_post_ts=self._state.warning_post_ts,
+            disabled_until=disabled_until,
+            last_429_at=now,
+            last_reset_hint=disabled_until,
         )
-        exit(1)
+        self._save_state()
 
-    limiter = XRateLimiter(
-        team_slug=args.team.lower(),
-        base_cache_dir=Path(args.cache_dir),
-    )
-
-    print(f"Initial state for {args.team}: {limiter._state}")
-
-    for i in range(1, args.steps + 1):
-        label = f"[SIM {i:02d}]"
-
-        if limiter.should_send_warning():
-            print(f"{label} should_send_warning=True → recording WARNING post")
-            limiter.record_post(is_warning=True)
-
-            if args.show_warning:
-                # Simulate the platforms your real bot would have
-                enabled_platforms = {"x", "bluesky"}  # OR use whatever you want to test
-                fake_handle = "@debug.hockeygamebot.com"
-
-                print("\n--- Warning Message Preview ---")
-                print(
-                    build_x_limit_warning(
-                        enabled_platforms=enabled_platforms,
-                        bluesky_handle=fake_handle,
-                    )
-                )
-                print("--- End Preview ---\n")
-            continue
-
-        if limiter.can_post_regular():
-            print(f"{label} can_post_regular=True → recording regular post")
-            limiter.record_post()
-        else:
-            print(f"{label} X posting disabled for today (count={limiter._state.get('count')}).")
-
-    print(f"Final state for {args.team}: {limiter._state}")
+    # Optional helper for seeding/migration tooling
+    def seed_posts(self, timestamps: list[int], warning_sent: bool = False) -> None:
+        """
+        Overwrite the stored posts with the provided timestamps (epoch seconds).
+        Useful for seeding from known tweet times.
+        """
+        timestamps = sorted(int(t) for t in timestamps)
+        self._state = XLimitState(
+            posts=timestamps,
+            warning_sent=warning_sent,
+            warning_post_ts=0,
+            disabled_until=0,
+            last_429_at=0,
+            last_reset_hint=0,
+        )
+        self._prune_and_save_if_needed()
+        self._save_state()

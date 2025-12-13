@@ -252,7 +252,7 @@ def _handle_postgame_state(context: GameContext):
         parse_live_game(context)
 
     # Retry loop for final content (three stars may not be available immediately)
-    max_final_attempts = 10  # Check up to 10 times
+    max_final_attempts = 5  # Check up to 10 times
     final_attempt = 0
     final_sleep_time = 30  # Wait 30 seconds between attempts
 
@@ -273,8 +273,15 @@ def _handle_postgame_state(context: GameContext):
                         event_type="final_summary",  # uses X allowlist
                         state=context.final_socials,
                     )
-                    context.final_socials.final_score_sent = True
-                    logger.info("Posted and seeded final score thread roots.")
+                    if results:
+                        context.final_socials.final_score_sent = True
+                        logger.info(
+                            "Posted and seeded final score thread roots. platforms=%s",
+                            list(results.keys()),
+                        )
+                    else:
+                        logger.warning("Final score post did not post to any platform (all failed). Will retry.")
+                        all_content_posted = False
                 else:
                     logger.warning("Final score post returned None")
             except Exception as e:
@@ -287,14 +294,20 @@ def _handle_postgame_state(context: GameContext):
             try:
                 three_stars_post = final.three_stars(context)
                 if three_stars_post:
-                    res = context.social.reply(
+                    results = context.social.reply(
                         message=three_stars_post,
                         platforms="enabled",  # Bsky + Threads + X
                         event_type="three_stars",  # uses X allowlist
                         state=context.final_socials,  # uses seeded roots/parents
                     )
-                    context.final_socials.three_stars_sent = True
-                    logger.info("Posted three stars reply successfully.")
+
+                    # Check if We Get a PostRef Object Before Logging Success
+                    if results:
+                        logger.info("Posted three stars reply successfully. platforms=%s", list(results.keys()))
+                        context.final_socials.three_stars_sent = True
+                    else:
+                        logger.warning("Three stars reply did not post to any platform (all failed).")
+                        all_content_posted = False
                 else:
                     logger.info("⏳ Three stars not available yet, will retry")
                     all_content_posted = False
@@ -312,15 +325,21 @@ def _handle_postgame_state(context: GameContext):
                     chart_path = charts.teamstats_chart(context, team_stats_data, ingame=True)
                     if chart_path:  # ✅ Validate chart was created
                         chart_message = f"Final team stats for tonight's game.\n\n{context.preferred_team.hashtag} | {context.game_hashtag}"
-                        res = context.social.reply(
+                        results = context.social.reply(
                             message=chart_message,
                             media=chart_path,
                             platforms="enabled",  # Bsky + Threads + X
                             event_type="final_summary",  # uses X allowlist
                             state=context.final_socials,  # auto-picks the current parent
                         )
-                        context.final_socials.team_stats_sent = True
-                        logger.info("Posted team stats chart reply successfully.")
+                        if results:
+                            logger.info(
+                                "Posted team stats chart reply successfully. platforms=%s", list(results.keys())
+                            )
+                            context.final_socials.team_stats_sent = True
+                        else:
+                            logger.warning("Team stats chart reply did not post to any platform (all failed).")
+                            all_content_posted = False
                     else:
                         logger.warning("Team stats chart returned None")
                 else:
